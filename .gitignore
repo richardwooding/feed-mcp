@@ -26,3 +26,5 @@ go.work.sum
 
 .idea/
 feed-mcp
+
+dist/
