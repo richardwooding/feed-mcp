@@ -1,6 +1,8 @@
 package mcpserver
 
-import "errors"
+import (
+	"errors"
+)
 
 var ErrInvalidTransport = errors.New("invalid transport")
 
