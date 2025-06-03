@@ -2,6 +2,9 @@ name: badges
 
 on: [push]
 
+permissions:
+  contents: read
+
 jobs:
   go_badges:
     runs-on: ubuntu-latest
