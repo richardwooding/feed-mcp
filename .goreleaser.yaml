@@ -58,5 +58,3 @@ kos:
     platforms:
       - linux/amd64
       - linux/arm64
-docker_signs:
-  - artifacts: manifests
