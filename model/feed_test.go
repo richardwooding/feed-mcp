@@ -1,8 +1,7 @@
-package mcpserver
+package model
 
 import (
 	"github.com/mmcdole/gofeed"
-	"github.com/richardwooding/feed-mcp/model"
 	"reflect"
 	"testing"
 )
@@ -15,7 +14,7 @@ func TestFromGoFeed(t *testing.T) {
 		FeedType:    "rss",
 		FeedVersion: "2.0",
 	}
-	out := model.FromGoFeed(in)
+	out := FromGoFeed(in)
 	if out == nil {
 		t.Fatal("FromGoFeed returned nil")
 	}
@@ -26,12 +25,12 @@ func TestFromGoFeed(t *testing.T) {
 		t.Errorf("FromGoFeed did not copy FeedType/FeedVersion")
 	}
 	// Test nil input
-	if model.FromGoFeed(nil) != nil {
+	if FromGoFeed(nil) != nil {
 		t.Errorf("FromGoFeed(nil) should return nil")
 	}
 	// Test all fields copied (shallow check)
-	got := model.FromGoFeed(in)
-	want := &model.Feed{
+	got := FromGoFeed(in)
+	want := &Feed{
 		Title:       "Test Feed",
 		Description: "desc",
 		Link:        "http://example.com",
