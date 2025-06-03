@@ -7,7 +7,9 @@ MCP Server for RSS, Atom, and JSON Feeds
 ## Running via docker
 
 ```sh
-docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run https://www.reddit.com/r/capetown/.rss
+docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run \
+  https://www.reddit.com/r/golang/.rss \
+  https://www.reddit.com/r/mcp/.rss
 ```
 
 ## Installing using Go install
@@ -19,12 +21,6 @@ go install github.com/richardwooding/feed-mcp@latest
 ```
 
 ## Add to Claude Desktop
-
-Locate the binary in your system, by using
-
-```sh
-which feed-mcp
-```
 
 In your Claude Desktop configuration file, add the following configuration to the `mcpServers` section:
 
@@ -39,7 +35,8 @@ In your Claude Desktop configuration file, add the following configuration to th
         "--rm",
         "ghcr.io/richardwooding/feed-mcp:latest",
         "run",
-        "https://www.reddit.com/r/capetown/.rss"
+        "https://www.reddit.com/r/golang/.rss",
+        "https://www.reddit.com/r/mcp/.rss"
       ]
     }
   }
