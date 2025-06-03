@@ -30,7 +30,7 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.8.1
         with:
-          cosign-release: 'v3.8.2'
+          cosign-release: 'v2.5.0'
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
