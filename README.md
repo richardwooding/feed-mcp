@@ -4,7 +4,13 @@
 
 MCP Server for RSS, Atom, and JSON Feeds
 
-## Installation
+## Running via docker
+
+```sh
+docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run https://www.reddit.com/r/capetown/.rss
+```
+
+## Installing using Go install
 
 You can install the CLI using:
 
@@ -26,12 +32,14 @@ In your Claude Desktop configuration file, add the following configuration to th
 {
   "mcpServers": {
     "feed": {
-      "command": "/path/to/binary/feed-mcp",
+      "command": "docker",
       "args": [
         "run",
-        "https://feeds.capi24.com/v1/Search/articles/news24/TopStories/rss",
-        "https://rss.dw.com/rdf/rss-en-all",
-        "https://www.france24.com/en/rss"
+        "-i",
+        "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://www.reddit.com/r/capetown/.rss"
       ]
     }
   }
