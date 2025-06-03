@@ -1,4 +1,6 @@
 # feed-mcp
+[![Release](https://github.com/richardwooding/feed-mcp/actions/workflows/go.yml/badge.svg)](https://github.com/richardwooding/feed-mcp/actions/workflows/go.yml)
+
 MCP Server for RSS, Atom, and JSON Feeds
 
 ## Installation
