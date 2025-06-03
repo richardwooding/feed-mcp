@@ -45,23 +45,15 @@ changelog:
       - "^docs:"
       - "^test:"
 
-dockers:
-  - image_templates:
-      - "gcr.io/richardwooding/feed-mcp:{{ .Tag }}-amd64"
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--platform=linux/amd64"
-  - image_templates:
-      - "gcr.io/richardwooding/feed-mcp:{{ .Tag }}-arm64"
-    use: buildx
-    build_flag_templates:
-      - "--pull"
-      - "--platform=linux/arm64"
-    goarch: arm64
-
-docker_manifests:
-  - name_template: "gcr.io/richardwooding/feed-mcp:{{ .Tag }}"
-    image_templates:
-      - "gcr.io/richardwooding/feed-mcp:{{ .Tag }}-amd64"
-      - "gcr.io/richardwooding/feed-mcp:{{ .Tag }}-arm64"
+kos:
+  - repositories: [ghcr.io/richardwooding/feed-mcp]
+    tags:
+      - "{{.Version}}"
+      - latest
+    bare: true
+    preserve_import_paths: false
+    platforms:
+      - linux/amd64
+      - linux/arm64
+docker_signs:
+  - artifacts: manifests
