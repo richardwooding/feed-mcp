@@ -10,10 +10,10 @@ on:
 
 permissions:
   contents: write
-  # packages: write
-  # issues: write
-  # id-token: write
-
+  packages: write
+  attestations: write
+  id-token: write
+  
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
