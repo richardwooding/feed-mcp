@@ -1,5 +1,7 @@
 # feed-mcp
 
+[![Go Coverage](https://github.com/richardwooding/feed-mcp/wiki/coverage.svg)](https://raw.githack.com/wiki/richardwooding/feed-mcp/coverage.html)
+
 MCP Server for RSS, Atom, and JSON Feeds
 
 ## Installation
