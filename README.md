@@ -33,19 +33,4 @@ In your Claude Desktop configuration file, add the following configuration to th
     }
   }
 }
-
-```json
-{
-  "mcpServers": {
-    "feed": {
-      "command": "/path/to/binary/feed-mcp",
-      "args": [
-        "run",
-        "https://feeds.capi24.com/v1/Search/articles/news24/TopStories/rss",
-        "https://rss.dw.com/rdf/rss-en-all",
-        "https://www.france24.com/en/rss"
-      ]
-    }
-  }
-}
 ```
