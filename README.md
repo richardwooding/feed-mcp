@@ -1,17 +1,4 @@
 # feed-mcp
-## Coverage
-```
-<!---go-badges-coverage-->
-```
-## Version
-```
-<!---go-badges-version-->
-```
-## Report Card
-```
-<!---go-badges-report-card-->
-```
-
 
 MCP Server for RSS, Atom, and JSON Feeds
 
