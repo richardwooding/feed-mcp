@@ -1,39 +1,46 @@
 package main
 
 import (
+	"fmt"
 	"github.com/alecthomas/kong"
-	"github.com/richardwooding/feed-mcp/mcpserver"
 )
 
-var CLI struct {
-	Run struct {
-		Transport string   `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
-		Feeds     []string `arg:"" name:"feeds" help:"Feeds to list."`
-	} `cmd:"" help:"Run MCP Server"`
+type Globals struct {
+	Version VersionFlag `name:"version" help:"Print version information and quit"`
+}
+
+type CLI struct {
+	Globals
+	Run RunCmd `cmd:"" help:"Run MCP Server"`
+}
+
+type VersionFlag string
+
+func (v VersionFlag) Decode(ctx *kong.DecodeContext) error { return nil }
+func (v VersionFlag) IsBool() bool                         { return true }
+func (v VersionFlag) BeforeApply(app *kong.Kong, vars kong.Vars) error {
+	fmt.Println(vars["version"])
+	app.Exit(0)
+	return nil
 }
 
 func main() {
-	ctx := kong.Parse(&CLI)
-	switch ctx.Command() {
-	case "run <feeds>":
-		transport, err := mcpserver.ParseTransport(CLI.Run.Transport)
-		if err != nil {
-			panic(err)
-		}
-		if len(CLI.Run.Feeds) == 0 {
-			panic("at least one feed must be specified")
-		}
-		server, err := mcpserver.NewServer(mcpserver.Config{
-			Transport: transport,
-			Feeds:     CLI.Run.Feeds,
-		})
-		if err != nil {
-			panic(err)
-		}
-		if err := server.Run(); err != nil {
-			panic(err)
-		}
-	default:
-		panic(ctx.Command())
+	cli := CLI{
+		Globals: Globals{
+			Version: VersionFlag("0.1.1"),
+		},
 	}
+
+	ctx := kong.Parse(&cli,
+		kong.Name("feed-mcp"),
+		kong.Description("A MCP server for RSS and Atom feeds"),
+		kong.UsageOnError(),
+		kong.ConfigureHelp(kong.HelpOptions{
+			Compact: true,
+		}),
+		kong.Vars{
+			"version": "0.1.3",
+		})
+	err := ctx.Run(&cli.Globals)
+	ctx.FatalIfErrorf(err)
 }
