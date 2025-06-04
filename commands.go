@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"github.com/richardwooding/feed-mcp/mcpserver"
 	"github.com/richardwooding/feed-mcp/model"
 	"github.com/richardwooding/feed-mcp/store"
@@ -17,7 +18,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 		return err
 	}
 	if len(c.Feeds) == 0 {
-		panic("at least one feed must be specified")
+		return errors.New("no feeds specified")
 	}
 	feedStore, err := store.NewStore(store.Config{
 		Feeds: c.Feeds,
