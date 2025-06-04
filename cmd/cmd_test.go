@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/richardwooding/feed-mcp"
+	"github.com/richardwooding/feed-mcp/model"
 	"testing"
 )
 
@@ -12,7 +12,7 @@ func TestRunCmd_Run_InvalidTransport(t *testing.T) {
 		Transport: "invalid",
 		Feeds:     []string{"http://example.com/feed"},
 	}
-	err := cmd.Run(&main.Globals{})
+	err := cmd.Run(&model.Globals{})
 	if err == nil {
 		t.Error("expected error for invalid transport")
 	}
@@ -23,7 +23,7 @@ func TestRunCmd_Run_NoFeeds(t *testing.T) {
 		Transport: "stdio",
 		Feeds:     []string{},
 	}
-	err := cmd.Run(&main.Globals{})
+	err := cmd.Run(&model.Globals{})
 	if err == nil {
 		t.Error("expected error for no feeds specified")
 	}
@@ -35,5 +35,5 @@ func TestRunCmd_Run_Valid(t *testing.T) {
 		Transport: "stdio",
 		Feeds:     []string{"http://127.0.0.1:0/doesnotexist"},
 	}
-	_ = cmd.Run(&main.Globals{})
+	_ = cmd.Run(&model.Globals{})
 }
