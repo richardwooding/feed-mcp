@@ -5,16 +5,6 @@
 
 MCP Server for RSS, Atom, and JSON Feeds
 
-## Libraries Used
-
-This project makes use of the following open source libraries:
-
-- [github.com/mmcdole/gofeed](https://github.com/mmcdole/gofeed) — RSS/Atom feed parser
-- [github.com/alecthomas/kong](https://github.com/alecthomas/kong) — Command-line parser
-- [github.com/eko/gocache](https://github.com/eko/gocache) — Caching library
-- [github.com/dgraph-io/ristretto](https://github.com/dgraph-io/ristretto) — High performance cache
-- [github.com/mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) — MCP protocol implementation
-
 ## Running via docker
 
 ```sh
@@ -83,3 +73,14 @@ In your Claude Desktop configuration file, add the following configuration to th
     }
   }
 }
+```
+
+## Dependencies
+
+This project makes use of the following open source libraries:
+
+- [gofeed](https://github.com/mmcdole/gofeed) — RSS/Atom feed parser
+- [kong](https://github.com/alecthomas/kong) — Command-line parser
+- [gocache](https://github.com/eko/gocache) — Caching library
+- [ristretto](https://github.com/dgraph-io/ristretto) — High performance cache
+- [mcp-go](https://github.com/mark3labs/mcp-go) — MCP protocol implementation
