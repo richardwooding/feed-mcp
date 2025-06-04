@@ -21,13 +21,8 @@ type Config struct {
 	HttpClient *http.Client
 }
 
-type feedItem struct {
-	title string
-	url   string
-}
-
 type Store struct {
-	feeds            map[string]feedItem
+	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
 }
 
@@ -69,25 +64,19 @@ func NewStore(config Config) (*Store, error) {
 		cache.New[*gofeed.Feed](ristrettoStore),
 	)
 
-	wg := &sync.WaitGroup{}
-	feeds := make(map[string]feedItem, len(config.Feeds))
+	feeds := make(map[string]string, len(config.Feeds))
+	wg := sync.WaitGroup{}
 	for _, feedURL := range config.Feeds {
 		wg.Add(1)
 		go func(url string) {
 			defer wg.Done()
-			id, err := gonanoid.New()
-			if err != nil {
-				fmt.Printf("error generating id: %s\n", err)
-				return
-			}
-			feed, err := cacheManager.Get(context.Background(), url)
-			if err != nil {
-				fmt.Printf("Failed to load feedItem %s: %v\n", url, err)
-				return
-			}
-			feeds[id] = feedItem{feed.Title, url}
+			id, _ := gonanoid.New()
+			feeds[id] = url
+			_, _ = cacheManager.Get(context.Background(), url)
+
 		}(feedURL)
 	}
+	wg.Wait()
 
 	return &Store{
 		feeds:            feeds,
@@ -97,41 +86,47 @@ func NewStore(config Config) (*Store, error) {
 
 func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 	results := make([]*model.FeedResult, len(s.feeds))
+	wg := &sync.WaitGroup{}
 	idx := 0
-	for id, item := range s.feeds {
-		feed, err := s.feedCacheManager.Get(ctx, item.url)
-		if err != nil {
-			results[idx] = &model.FeedResult{
-				ID:         id,
-				PublicURL:  item.url,
-				FetchError: err.Error(),
+	for id, url := range s.feeds {
+		wg.Add(1)
+		go func(idx int, id string, url string) {
+			defer wg.Done()
+			feed, err := s.feedCacheManager.Get(ctx, url)
+			if err != nil {
+				results[idx] = &model.FeedResult{
+					ID:         id,
+					PublicURL:  url,
+					FetchError: err.Error(),
+				}
+			} else {
+				results[idx] = &model.FeedResult{
+					ID:        id,
+					PublicURL: url,
+					Title:     feed.Title,
+					Feed:      model.FromGoFeed(feed),
+				}
 			}
-		} else {
-			results[idx] = &model.FeedResult{
-				ID:        id,
-				PublicURL: item.url,
-				Title:     feed.Title,
-				Feed:      model.FromGoFeed(feed),
-			}
-		}
+		}(idx, id, url)
 		idx++
 	}
+	wg.Wait()
 	return results, nil
 }
 
 func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndItemsResult, error) {
-	if item, exists := s.feeds[id]; exists {
-		feed, err := s.feedCacheManager.Get(ctx, item.url)
+	if url, exists := s.feeds[id]; exists {
+		feed, err := s.feedCacheManager.Get(ctx, url)
 		if err != nil {
 			return &model.FeedAndItemsResult{
 				ID:         id,
-				PublicURL:  item.url,
+				PublicURL:  url,
 				FetchError: err.Error(),
 			}, nil
 		}
 		return &model.FeedAndItemsResult{
 			ID:        id,
-			PublicURL: item.url,
+			PublicURL: url,
 			Title:     feed.Title,
 			Feed:      model.FromGoFeed(feed),
 			Items:     feed.Items,
