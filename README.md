@@ -15,6 +15,30 @@ MCP Server for RSS, Atom, and JSON Feeds
 - Supports multiple feeds simultaneously
 - Extensible and configurable
 
+## Architecture
+
+The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/JSON feeds over the [MCP protocol](https://github.com/mark3labs/mcp-go). The main architectural components are:
+
+- **Command-line Interface (CLI):** Uses [kong](https://github.com/alecthomas/kong) for parsing commands and flags. The `run` command is the entry point for starting the server.
+- **Feed Fetching & Parsing:** Feeds are fetched and parsed using [gofeed](https://github.com/mmcdole/gofeed). The server supports multiple feeds, which are periodically refreshed and cached.
+- **Caching Layer:** Feed data is cached using [gocache](https://github.com/eko/gocache) and [ristretto](https://github.com/dgraph-io/ristretto) for efficient retrieval and reduced network usage.
+- **MCP Protocol Server:** Implements the MCP protocol using [mcp-go](https://github.com/mark3labs/mcp-go), allowing integration with clients like Claude Desktop.
+- **Transport Options:** Supports different transports (e.g., stdio, HTTP with SSE) for communication with MCP clients.
+- **Docker/Podman Support:** The server can be run in containers for easy deployment and integration.
+
+### How it Works
+
+1. **Startup:** The CLI parses arguments and starts the server with the specified feeds and transport.
+2. **Feed Management:** The server fetches and parses the configured feeds, storing results in the cache.
+3. **Serving Requests:** When an MCP client connects, the server responds to requests for feed data using the cached content, updating as needed.
+4. **Extensibility:** The architecture allows for adding new transports, feed sources, or output formats with minimal changes.
+
+For contributors:  
+- The main entry point is `main.go`, which wires up the CLI and server.
+- Feed logic is in the `model` and `store` packages.
+- MCP protocol handling is in the `mcpserver` package.
+- Tests are provided for core logic; see `*_test.go` files for examples.
+
 ## Running via docker
 
 ```sh
