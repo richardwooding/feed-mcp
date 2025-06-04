@@ -17,8 +17,10 @@ import (
 )
 
 type Config struct {
-	Feeds      []string
-	HttpClient *http.Client
+	Feeds       []string
+	Timeout     time.Duration
+	ExpireAfter time.Duration
+	HttpClient  *http.Client
 }
 
 type Store struct {
@@ -30,6 +32,14 @@ func NewStore(config Config) (*Store, error) {
 
 	if len(config.Feeds) == 0 {
 		return nil, errors.New("at least one feedItem must be specified")
+	}
+
+	if config.Timeout == 0 {
+		config.Timeout = 30 * time.Second
+	}
+
+	if config.ExpireAfter == 0 {
+		config.ExpireAfter = 1 * time.Hour
 	}
 
 	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
@@ -49,11 +59,13 @@ func NewStore(config Config) (*Store, error) {
 			if config.HttpClient != nil {
 				fp.Client = config.HttpClient
 			}
-			feed, err := fp.ParseURLWithContext(url, ctx)
+			expireContext, cancel := context.WithTimeout(ctx, config.Timeout)
+			defer cancel()
+			feed, err := fp.ParseURLWithContext(url, expireContext)
 			if err != nil {
 				return nil, nil, err
 			}
-			return feed, []store.Option{store.WithExpiration(5 * time.Minute)}, nil
+			return feed, []store.Option{store.WithExpiration(config.ExpireAfter)}, nil
 		} else {
 			return nil, nil, errors.New("invalid key type")
 		}
