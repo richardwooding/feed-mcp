@@ -84,3 +84,7 @@ This project makes use of the following open source libraries:
 - [gocache](https://github.com/eko/gocache) — Caching library
 - [ristretto](https://github.com/dgraph-io/ristretto) — High performance cache
 - [mcp-go](https://github.com/mark3labs/mcp-go) — MCP protocol implementation
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
