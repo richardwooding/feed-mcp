@@ -5,6 +5,16 @@
 
 MCP Server for RSS, Atom, and JSON Feeds
 
+## Features
+
+- Serves RSS, Atom, and JSON feeds via the MCP protocol
+- Supports Docker and Podman for easy deployment
+- CLI installable via `go install`
+- Compatible with Claude Desktop as an MCP server
+- Caching for efficient feed retrieval
+- Supports multiple feeds simultaneously
+- Extensible and configurable
+
 ## Running via docker
 
 ```sh
