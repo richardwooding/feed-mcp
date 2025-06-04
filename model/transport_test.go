@@ -1,6 +1,8 @@
-package mcpserver
+package model
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestParseTransport(t *testing.T) {
 	tests := []struct {

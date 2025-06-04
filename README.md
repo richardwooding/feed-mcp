@@ -12,6 +12,14 @@ docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run \
   https://www.reddit.com/r/mcp/.rss
 ```
 
+## Running via podman
+
+```sh
+podman run -i --rm ghcr.io/richardwooding/feed-mcp:latest run \
+  https://www.reddit.com/r/golang/.rss \
+  https://www.reddit.com/r/mcp/.rss
+```
+
 ## Installing using Go install
 
 You can install the CLI using:
@@ -24,11 +32,34 @@ go install github.com/richardwooding/feed-mcp@latest
 
 In your Claude Desktop configuration file, add the following configuration to the `mcpServers` section:
 
+### Docker
+
 ```json
 {
   "mcpServers": {
     "feed": {
       "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://www.reddit.com/r/golang/.rss",
+        "https://www.reddit.com/r/mcp/.rss"
+      ]
+    }
+  }
+}
+```
+
+### Podman
+
+```json
+{
+  "mcpServers": {
+    "feed": {
+      "command": "podman",
       "args": [
         "run",
         "-i",
