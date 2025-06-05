@@ -15,6 +15,11 @@ MCP Server for RSS, Atom, and JSON Feeds
 - Supports multiple feeds simultaneously
 - Extensible and configurable
 
+## Switching to official MCP Go SDK
+
+- I am planning to switch tho the official [MCP Go SDK](https://github.com/orgs/modelcontextprotocol/discussions/364)
+  when it is ready for production use.
+
 ## Architecture
 
 The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/JSON feeds over the [MCP protocol](https://github.com/mark3labs/mcp-go). The main architectural components are:
