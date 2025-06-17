@@ -10,6 +10,7 @@ on:
 
 jobs:
   goreleaser:
+    if: ${{ github.actor != 'dependabot[bot]' }}
     permissions:
       contents: write
       packages: write
