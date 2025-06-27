@@ -2,7 +2,6 @@
 name: goreleaser
 
 on:
-  pull_request:
   push:
     # run only against tags
     tags:
@@ -22,25 +21,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@v5
         with:
           go-version: stable
-      # More assembly might be required: Docker logins, GPG, etc.
-      # It all depends on your needs.
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.8.1
+      - uses: goreleaser/goreleaser-action@v6
         with:
-          cosign-release: 'v2.5.0'
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser
-          # 'latest', 'nightly', or a semver
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Your GoReleaser Pro key, if you are using the 'goreleaser-pro' distribution
-          # GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
