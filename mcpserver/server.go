@@ -122,9 +122,9 @@ func (s *Server) Run() (err error) {
 
 	switch s.transport {
 	case model.StdioTransport:
-		err = srv.Run(context.Background(), mcp.StdioTransport())
+		err = srv.Run(context.Background(), mcp.NewStdioTransport())
 	case model.HttpWithSSETransport:
-		err = srv.Run(context.Background(), mcp.HTTPTransport(":8080"))
+		err = srv.Run(context.Background(), mcp.NewStreamableServerTransport("feed-mcp-session"))
 	default:
 		return errors.New("unsupported transport")
 	}
