@@ -8,7 +8,7 @@ require (
 	github.com/eko/gocache/lib/v4 v4.2.0
 	github.com/eko/gocache/store/ristretto/v4 v4.2.2
 	github.com/gocolly/colly v1.2.0
-	github.com/mark3labs/mcp-go v0.32.0
+	github.com/mark3labs/mcp-go v0.33.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/mmcdole/gofeed v1.3.0
 )
