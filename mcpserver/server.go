@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/gocolly/colly"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/richardwooding/feed-mcp/model"
 )
@@ -50,75 +51,94 @@ func (s *Server) Run() (err error) {
 
 	// Create a new MCP server
 	srv := mcp.NewServer(
-		"RSS, Atom, and JSON Feed Server",
-		"1.0.0",
+		&mcp.Implementation{
+			Name:    "RSS, Atom, and JSON Feed Server",
+			Version: "1.0.0",
+		},
 		nil,
 	)
 
-	fetchLinkTool := mcp.NewServerTool("fetch_link",
-		"Fetch link URL",
-		func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[FetchLinkParams]) (*mcp.CallToolResultFor[any], error) {
-			c := colly.NewCollector()
-
-			var data []byte
-
-			c.OnResponse(func(response *colly.Response) {
-				data = response.Body
-			})
-
-			err = c.Visit(params.Arguments.URL)
-			if err != nil {
-				return nil, err
-			}
-			return &mcp.CallToolResultFor[any]{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-			}, nil
+	// Add fetch_link tool
+	fetchLinkTool := &mcp.Tool{
+		Name:        "fetch_link",
+		Description: "Fetch link URL",
+		InputSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"URL"},
+			Properties: map[string]*jsonschema.Schema{
+				"URL": {
+					Type:        "string",
+					Description: "Link URL",
+				},
+			},
 		},
-		mcp.Input(
-			mcp.Property("URL",
-				mcp.Description("Link URL"),
-			)),
-	)
+	}
+	mcp.AddTool(srv, fetchLinkTool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[FetchLinkParams]) (*mcp.CallToolResultFor[any], error) {
+		c := colly.NewCollector()
 
-	allFeedsTool := mcp.NewServerTool("all_syndication_feeds",
-		"List available syndication feeds",
-		func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[any]) (*mcp.CallToolResultFor[any], error) {
-			feedResults, err := s.allFeedsGetter.GetAllFeeds(ctx)
-			if err != nil {
-				return nil, err
-			}
-			data, err := json.Marshal(feedResults)
-			if err != nil {
-				return nil, err
-			}
-			return &mcp.CallToolResultFor[any]{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-			}, nil
+		var data []byte
+
+		c.OnResponse(func(response *colly.Response) {
+			data = response.Body
+		})
+
+		err = c.Visit(params.Arguments.URL)
+		if err != nil {
+			return nil, err
+		}
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil
+	})
+
+	// Add all_syndication_feeds tool
+	allFeedsTool := &mcp.Tool{
+		Name:        "all_syndication_feeds",
+		Description: "list available feedItem resources",
+		InputSchema: &jsonschema.Schema{Type: "object"}, // No parameters needed
+	}
+	mcp.AddTool(srv, allFeedsTool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[any]) (*mcp.CallToolResultFor[any], error) {
+		feedResults, err := s.allFeedsGetter.GetAllFeeds(ctx)
+		if err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(feedResults)
+		if err != nil {
+			return nil, err
+		}
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil
+	})
+
+	// Add get_syndication_feed_items tool
+	getSyndicationFeedTool := &mcp.Tool{
+		Name:        "get_syndication_feed_items",
+		Description: "get syndication feed and items by id",
+		InputSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"ID"},
+			Properties: map[string]*jsonschema.Schema{
+				"ID": {
+					Type:        "string",
+					Description: "Feed ID",
+				},
+			},
 		},
-	)
-
-	getSyndicationFeedTool := mcp.NewServerTool("get_syndication_feed_items",
-		"Get syndication feed and items by id",
-		func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GetSyndicationFeedParams]) (*mcp.CallToolResultFor[any], error) {
-			feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, params.Arguments.ID)
-			if err != nil {
-				return nil, err
-			}
-			data, err := json.Marshal(feedResult)
-			if err != nil {
-				return nil, err
-			}
-			return &mcp.CallToolResultFor[any]{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-			}, nil
-		},
-		mcp.Input(
-			mcp.Property("ID",
-				mcp.Description("Feed ID"),
-			)),
-	)
-
-	srv.AddTools(fetchLinkTool, allFeedsTool, getSyndicationFeedTool)
+	}
+	mcp.AddTool(srv, getSyndicationFeedTool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GetSyndicationFeedParams]) (*mcp.CallToolResultFor[any], error) {
+		feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, params.Arguments.ID)
+		if err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(feedResult)
+		if err != nil {
+			return nil, err
+		}
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil
+	})
 
 	switch s.transport {
 	case model.StdioTransport:
