@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mmcdole/gofeed"
@@ -90,7 +91,7 @@ func TestNewServer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server, err := NewServer(tt.config)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("NewServer() error = nil, wantErr %v", tt.wantErr)
@@ -101,21 +102,68 @@ func TestNewServer(t *testing.T) {
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("NewServer() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if server == nil {
 				t.Error("NewServer() returned nil server")
 				return
 			}
-			
+
 			if server.transport != tt.config.Transport {
 				t.Errorf("NewServer() transport = %v, want %v", server.transport, tt.config.Transport)
 			}
 		})
+	}
+}
+
+func TestGenerateSessionID(t *testing.T) {
+	// Test that generateSessionID creates non-empty strings
+	sessionID1 := generateSessionID()
+	if sessionID1 == "" {
+		t.Error("generateSessionID() returned empty string")
+	}
+
+	// Test that multiple calls generate different IDs
+	sessionID2 := generateSessionID()
+	if sessionID1 == sessionID2 {
+		t.Error("generateSessionID() returned same ID for consecutive calls")
+	}
+
+	// Test that session IDs have the expected prefix
+	expectedPrefix := "feed-mcp-session-"
+	if !strings.HasPrefix(sessionID1, expectedPrefix) {
+		t.Errorf("generateSessionID() = %v, want prefix %v", sessionID1, expectedPrefix)
+	}
+}
+
+func TestNewServerSessionIDUniqueness(t *testing.T) {
+	config := Config{
+		Transport:          model.StdioTransport,
+		AllFeedsGetter:     &mockAllFeedsGetter{},
+		FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+	}
+
+	// Create multiple servers and verify they have unique session IDs
+	server1, err := NewServer(config)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	server2, err := NewServer(config)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	if server1.sessionID == server2.sessionID {
+		t.Error("NewServer() created servers with identical session IDs")
+	}
+
+	if server1.sessionID == "" || server2.sessionID == "" {
+		t.Error("NewServer() created server with empty session ID")
 	}
 }
 
@@ -136,7 +184,7 @@ func TestServerToolsIntegration(t *testing.T) {
 			PublicURL: "https://example.com/feed2.xml",
 			Title:     "Test Feed 2",
 			Feed: &model.Feed{
-				Title: "Test Feed 2", 
+				Title: "Test Feed 2",
 				Link:  "https://example2.com",
 			},
 		},
@@ -170,13 +218,13 @@ func TestServerToolsIntegration(t *testing.T) {
 	// Create server with mocks
 	mockAllFeeds := &mockAllFeedsGetter{feeds: testFeeds}
 	mockFeedItems := &mockFeedAndItemsGetter{feedMap: testFeedAndItems}
-	
+
 	config := Config{
 		Transport:          model.StdioTransport,
 		AllFeedsGetter:     mockAllFeeds,
 		FeedAndItemsGetter: mockFeedItems,
 	}
-	
+
 	server, err := NewServer(config)
 	if err != nil {
 		t.Fatalf("NewServer() failed: %v", err)
@@ -256,13 +304,13 @@ func TestServerWithErrors(t *testing.T) {
 	t.Run("AllFeedsGetter returns error", func(t *testing.T) {
 		mockAllFeeds := &mockAllFeedsGetter{err: errors.New("database connection failed")}
 		mockFeedItems := &mockFeedAndItemsGetter{feedMap: make(map[string]*model.FeedAndItemsResult)}
-		
+
 		config := Config{
 			Transport:          model.StdioTransport,
 			AllFeedsGetter:     mockAllFeeds,
 			FeedAndItemsGetter: mockFeedItems,
 		}
-		
+
 		server, err := NewServer(config)
 		if err != nil {
 			t.Fatalf("NewServer() failed: %v", err)
@@ -281,13 +329,13 @@ func TestServerWithErrors(t *testing.T) {
 	t.Run("FeedAndItemsGetter returns error", func(t *testing.T) {
 		mockAllFeeds := &mockAllFeedsGetter{feeds: []*model.FeedResult{}}
 		mockFeedItems := &mockFeedAndItemsGetter{err: errors.New("feed service unavailable")}
-		
+
 		config := Config{
 			Transport:          model.StdioTransport,
 			AllFeedsGetter:     mockAllFeeds,
 			FeedAndItemsGetter: mockFeedItems,
 		}
-		
+
 		server, err := NewServer(config)
 		if err != nil {
 			t.Fatalf("NewServer() failed: %v", err)
@@ -350,7 +398,7 @@ func TestServerTransportTypes(t *testing.T) {
 			}
 
 			server, err := NewServer(config)
-			
+
 			if tt.valid {
 				if err != nil {
 					t.Errorf("NewServer() error = %v, want nil for valid transport", err)

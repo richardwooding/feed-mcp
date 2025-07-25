@@ -261,7 +261,7 @@ func TestToolLogic(t *testing.T) {
 		defer testServer.Close()
 
 		// Test that the fetch_link logic would work
-		// (We can't easily test colly here without more complex setup, 
+		// (We can't easily test colly here without more complex setup,
 		// but we can verify the HTTP server works)
 		resp, err := http.Get(testServer.URL)
 		if err != nil {
@@ -370,7 +370,7 @@ func TestMCPServerCreation(t *testing.T) {
 func TestParameterTypes(t *testing.T) {
 	t.Run("FetchLinkParams JSON serialization", func(t *testing.T) {
 		params := FetchLinkParams{URL: "https://example.com/test"}
-		
+
 		data, err := json.Marshal(params)
 		if err != nil {
 			t.Fatalf("Failed to marshal FetchLinkParams: %v", err)
@@ -389,7 +389,7 @@ func TestParameterTypes(t *testing.T) {
 
 	t.Run("GetSyndicationFeedParams JSON serialization", func(t *testing.T) {
 		params := GetSyndicationFeedParams{ID: "test-feed-123"}
-		
+
 		data, err := json.Marshal(params)
 		if err != nil {
 			t.Fatalf("Failed to marshal GetSyndicationFeedParams: %v", err)
@@ -439,10 +439,10 @@ func TestTypeDefinitions(t *testing.T) {
 	// Test that our type definitions are what we expect
 	t.Run("Server struct fields", func(t *testing.T) {
 		serverType := reflect.TypeOf(Server{})
-		
+
 		// Check that Server has the expected fields
-		expectedFields := []string{"transport", "allFeedsGetter", "feedAndItemsGetter"}
-		
+		expectedFields := []string{"transport", "allFeedsGetter", "feedAndItemsGetter", "sessionID"}
+
 		if serverType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Server, got %d", len(expectedFields), serverType.NumField())
 		}
@@ -457,10 +457,10 @@ func TestTypeDefinitions(t *testing.T) {
 
 	t.Run("Config struct fields", func(t *testing.T) {
 		configType := reflect.TypeOf(Config{})
-		
+
 		// Check that Config has the expected fields
 		expectedFields := []string{"Transport", "AllFeedsGetter", "FeedAndItemsGetter"}
-		
+
 		if configType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Config, got %d", len(expectedFields), configType.NumField())
 		}

@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/gocolly/colly"
 	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/richardwooding/feed-mcp/model"
 )
+
+var sessionCounter int64
 
 type Config struct {
 	Transport          model.Transport
@@ -21,6 +26,13 @@ type Server struct {
 	transport          model.Transport
 	allFeedsGetter     AllFeedsGetter
 	feedAndItemsGetter FeedAndItemsGetter
+	sessionID          string
+}
+
+// generateSessionID creates a unique session ID for this server instance
+func generateSessionID() string {
+	counter := atomic.AddInt64(&sessionCounter, 1)
+	return fmt.Sprintf("feed-mcp-session-%d-%d", time.Now().UnixNano(), counter)
 }
 
 func NewServer(config Config) (*Server, error) {
@@ -37,6 +49,7 @@ func NewServer(config Config) (*Server, error) {
 		transport:          config.Transport,
 		allFeedsGetter:     config.AllFeedsGetter,
 		feedAndItemsGetter: config.FeedAndItemsGetter,
+		sessionID:          generateSessionID(),
 	}, nil
 }
 
@@ -145,7 +158,7 @@ func (s *Server) Run() (err error) {
 	case model.StdioTransport:
 		err = srv.Run(context.Background(), mcp.NewStdioTransport())
 	case model.HttpWithSSETransport:
-		err = srv.Run(context.Background(), mcp.NewStreamableServerTransport("feed-mcp-session"))
+		err = srv.Run(context.Background(), mcp.NewStreamableServerTransport(s.sessionID))
 	default:
 		return errors.New("unsupported transport")
 	}
