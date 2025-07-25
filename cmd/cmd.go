@@ -2,10 +2,11 @@ package cmd
 
 import (
 	"errors"
+	"time"
+
 	"github.com/richardwooding/feed-mcp/mcpserver"
 	"github.com/richardwooding/feed-mcp/model"
 	"github.com/richardwooding/feed-mcp/store"
-	"time"
 )
 
 type RunCmd struct {
@@ -24,7 +25,9 @@ func (c *RunCmd) Run(globals *model.Globals) error {
 		return errors.New("no feeds specified")
 	}
 	feedStore, err := store.NewStore(store.Config{
-		Feeds: c.Feeds,
+		Feeds:       c.Feeds,
+		Timeout:     c.Timeout,
+		ExpireAfter: c.ExpireAfter,
 	})
 	if err != nil {
 		return err
