@@ -6,7 +6,7 @@
 - **Feed Logic**: Handled in `model` (data structures, conversion) and `store` (fetching, caching, error handling) packages.
 - **Caching**: Uses [`gocache`](https://github.com/eko/gocache) and [`ristretto`](https://github.com/dgraph-io/ristretto) for in-memory feed caching.
 - **Feed Parsing**: [`gofeed`](https://github.com/mmcdole/gofeed`) parses RSS/Atom/JSON feeds.
-- **Protocol Layer**: `mcpserver` handles the MCP protocol with [`mcp-go`](https://github.com/mark3labs/mcp-go).
+- **Protocol Layer**: `mcpserver` handles the MCP protocol with the [official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk).
 - **Tests**: All core logic is tested, with test files named `*_test.go` (see `main_test.go`, `store/store_test.go`, etc).
 
 ## Go Conventions & Patterns

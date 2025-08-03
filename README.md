@@ -15,19 +15,14 @@ MCP Server for RSS, Atom, and JSON Feeds
 - Supports multiple feeds simultaneously
 - Extensible and configurable
 
-## Switching to official MCP Go SDK
-
-- I am planning to switch tho the official [MCP Go SDK](https://github.com/orgs/modelcontextprotocol/discussions/364)
-  when it is ready for production use.
-
 ## Architecture
 
-The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/JSON feeds over the [MCP protocol](https://github.com/mark3labs/mcp-go). The main architectural components are:
+The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/JSON feeds over the [MCP protocol](https://spec.modelcontextprotocol.io/specification/). The main architectural components are:
 
 - **Command-line Interface (CLI):** Uses [kong](https://github.com/alecthomas/kong) for parsing commands and flags. The `run` command is the entry point for starting the server.
 - **Feed Fetching & Parsing:** Feeds are fetched and parsed using [gofeed](https://github.com/mmcdole/gofeed). The server supports multiple feeds, which are periodically refreshed and cached.
 - **Caching Layer:** Feed data is cached using [gocache](https://github.com/eko/gocache) and [ristretto](https://github.com/dgraph-io/ristretto) for efficient retrieval and reduced network usage.
-- **MCP Protocol Server:** Implements the MCP protocol using [mcp-go](https://github.com/mark3labs/mcp-go), allowing integration with clients like Claude Desktop.
+- **MCP Protocol Server:** Implements the MCP protocol using the [official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk), allowing integration with clients like Claude Desktop.
 - **Transport Options:** Supports different transports (e.g., stdio, HTTP with SSE) for communication with MCP clients.
 - **Docker/Podman Support:** The server can be run in containers for easy deployment and integration.
 
@@ -122,7 +117,7 @@ This project makes use of the following open source libraries:
 - [kong](https://github.com/alecthomas/kong) — Command-line parser
 - [gocache](https://github.com/eko/gocache) — Caching library
 - [ristretto](https://github.com/dgraph-io/ristretto) — High performance cache
-- [mcp-go](https://github.com/mark3labs/mcp-go) — MCP protocol implementation
+- [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk) — Official MCP protocol implementation
 
 ## License
 
