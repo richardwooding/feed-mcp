@@ -131,15 +131,13 @@ func NewStore(config Config) (*Store, error) {
 	if circuitBreakerEnabled {
 		circuitBreakers = make(map[string]*gobreaker.CircuitBreaker)
 		for _, feedURL := range config.Feeds {
-			// Capture the failure threshold for this closure
-			failureThreshold := config.CircuitBreakerFailureThreshold
 			settings := gobreaker.Settings{
 				Name:        fmt.Sprintf("feed-%s", feedURL),
 				MaxRequests: config.CircuitBreakerMaxRequests,
 				Interval:    config.CircuitBreakerInterval,
 				Timeout:     config.CircuitBreakerTimeout,
 				ReadyToTrip: func(counts gobreaker.Counts) bool {
-					return counts.ConsecutiveFailures >= failureThreshold
+					return counts.ConsecutiveFailures >= config.CircuitBreakerFailureThreshold
 				},
 			}
 			circuitBreakers[feedURL] = gobreaker.NewCircuitBreaker(settings)
