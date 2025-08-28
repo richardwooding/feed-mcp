@@ -524,14 +524,14 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 	}))
 	defer recoveringServer.Close()
 
-	// Create store with circuit breaker enabled but retries disabled for predictable testing
+	// Create store with circuit breaker enabled and retries limited to 1 attempt for predictable circuit breaker testing
 	enabled := true
 	store, err := NewStore(Config{
 		Feeds:                 []string{recoveringServer.URL},
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second,      // Short timeout for quick recovery
 		ExpireAfter:           1 * time.Millisecond, // Force cache expiry
-		RetryMaxAttempts:      1,                    // Disable retry for circuit breaker testing
+		RetryMaxAttempts:      1,                    // Limit retries to 1 for circuit breaker testing
 	})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
@@ -902,7 +902,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	config := Config{
 		Feeds:                 []string{server.URL},
 		Timeout:               5 * time.Second,
-		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		ExpireAfter:           10 * time.Second, // Keep cache valid for test
 		RetryMaxAttempts:      3,
 		RetryBaseDelay:        50 * time.Millisecond,
 		RetryMaxDelay:         1 * time.Second,

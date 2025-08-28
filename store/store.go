@@ -31,6 +31,7 @@ type HTTPPoolConfig struct {
 	IdleConnTimeout     time.Duration
 }
 
+// Config holds configuration settings for the feed store
 type Config struct {
 	Feeds                          []string
 	Timeout                        time.Duration
@@ -64,6 +65,7 @@ type RetryMetrics struct {
 	RetrySuccessRate float64 // Percentage of feeds that succeeded after retrying
 }
 
+// Store manages feed fetching, caching, and retrieval with retry logic
 type Store struct {
 	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
@@ -122,7 +124,9 @@ func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, pool
 	}
 }
 
-// isRetryableError determines if an error should trigger a retry
+// isRetryableError determines if an error should trigger a retry attempt.
+// Returns true for network errors (DNS, connection, timeout) and 5xx HTTP status codes.
+// Returns false for context cancellation, 4xx client errors, and other non-transient failures.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -158,7 +162,9 @@ func isRetryableError(err error) bool {
 	return true
 }
 
-// calculateRetryDelay calculates the delay for the next retry with exponential backoff and optional jitter
+// calculateRetryDelay calculates the delay for the next retry using exponential backoff.
+// Uses formula: baseDelay * 2^(attempt-1), capped at maxDelay.
+// Applies jitter (±50% random variance) when useJitter is true to prevent thundering herd.
 func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitter bool) time.Duration {
 	if attempt <= 0 {
 		return baseDelay
@@ -191,7 +197,9 @@ func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitt
 	return delay
 }
 
-// retryableFeedFetch performs feed fetching with retry logic and metrics tracking
+// retryableFeedFetch performs feed fetching with retry logic and comprehensive metrics tracking.
+// Attempts up to maxAttempts times for retryable errors, with exponential backoff delays.
+// Updates retry metrics and integrates with circuit breaker patterns for fault tolerance.
 func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, config Config, metrics *RetryMetrics, metricsMutex *sync.RWMutex) (*gofeed.Feed, error) {
 	var lastErr error
 	maxAttempts := config.RetryMaxAttempts
@@ -269,6 +277,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 	return nil, lastErr
 }
 
+// NewStore creates a new feed store with the given configuration
 func NewStore(config Config) (*Store, error) {
 
 	if len(config.Feeds) == 0 {
@@ -444,6 +453,7 @@ func NewStore(config Config) (*Store, error) {
 	return s, nil
 }
 
+// GetAllFeeds returns all configured feeds with their current status
 func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 	results := make([]*model.FeedResult, len(s.feeds))
 	wg := &sync.WaitGroup{}
@@ -481,6 +491,7 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 	return results, nil
 }
 
+// GetFeedAndItems returns a specific feed with all its items
 func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndItemsResult, error) {
 	if url, exists := s.feeds[id]; exists {
 		feed, err := s.feedCacheManager.Get(ctx, url)

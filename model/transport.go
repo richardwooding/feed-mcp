@@ -6,6 +6,7 @@ import (
 
 var ErrInvalidTransport = errors.New("invalid transport")
 
+// Transport represents the communication transport method for the MCP server
 type Transport uint8
 
 const (
@@ -14,6 +15,7 @@ const (
 	HttpWithSSETransport
 )
 
+// ParseTransport converts a string to a Transport type
 func ParseTransport(transport string) (Transport, error) {
 	switch transport {
 	case "stdio":
@@ -25,6 +27,7 @@ func ParseTransport(transport string) (Transport, error) {
 	}
 }
 
+// String returns the string representation of a Transport
 func (t Transport) String() string {
 	switch t {
 	case StdioTransport:

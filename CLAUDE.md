@@ -446,6 +446,104 @@ go run main.go run <feed-urls>
 - Tests ensure server shuts down within expected timeouts
 - Context cancellation is properly tested across all components
 
+### URL Security and Validation
+
+The feed-mcp server implements comprehensive URL validation and sanitization to prevent security vulnerabilities:
+
+**Security Features:**
+- **SSRF Prevention:** Blocks Server Side Request Forgery attacks by validating URLs
+- **Scheme Restriction:** Only HTTP and HTTPS protocols are allowed
+- **Private IP Blocking:** Prevents access to internal network resources by default
+- **Input Sanitization:** Validates and sanitizes all URL inputs before processing
+
+**URL Validation Process:**
+1. **Format Validation:** Ensures URL is properly formatted and parseable
+2. **Scheme Check:** Rejects non-HTTP/HTTPS schemes (file://, ftp://, javascript:, etc.)
+3. **Host Validation:** Blocks private IP ranges and localhost unless explicitly allowed
+4. **DNS Resolution:** Validates that hostnames don't resolve to private IPs
+
+**Private IP Ranges Blocked:**
+- `10.0.0.0/8` - Private class A networks
+- `172.16.0.0/12` - Private class B networks  
+- `192.168.0.0/16` - Private class C networks
+- `127.0.0.0/8` - Loopback addresses (localhost)
+- `169.254.0.0/16` - Link-local addresses
+- IPv6 loopback (`::1`) and link-local addresses
+- IPv6 unique local addresses (`fc00::/7`)
+
+**CLI Configuration:**
+```bash
+# Default behavior - private IPs blocked for security
+go run main.go run https://example.com/feed.xml
+
+# Allow private IPs and localhost (use with caution)
+go run main.go run --allow-private-ips https://localhost/feed.xml
+
+# Mixed example - valid public URLs with private IP override
+go run main.go run --allow-private-ips \
+  https://techcrunch.com/feed/ \
+  http://192.168.1.100/api/feed.json
+```
+
+**Programmatic Configuration:**
+```go
+// In store.Config, URLs are validated before store creation
+config := store.Config{
+    Feeds: []string{
+        "https://example.com/feed.xml",  // Valid
+        "http://192.168.1.1/feed",       // Blocked by default
+        "file:///etc/passwd",            // Always blocked
+    },
+}
+
+// URL validation happens in cmd.Run() before store creation
+err := model.SanitizeFeedURLs(config.Feeds, allowPrivateIPs)
+if err != nil {
+    // Handle security validation errors
+}
+```
+
+**Error Handling:**
+The URL validation system provides clear, actionable error messages:
+- `ErrUnsupportedScheme` - For non-HTTP/HTTPS schemes
+- `ErrPrivateIPBlocked` - When private IPs are detected and blocked
+- `ErrInvalidURL` - For malformed or invalid URLs
+- `ErrMissingHost` - When URLs lack proper hostnames
+- `ErrEmptyURL` - For empty or whitespace-only URLs
+
+**Security Testing:**
+```go
+// Comprehensive test coverage includes:
+func TestURLValidation(t *testing.T) {
+    // Valid URL schemes
+    testValidURL("https://example.com/feed")
+    
+    // Invalid schemes blocked
+    testInvalidURL("file:///etc/passwd")
+    testInvalidURL("javascript:alert('xss')")
+    
+    // Private IP blocking
+    testBlockedURL("http://127.0.0.1/feed")
+    testBlockedURL("http://192.168.1.1/api")
+    
+    // Bypass attempt detection
+    testBypassAttempts("http://localhost@example.com/")
+}
+```
+
+**Best Practices:**
+- Keep `--allow-private-ips` disabled unless specifically needed for local development
+- Always use HTTPS URLs when possible for encrypted transport
+- Validate feed URLs in development before deploying to production
+- Monitor logs for blocked URL attempts that might indicate attacks
+- Consider additional network-level restrictions for defense in depth
+
+**Integration Points:**
+- URL validation occurs in `cmd.Run()` before any network operations
+- Validation is fail-fast to prevent expensive operations on invalid URLs
+- Errors are user-friendly and actionable for debugging
+- Security is enabled by default with opt-out rather than opt-in behavior
+
 ## Important Notes
 
 ### GitHub Actions and CI/CD
@@ -474,3 +572,4 @@ The server exposes three MCP tools that Claude can use:
 - Always work in branches and submit PRs
 - Always use Context7, godoc, or github to get up to date information on libraries
 - This repository has branch protection rules require pull requests. When working on any issue, create a branch, and make a pr when you are done
+- Add docstring comments wherever needed

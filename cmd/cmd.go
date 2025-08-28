@@ -10,6 +10,7 @@ import (
 	"github.com/richardwooding/feed-mcp/store"
 )
 
+// RunCmd holds the command line arguments and flags for the run command
 type RunCmd struct {
 	Transport       string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
 	Feeds           []string      `arg:"" name:"feeds" help:"Feeds to list."`
@@ -26,8 +27,11 @@ type RunCmd struct {
 	RetryBaseDelay   time.Duration `name:"retry-base-delay" default:"1s" help:"Base delay for exponential backoff between retry attempts."`
 	RetryMaxDelay    time.Duration `name:"retry-max-delay" default:"30s" help:"Maximum delay between retry attempts."`
 	RetryJitter      bool          `name:"retry-jitter" default:"true" help:"Enable jitter in retry delays to avoid thundering herd."`
+	// Security settings
+	AllowPrivateIPs  bool          `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
 }
 
+// Run executes the feed MCP server with the given configuration
 func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	transport, err := model.ParseTransport(c.Transport)
 	if err != nil {
@@ -35,6 +39,10 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	}
 	if len(c.Feeds) == 0 {
 		return errors.New("no feeds specified")
+	}
+	// Validate feed URLs for security
+	if err := model.SanitizeFeedURLs(c.Feeds, c.AllowPrivateIPs); err != nil {
+		return err
 	}
 	feedStore, err := store.NewStore(store.Config{
 		Feeds:               c.Feeds,
