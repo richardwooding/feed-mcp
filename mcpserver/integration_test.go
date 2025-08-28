@@ -200,7 +200,7 @@ func TestInterfaceCompliance(t *testing.T) {
 
 	// Test that we can call the interface methods
 	ctx := context.Background()
-	
+
 	_, err := allFeeds.GetAllFeeds(ctx)
 	if err != nil {
 		t.Errorf("AllFeedsGetter interface not properly implemented: %v", err)

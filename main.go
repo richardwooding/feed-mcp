@@ -6,6 +6,8 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 )
 
+var version = "dev"
+
 type CLI struct {
 	model.Globals
 	Run cmd.RunCmd `cmd:"" help:"Run MCP Server"`
@@ -14,7 +16,7 @@ type CLI struct {
 func main() {
 	cli := CLI{
 		Globals: model.Globals{
-			Version: model.VersionFlag("0.1.1"),
+			Version: model.VersionFlag(version),
 		},
 	}
 
@@ -26,7 +28,7 @@ func main() {
 			Compact: true,
 		}),
 		kong.Vars{
-			"version": "0.1.11",
+			"version": version,
 		})
 	err := ctx.Run(&cli.Globals)
 	ctx.FatalIfErrorf(err)
