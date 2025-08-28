@@ -162,7 +162,13 @@ func TestGetFeedAndItems_FetchError(t *testing.T) {
 }
 
 func TestNewRateLimitedHTTPClient(t *testing.T) {
-	client := NewRateLimitedHTTPClient(1.0, 2)
+	poolConfig := HTTPPoolConfig{
+		MaxIdleConns:        100,
+		MaxConnsPerHost:     10,
+		MaxIdleConnsPerHost: 5,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	client := NewRateLimitedHTTPClient(1.0, 2, poolConfig)
 
 	if client == nil {
 		t.Fatal("expected client to be non-nil")
@@ -190,7 +196,13 @@ func TestRateLimitedTransport_RateLimit(t *testing.T) {
 	defer srv.Close()
 
 	// Create a very restrictive rate limiter: 1 request per second with burst of 1
-	client := NewRateLimitedHTTPClient(1.0, 1)
+	poolConfig := HTTPPoolConfig{
+		MaxIdleConns:        100,
+		MaxConnsPerHost:     10,
+		MaxIdleConnsPerHost: 5,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	client := NewRateLimitedHTTPClient(1.0, 1, poolConfig)
 
 	start := time.Now()
 
@@ -700,5 +712,124 @@ func TestGetFeedAndItems_CircuitBreakerState(t *testing.T) {
 
 	if result.Title != "FeedAndItemsCircuitTest" {
 		t.Errorf("expected Title 'FeedAndItemsCircuitTest', got %q", result.Title)
+	}
+}
+
+func TestStore_ConnectionPooling(t *testing.T) {
+	srv := mockFeedServer(t, "ConnectionPoolTest")
+	defer srv.Close()
+
+	// Test with custom connection pool settings
+	store, err := NewStore(Config{
+		Feeds:                []string{srv.URL},
+		ExpireAfter:          1 * time.Hour,
+		MaxIdleConns:         50,
+		MaxConnsPerHost:      20,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     60 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that a store was created successfully
+	if store == nil {
+		t.Fatal("expected store to be created successfully with connection pool settings")
+	}
+
+	// Get feeds to ensure HTTP client works with pooling settings
+	results, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatalf("GetAllFeeds() failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("expected 1 feed result, got %d", len(results))
+	}
+
+	// Verify feed was fetched successfully
+	if results[0].FetchError != "" {
+		t.Errorf("expected no fetch error, got: %s", results[0].FetchError)
+	}
+
+	if results[0].Title != "ConnectionPoolTest" {
+		t.Errorf("expected feed title 'ConnectionPoolTest', got %q", results[0].Title)
+	}
+}
+
+func TestHTTPPoolConfig_DefaultValues(t *testing.T) {
+	srv := mockFeedServer(t, "DefaultPoolTest")
+	defer srv.Close()
+
+	// Test with default values (should be set automatically)
+	store, err := NewStore(Config{
+		Feeds:       []string{srv.URL},
+		ExpireAfter: 1 * time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify store creation succeeds with defaults
+	if store == nil {
+		t.Fatal("expected store to be created with default connection pool settings")
+	}
+
+	// Fetch feeds to ensure defaults work
+	results, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatalf("GetAllFeeds() failed with defaults: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("expected 1 feed result, got %d", len(results))
+	}
+
+	if results[0].Title != "DefaultPoolTest" {
+		t.Errorf("expected feed title 'DefaultPoolTest', got %q", results[0].Title)
+	}
+}
+
+func TestNewRateLimitedHTTPClient_ConnectionPoolSettings(t *testing.T) {
+	poolConfig := HTTPPoolConfig{
+		MaxIdleConns:        75,
+		MaxConnsPerHost:     15,
+		MaxIdleConnsPerHost: 8,
+		IdleConnTimeout:     120 * time.Second,
+	}
+	
+	client := NewRateLimitedHTTPClient(2.0, 3, poolConfig)
+	
+	if client == nil {
+		t.Fatal("expected client to be non-nil")
+	}
+
+	// Verify it's our custom transport
+	rateLimitedTransport, ok := client.Transport.(*RateLimitedTransport)
+	if !ok {
+		t.Fatal("expected RateLimitedTransport")
+	}
+
+	// Verify the underlying transport is our custom HTTP transport
+	httpTransport, ok := rateLimitedTransport.transport.(*http.Transport)
+	if !ok {
+		t.Fatal("expected underlying transport to be *http.Transport")
+	}
+
+	// Verify connection pool settings
+	if httpTransport.MaxIdleConns != 75 {
+		t.Errorf("expected MaxIdleConns to be 75, got %d", httpTransport.MaxIdleConns)
+	}
+
+	if httpTransport.MaxConnsPerHost != 15 {
+		t.Errorf("expected MaxConnsPerHost to be 15, got %d", httpTransport.MaxConnsPerHost)
+	}
+
+	if httpTransport.MaxIdleConnsPerHost != 8 {
+		t.Errorf("expected MaxIdleConnsPerHost to be 8, got %d", httpTransport.MaxIdleConnsPerHost)
+	}
+
+	if httpTransport.IdleConnTimeout != 120*time.Second {
+		t.Errorf("expected IdleConnTimeout to be 120s, got %v", httpTransport.IdleConnTimeout)
 	}
 }
