@@ -62,6 +62,7 @@ Add any of these configurations to your Claude Desktop to instantly access the l
 - CLI installable via `go install`
 - Compatible with Claude Desktop as an MCP server
 - Caching for efficient feed retrieval
+- Built-in rate limiting (2 req/s default) to be respectful to feed servers
 - Supports multiple feeds simultaneously
 - Extensible and configurable
 
@@ -72,6 +73,7 @@ The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/
 - **Command-line Interface (CLI):** Uses [kong](https://github.com/alecthomas/kong) for parsing commands and flags. The `run` command is the entry point for starting the server.
 - **Feed Fetching & Parsing:** Feeds are fetched and parsed using [gofeed](https://github.com/mmcdole/gofeed). The server supports multiple feeds, which are periodically refreshed and cached.
 - **Caching Layer:** Feed data is cached using [gocache](https://github.com/eko/gocache) and [ristretto](https://github.com/dgraph-io/ristretto) for efficient retrieval and reduced network usage.
+- **Rate Limiting:** Built-in HTTP rate limiting using [golang.org/x/time/rate](https://pkg.go.dev/golang.org/x/time/rate) prevents overwhelming feed servers with requests.
 - **MCP Protocol Server:** Implements the MCP protocol using the [official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk), allowing integration with clients like Claude Desktop.
 - **Transport Options:** Supports different transports (e.g., stdio, HTTP with SSE) for communication with MCP clients.
 - **Docker/Podman Support:** The server can be run in containers for easy deployment and integration.
@@ -167,6 +169,7 @@ This project makes use of the following open source libraries:
 - [kong](https://github.com/alecthomas/kong) — Command-line parser
 - [gocache](https://github.com/eko/gocache) — Caching library
 - [ristretto](https://github.com/dgraph-io/ristretto) — High performance cache
+- [golang.org/x/time/rate](https://pkg.go.dev/golang.org/x/time/rate) — Token bucket rate limiter
 - [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk) — Official MCP protocol implementation
 
 ## License
