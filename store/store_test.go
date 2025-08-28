@@ -495,7 +495,7 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 		}
 		// Succeed after that
 		w.Header().Set("Content-Type", "application/rss+xml")
-		w.Write([]byte(`
+		_, err := w.Write([]byte(`
 			<rss version="2.0">
 				<channel>
 					<title>Recovered Feed</title>
@@ -506,6 +506,9 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 				</channel>
 			</rss>
 		`))
+		if err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer recoveringServer.Close()
 
