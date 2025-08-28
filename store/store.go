@@ -13,10 +13,19 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
+	"net"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// HTTPPoolConfig holds HTTP connection pool configuration
+type HTTPPoolConfig struct {
+	MaxIdleConns        int
+	MaxConnsPerHost     int
+	MaxIdleConnsPerHost int
+	IdleConnTimeout     time.Duration
+}
 
 type Config struct {
 	Feeds                        []string
@@ -30,6 +39,11 @@ type Config struct {
 	CircuitBreakerInterval       time.Duration
 	CircuitBreakerTimeout        time.Duration
 	CircuitBreakerFailureThreshold uint32
+	// HTTP connection pooling settings
+	MaxIdleConns        int
+	MaxConnsPerHost     int
+	MaxIdleConnsPerHost int
+	IdleConnTimeout     time.Duration
 }
 
 type Store struct {
@@ -56,12 +70,29 @@ func (r *RateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, err
 	return r.transport.RoundTrip(req)
 }
 
-// NewRateLimitedHTTPClient creates an HTTP client with rate limiting
-func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int) *http.Client {
+// NewRateLimitedHTTPClient creates an HTTP client with rate limiting and connection pooling
+func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig) *http.Client {
 	limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burstCapacity)
 
+	// Create a custom transport with connection pooling settings
+	baseTransport := &http.Transport{
+		MaxIdleConns:        poolConfig.MaxIdleConns,
+		MaxConnsPerHost:     poolConfig.MaxConnsPerHost,
+		MaxIdleConnsPerHost: poolConfig.MaxIdleConnsPerHost,
+		IdleConnTimeout:     poolConfig.IdleConnTimeout,
+		// Copy other default settings from http.DefaultTransport
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
 	transport := &RateLimitedTransport{
-		transport:   http.DefaultTransport,
+		transport:   baseTransport,
 		rateLimiter: limiter,
 	}
 
@@ -108,9 +139,29 @@ func NewStore(config Config) (*Store, error) {
 		config.CircuitBreakerFailureThreshold = 3 // Open circuit after 3 consecutive failures
 	}
 
-	// Create rate-limited HTTP client if not provided
+	// Set default HTTP connection pool values
+	if config.MaxIdleConns <= 0 {
+		config.MaxIdleConns = 100 // Default to 100 idle connections total
+	}
+	if config.MaxConnsPerHost <= 0 {
+		config.MaxConnsPerHost = 10 // Default to 10 connections per host
+	}
+	if config.MaxIdleConnsPerHost <= 0 {
+		config.MaxIdleConnsPerHost = 5 // Default to 5 idle connections per host
+	}
+	if config.IdleConnTimeout <= 0 {
+		config.IdleConnTimeout = 90 * time.Second // Default to 90 seconds idle timeout
+	}
+
+	// Create rate-limited HTTP client with connection pooling if not provided
 	if config.HttpClient == nil {
-		config.HttpClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity)
+		poolConfig := HTTPPoolConfig{
+			MaxIdleConns:        config.MaxIdleConns,
+			MaxConnsPerHost:     config.MaxConnsPerHost,
+			MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
+			IdleConnTimeout:     config.IdleConnTimeout,
+		}
+		config.HttpClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig)
 	}
 
 	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
@@ -191,13 +242,16 @@ func NewStore(config Config) (*Store, error) {
 	)
 
 	feeds := make(map[string]string, len(config.Feeds))
+	var feedsMutex sync.Mutex
 	wg := sync.WaitGroup{}
 	for _, feedURL := range config.Feeds {
 		wg.Add(1)
 		go func(url string) {
 			defer wg.Done()
 			id, _ := gonanoid.New()
+			feedsMutex.Lock()
 			feeds[id] = url
+			feedsMutex.Unlock()
 			_, _ = cacheManager.Get(context.Background(), url)
 
 		}(feedURL)
