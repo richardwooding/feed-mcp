@@ -6,6 +6,55 @@
 
 MCP Server for RSS, Atom, and JSON Feeds
 
+## Quick Start Examples
+
+Here are some practical configurations for Claude Desktop that demonstrate common use cases:
+
+```json
+{
+  "mcpServers": {
+    "feed-tech-news": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://techcrunch.com/feed/",
+        "https://feeds.arstechnica.com/arstechnica/index",
+        "https://www.theverge.com/rss/index.xml",
+        "https://www.wired.com/feed/rss",
+        "https://www.engadget.com/rss.xml"
+      ]
+    },
+    "feed-security": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://krebsonsecurity.com/feed/",
+        "https://www.schneier.com/blog/atom.xml",
+        "https://thehackernews.com/feeds/posts/default",
+        "https://www.bleepingcomputer.com/feed/"
+      ]
+    },
+    "feed-webdev": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://css-tricks.com/feed/",
+        "https://www.smashingmagazine.com/feed/",
+        "https://mozilla.hacks.org/feed/"
+      ]
+    }
+  }
+}
+```
+
+Add any of these configurations to your Claude Desktop to instantly access the latest news and articles from your chosen topics.
+
 ## Features
 
 - Serves RSS, Atom, and JSON feeds via the MCP protocol
