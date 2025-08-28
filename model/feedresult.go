@@ -1,5 +1,6 @@
 package model
 
+// FeedResult represents the result of fetching a single feed
 type FeedResult struct {
 	ID                 string `json:"id"`
 	PublicURL          string `json:"public_url"`

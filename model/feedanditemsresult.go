@@ -4,6 +4,7 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+// FeedAndItemsResult represents a feed along with its items
 type FeedAndItemsResult struct {
 	ID                 string         `json:"id"`
 	PublicURL          string         `json:"public_url"`

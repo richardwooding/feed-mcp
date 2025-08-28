@@ -31,6 +31,7 @@ type HTTPPoolConfig struct {
 	IdleConnTimeout     time.Duration
 }
 
+// Config holds configuration settings for the feed store
 type Config struct {
 	Feeds                          []string
 	Timeout                        time.Duration
@@ -64,6 +65,7 @@ type RetryMetrics struct {
 	RetrySuccessRate float64 // Percentage of feeds that succeeded after retrying
 }
 
+// Store manages feed fetching, caching, and retrieval with retry logic
 type Store struct {
 	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
@@ -269,6 +271,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 	return nil, lastErr
 }
 
+// NewStore creates a new feed store with the given configuration
 func NewStore(config Config) (*Store, error) {
 
 	if len(config.Feeds) == 0 {
@@ -444,6 +447,7 @@ func NewStore(config Config) (*Store, error) {
 	return s, nil
 }
 
+// GetAllFeeds returns all configured feeds with their current status
 func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 	results := make([]*model.FeedResult, len(s.feeds))
 	wg := &sync.WaitGroup{}
@@ -481,6 +485,7 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 	return results, nil
 }
 
+// GetFeedAndItems returns a specific feed with all its items
 func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndItemsResult, error) {
 	if url, exists := s.feeds[id]; exists {
 		feed, err := s.feedCacheManager.Get(ctx, url)

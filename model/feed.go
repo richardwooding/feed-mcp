@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// Feed represents a syndication feed (RSS, Atom, or JSON Feed)
 type Feed struct {
 	Title           string                   `json:"title,omitempty"`
 	Description     string                   `json:"description,omitempty"`
@@ -30,6 +31,7 @@ type Feed struct {
 	FeedVersion     string                   `json:"feedVersion"`
 }
 
+// FromGoFeed converts a gofeed.Feed to our internal Feed representation
 func FromGoFeed(inFeed *gofeed.Feed) *Feed {
 	if inFeed == nil {
 		return nil

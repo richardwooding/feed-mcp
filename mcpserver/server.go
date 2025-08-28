@@ -16,12 +16,14 @@ import (
 
 var sessionCounter int64
 
+// Config holds the configuration for creating a new MCP server
 type Config struct {
 	Transport          model.Transport
 	AllFeedsGetter     AllFeedsGetter
 	FeedAndItemsGetter FeedAndItemsGetter
 }
 
+// Server implements an MCP server for serving syndication feeds
 type Server struct {
 	transport          model.Transport
 	allFeedsGetter     AllFeedsGetter
@@ -35,6 +37,7 @@ func generateSessionID() string {
 	return fmt.Sprintf("feed-mcp-session-%d-%d", time.Now().UnixNano(), counter)
 }
 
+// NewServer creates a new MCP server with the given configuration
 func NewServer(config Config) (*Server, error) {
 	if config.Transport == model.UndefinedTransport {
 		return nil, errors.New("transport must be specified")
@@ -61,6 +64,7 @@ type GetSyndicationFeedParams struct {
 	ID string
 }
 
+// Run starts the MCP server and handles client connections until context is cancelled
 func (s *Server) Run(ctx context.Context) (err error) {
 
 	// Create a new MCP server

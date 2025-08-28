@@ -10,6 +10,7 @@ import (
 	"github.com/richardwooding/feed-mcp/store"
 )
 
+// RunCmd holds the command line arguments and flags for the run command
 type RunCmd struct {
 	Transport       string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
 	Feeds           []string      `arg:"" name:"feeds" help:"Feeds to list."`
@@ -30,6 +31,7 @@ type RunCmd struct {
 	AllowPrivateIPs  bool          `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
 }
 
+// Run executes the feed MCP server with the given configuration
 func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	transport, err := model.ParseTransport(c.Transport)
 	if err != nil {
