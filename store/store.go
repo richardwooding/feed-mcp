@@ -175,8 +175,17 @@ func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitt
 	// Add jitter to avoid thundering herd
 	if useJitter && delay > 0 {
 		jitterRange := delay / 2
-		jitter := time.Duration(rand.Int63n(int64(jitterRange)))
+		var jitter time.Duration
+		if jitterRange > 0 {
+			jitter = time.Duration(rand.Int63n(int64(jitterRange)))
+		} else {
+			jitter = 0
+		}
 		delay = delay - jitterRange/2 + jitter
+		// Ensure delay is never negative
+		if delay < 0 {
+			delay = 0
+		}
 	}
 
 	return delay
@@ -321,7 +330,7 @@ func NewStore(config Config) (*Store, error) {
 	if config.RetryMaxDelay <= 0 {
 		config.RetryMaxDelay = 30 * time.Second // Default to 30 seconds max delay
 	}
-	// RetryJitter defaults to true (jitter is enabled by default unless explicitly disabled)
+	// RetryJitter defaults to true (handled by CLI flag default: "true")
 
 	// Create rate-limited HTTP client with connection pooling if not provided
 	if config.HttpClient == nil {

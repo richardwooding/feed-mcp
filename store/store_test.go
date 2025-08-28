@@ -524,7 +524,7 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 	}))
 	defer recoveringServer.Close()
 
-	// Create store with circuit breaker enabled but retry disabled for predictable testing
+	// Create store with circuit breaker enabled but retries disabled for predictable testing
 	enabled := true
 	store, err := NewStore(Config{
 		Feeds:                 []string{recoveringServer.URL},
