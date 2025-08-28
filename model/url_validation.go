@@ -17,7 +17,10 @@ var (
 	ErrEmptyURL            = errors.New("URL cannot be empty")
 )
 
-// ValidateFeedURL validates a feed URL for security and format correctness
+// ValidateFeedURL validates a feed URL for security and format correctness.
+// Performs comprehensive security checks including scheme validation, host verification,
+// and optional private IP/localhost blocking to prevent SSRF attacks.
+// Returns an error if the URL fails any security or format validation checks.
 func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
 	if rawURL == "" {
 		return ErrEmptyURL
@@ -49,7 +52,9 @@ func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
 	return nil
 }
 
-// validateScheme ensures only HTTP and HTTPS schemes are allowed
+// validateScheme ensures only HTTP and HTTPS schemes are allowed.
+// Blocks potentially dangerous schemes like file://, ftp://, and data:// to prevent
+// various attack vectors including local file inclusion and data exfiltration.
 func validateScheme(scheme string) error {
 	scheme = strings.ToLower(scheme)
 	if scheme != "http" && scheme != "https" {
@@ -58,7 +63,10 @@ func validateScheme(scheme string) error {
 	return nil
 }
 
-// validateHost checks if the host resolves to private IP ranges or localhost
+// validateHost checks if the host resolves to private IP ranges or localhost.
+// Performs DNS resolution and validates resolved IPs against private ranges (RFC 1918)
+// and localhost patterns to prevent SSRF attacks against internal services.
+// Allows temporarily unresolvable hosts to fail at HTTP request time.
 func validateHost(host string) error {
 	// Remove port if present
 	hostname, _, err := net.SplitHostPort(host)
@@ -93,11 +101,25 @@ func validateHost(host string) error {
 // isLocalhost checks for common localhost patterns
 func isLocalhost(hostname string) bool {
 	hostname = strings.ToLower(hostname)
-	return hostname == "localhost" || 
-		   hostname == "127.0.0.1" || 
-		   hostname == "::1" ||
-		   hostname == "[::1]" || // IPv6 with brackets
-		   strings.HasPrefix(hostname, "127.")
+	
+	localhostPatterns := []string{
+		"localhost",
+		"127.0.0.1", 
+		"::1",
+		"[::1]", // IPv6 with brackets
+	}
+	
+	for _, pattern := range localhostPatterns {
+		if hostname == pattern {
+			return true
+		}
+	}
+	
+	if strings.HasPrefix(hostname, "127.") {
+		return true
+	}
+	
+	return false
 }
 
 // isPrivateIP checks if an IP address is in a private range
