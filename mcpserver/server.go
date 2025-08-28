@@ -61,7 +61,7 @@ type GetSyndicationFeedParams struct {
 	ID string
 }
 
-func (s *Server) Run() (err error) {
+func (s *Server) Run(ctx context.Context) (err error) {
 
 	// Create a new MCP server
 	srv := mcp.NewServer(
@@ -156,9 +156,9 @@ func (s *Server) Run() (err error) {
 
 	switch s.transport {
 	case model.StdioTransport:
-		err = srv.Run(context.Background(), mcp.NewStdioTransport())
+		err = srv.Run(ctx, mcp.NewStdioTransport())
 	case model.HttpWithSSETransport:
-		err = srv.Run(context.Background(), mcp.NewStreamableServerTransport(s.sessionID))
+		err = srv.Run(ctx, mcp.NewStreamableServerTransport(s.sessionID))
 	default:
 		return errors.New("unsupported transport")
 	}

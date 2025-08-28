@@ -64,6 +64,7 @@ Add any of these configurations to your Claude Desktop to instantly access the l
 - Caching for efficient feed retrieval
 - Built-in rate limiting (2 req/s default) to be respectful to feed servers
 - Circuit breaker pattern for fault tolerance against failing feeds
+- Graceful shutdown with signal handling (SIGINT/SIGTERM)
 - Supports multiple feeds simultaneously
 - Extensible and configurable
 
@@ -78,6 +79,7 @@ The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/
 - **Circuit Breaker:** Implements circuit breaker pattern using [sony/gobreaker](https://github.com/sony/gobreaker) to temporarily stop fetching from consistently failing feeds, with configurable failure thresholds and recovery timeouts.
 - **MCP Protocol Server:** Implements the MCP protocol using the [official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk), allowing integration with clients like Claude Desktop.
 - **Transport Options:** Supports different transports (e.g., stdio, HTTP with SSE) for communication with MCP clients.
+- **Graceful Shutdown:** Handles SIGINT and SIGTERM signals for clean termination, with configurable shutdown timeout (default 30s).
 - **Docker/Podman Support:** The server can be run in containers for easy deployment and integration.
 
 ### How it Works
@@ -85,7 +87,8 @@ The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/
 1. **Startup:** The CLI parses arguments and starts the server with the specified feeds and transport.
 2. **Feed Management:** The server fetches and parses the configured feeds, storing results in the cache.
 3. **Serving Requests:** When an MCP client connects, the server responds to requests for feed data using the cached content, updating as needed.
-4. **Extensibility:** The architecture allows for adding new transports, feed sources, or output formats with minimal changes.
+4. **Graceful Shutdown:** When receiving shutdown signals, the server cleanly terminates all operations and exits.
+5. **Extensibility:** The architecture allows for adding new transports, feed sources, or output formats with minimal changes.
 
 For contributors:  
 - The main entry point is `main.go`, which wires up the CLI and server.

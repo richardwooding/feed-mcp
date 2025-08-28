@@ -101,6 +101,7 @@ The architecture follows clean Go patterns with strong separation of concerns:
 **`cmd/` - CLI Commands**
 - `RunCmd` struct implements the main `run` command
 - Handles transport selection and server initialization
+- Supports graceful shutdown with configurable timeout
 
 ### Key Design Patterns
 
@@ -169,6 +170,7 @@ go run main.go run \
 - Goroutines with `sync.WaitGroup` for parallel feed fetching at startup
 - Atomic operations for session ID generation
 - Thread-safe cache operations via gocache/ristretto
+- Context-based cancellation for graceful shutdown
 
 ### Configuration Flow
 
@@ -261,6 +263,48 @@ config := store.Config{
 - Adjust failure threshold with `CircuitBreakerFailureThreshold` (default: 3 failures)
 - Configure timeouts and intervals based on feed characteristics
 - Monitor circuit breaker state via the `CircuitBreakerOpen` field in responses
+
+### Graceful Shutdown
+
+The feed-mcp server implements graceful shutdown to ensure clean termination and prevent resource leaks:
+
+**Signal Handling:**
+- Listens for SIGINT (Ctrl+C) and SIGTERM signals
+- Automatically initiates graceful shutdown when signal is received
+- Uses Go's `os/signal` package for cross-platform signal handling
+
+**Context Propagation:**
+- All server operations use Go contexts for cancellation
+- Context cancellation propagates through all components:
+  - MCP server operations
+  - Feed fetching routines
+  - HTTP transport connections
+
+**Shutdown Timeout:**
+- Configurable shutdown timeout (default: 30 seconds)
+- Ensures server doesn't hang indefinitely during shutdown
+- Can be configured via `--shutdown-timeout` CLI flag
+
+**Shutdown Process:**
+1. Signal received (SIGINT/SIGTERM)
+2. Context cancellation propagated to all components
+3. MCP server stops accepting new requests
+4. Ongoing operations complete or timeout
+5. Server exits cleanly
+
+**Configuration:**
+```bash
+# Set custom shutdown timeout
+go run main.go run --shutdown-timeout 10s <feed-urls>
+
+# Default timeout is 30 seconds
+go run main.go run <feed-urls>
+```
+
+**Testing:**
+- Comprehensive tests verify graceful shutdown behavior
+- Tests ensure server shuts down within expected timeouts
+- Context cancellation is properly tested across all components
 
 ## Important Notes
 

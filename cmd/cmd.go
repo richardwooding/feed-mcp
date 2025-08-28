@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -10,13 +11,14 @@ import (
 )
 
 type RunCmd struct {
-	Transport   string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
-	Feeds       []string      `arg:"" name:"feeds" help:"Feeds to list."`
-	ExpireAfter time.Duration `name:"expire-after" default:"1h" help:"Expire feeds after this duration."`
-	Timeout     time.Duration `name:"timeout" default:"30s" help:"Timeout for fetching feed."`
+	Transport         string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
+	Feeds             []string      `arg:"" name:"feeds" help:"Feeds to list."`
+	ExpireAfter       time.Duration `name:"expire-after" default:"1h" help:"Expire feeds after this duration."`
+	Timeout           time.Duration `name:"timeout" default:"30s" help:"Timeout for fetching feed."`
+	ShutdownTimeout   time.Duration `name:"shutdown-timeout" default:"30s" help:"Timeout for graceful shutdown."`
 }
 
-func (c *RunCmd) Run(globals *model.Globals) error {
+func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	transport, err := model.ParseTransport(c.Transport)
 	if err != nil {
 		return err
@@ -40,5 +42,5 @@ func (c *RunCmd) Run(globals *model.Globals) error {
 	if err != nil {
 		return err
 	}
-	return server.Run()
+	return server.Run(ctx)
 }
