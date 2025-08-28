@@ -9,6 +9,37 @@ import (
 	"time"
 )
 
+// RSS template constants for benchmarks
+const (
+	rssTemplate = `
+		<rss version="2.0">
+			<channel>
+				<title>%s</title>
+				<description>%s</description>
+				<item>
+					<title>%s</title>
+					<link>%s</link>
+					<description>%s</description>
+				</item>
+			</channel>
+		</rss>
+	`
+)
+
+// Helper function to create RSS feed content
+func createRSSFeedContent(title, description, itemTitle, itemLink, itemDescription string) string {
+	return fmt.Sprintf(rssTemplate, title, description, itemTitle, itemLink, itemDescription)
+}
+
+// Helper function to create a test server with RSS content
+func createTestFeedServer(title, description, itemTitle, itemLink, itemDescription string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		feedContent := createRSSFeedContent(title, description, itemTitle, itemLink, itemDescription)
+		w.Write([]byte(feedContent))
+	}))
+}
+
 // BenchmarkStore_WithoutConnectionPooling benchmarks feed fetching without optimized connection pooling
 func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 	// Create multiple test servers to simulate multiple feeds
@@ -16,23 +47,13 @@ func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 	urls := make([]string, 10)
 	
 	for i := 0; i < 10; i++ {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/rss+xml")
-			feedContent := fmt.Sprintf(`
-				<rss version="2.0">
-					<channel>
-						<title>Benchmark Feed %s</title>
-						<description>A test feed for benchmarking</description>
-						<item>
-							<title>Test Item</title>
-							<link>http://example.com/item</link>
-							<description>Test content</description>
-						</item>
-					</channel>
-				</rss>
-			`, r.URL.Path)
-			w.Write([]byte(feedContent))
-		}))
+		server := createTestFeedServer(
+			"Benchmark Feed",
+			"A test feed for benchmarking", 
+			"Test Item",
+			"http://example.com/item",
+			"Test content",
+		)
 		servers[i] = server
 		urls[i] = server.URL
 	}
@@ -74,23 +95,13 @@ func BenchmarkStore_WithConnectionPooling(b *testing.B) {
 	urls := make([]string, 10)
 	
 	for i := 0; i < 10; i++ {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/rss+xml")
-			feedContent := fmt.Sprintf(`
-				<rss version="2.0">
-					<channel>
-						<title>Benchmark Feed %s</title>
-						<description>A test feed for benchmarking</description>
-						<item>
-							<title>Test Item</title>
-							<link>http://example.com/item</link>
-							<description>Test content</description>
-						</item>
-					</channel>
-				</rss>
-			`, r.URL.Path)
-			w.Write([]byte(feedContent))
-		}))
+		server := createTestFeedServer(
+			"Benchmark Feed",
+			"A test feed for benchmarking", 
+			"Test Item",
+			"http://example.com/item",
+			"Test content",
+		)
 		servers[i] = server
 		urls[i] = server.URL
 	}
@@ -136,19 +147,13 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 			// Simulate some processing time
 			time.Sleep(10 * time.Millisecond)
 			w.Header().Set("Content-Type", "application/rss+xml")
-			feedContent := fmt.Sprintf(`
-				<rss version="2.0">
-					<channel>
-						<title>Concurrent Feed %s</title>
-						<description>A test feed for concurrent benchmarking</description>
-						<item>
-							<title>Concurrent Item</title>
-							<link>http://example.com/concurrent</link>
-							<description>Concurrent test content</description>
-						</item>
-					</channel>
-				</rss>
-			`, r.URL.Path)
+			feedContent := createRSSFeedContent(
+				"Concurrent Feed",
+				"A test feed for concurrent benchmarking",
+				"Concurrent Item",
+				"http://example.com/concurrent",
+				"Concurrent test content",
+			)
 			w.Write([]byte(feedContent))
 		}))
 		servers[i] = server
@@ -248,23 +253,13 @@ func BenchmarkStore_ScalabilityTest(b *testing.B) {
 			urls := make([]string, feedCount)
 			
 			for i := 0; i < feedCount; i++ {
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/rss+xml")
-					feedContent := `
-						<rss version="2.0">
-							<channel>
-								<title>Scalability Feed</title>
-								<description>Feed for scalability testing</description>
-								<item>
-									<title>Scale Test Item</title>
-									<link>http://example.com/scale</link>
-									<description>Scalability test content</description>
-								</item>
-							</channel>
-						</rss>
-					`
-					w.Write([]byte(feedContent))
-				}))
+				server := createTestFeedServer(
+					"Scalability Feed",
+					"Feed for scalability testing",
+					"Scale Test Item",
+					"http://example.com/scale",
+					"Scalability test content",
+				)
 				servers[i] = server
 				urls[i] = server.URL
 			}
