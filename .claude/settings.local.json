@@ -35,7 +35,8 @@
       "mcp__github__get_issue_comments",
       "Bash(./feed-mcp-test run:*)",
       "Bash(timeout:*)",
-      "mcp__github__get_pull_request"
+      "mcp__github__get_pull_request",
+      "Bash(git rebase:*)"
     ],
     "deny": [],
     "ask": []
