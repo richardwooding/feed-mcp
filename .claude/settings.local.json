@@ -25,7 +25,11 @@
       "mcp__github__add_issue_comment",
       "mcp__github__add_comment_to_pending_review",
       "mcp__github__create_and_submit_pull_request_review",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git rebase:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(git diff:*)"
     ],
     "deny": [],
     "ask": []
