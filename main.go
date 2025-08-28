@@ -35,7 +35,7 @@ func main() {
 		kong.Vars{
 			"version": version,
 		})
-	
+
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -48,7 +48,7 @@ func main() {
 		<-sigChan
 		cancel() // Cancel context on signal
 	}()
-	
+
 	// Pass the context to the command
 	err := kongCtx.Run(&cli.Globals, ctx)
 	kongCtx.FatalIfErrorf(err)

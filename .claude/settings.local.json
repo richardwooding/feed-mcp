@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(gh pr create:*)",
+      "Bash(go:*)",
+      "mcp__github__get_issue",
+      "mcp__github__create_pull_request",
+      "mcp__github__update_issue",
+      "Bash(./feed-mcp-test --version)",
+      "Bash(./feed-mcp-test-dev --version)",
+      "Bash(git fetch:*)",
+      "Bash(git tag:*)",
+      "mcp__github__list_workflow_runs",
+      "mcp__github__get_release_by_tag",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(git branch:*)",
+      "mcp__github__get_pull_request_comments",
+      "mcp__github__add_issue_comment",
+      "mcp__github__add_comment_to_pending_review",
+      "mcp__github__create_and_submit_pull_request_review",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

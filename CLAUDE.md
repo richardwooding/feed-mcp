@@ -14,6 +14,9 @@ go run main.go run <feed-urls>
 
 # Example with multiple feeds
 go run main.go run https://techcrunch.com/feed/ https://www.wired.com/feed/rss
+
+# Example with custom retry configuration
+go run main.go run --retry-max-attempts 5 --retry-base-delay 2s --retry-max-delay 60s https://unreliable-feed.example.com/rss
 ```
 
 ### Testing
@@ -175,7 +178,7 @@ go run main.go run \
 ### Configuration Flow
 
 1. CLI args parsed by Kong → `RunCmd` struct
-2. Store config with defaults (timeout: 30s, cache expiry: 10m, rate limit: 2 req/s, circuit breaker disabled, connection pooling enabled)
+2. Store config with defaults (timeout: 30s, cache expiry: 1h, rate limit: 2 req/s, circuit breaker enabled, connection pooling enabled, retry enabled with 3 attempts)
 3. Server config includes store, transport, and feed URLs
 4. Validation at each layer with meaningful error messages
 
@@ -324,6 +327,82 @@ config := store.Config{
 - Connection pool effectiveness can be observed through reduced HTTP connection establishment
 - Monitor for `dial tcp` errors which indicate connection exhaustion
 - Use Go's HTTP client metrics to track connection reuse rates
+
+### Retry Mechanism with Exponential Backoff
+
+The feed-mcp server implements automatic retry with exponential backoff and jitter to handle transient network failures:
+
+**Purpose:**
+- Handle temporary network issues, DNS failures, and server errors gracefully
+- Implement exponential backoff to avoid overwhelming failing servers
+- Add jitter to prevent thundering herd problems with multiple feeds
+- Improve overall reliability and success rates for feed fetching
+
+**Default Settings:**
+- 3 maximum retry attempts per feed
+- 1 second base delay between retries
+- 30 seconds maximum delay cap
+- Jitter enabled by default to add randomness
+
+**Error Classification:**
+- **Retryable Errors**: 5xx server errors, DNS failures, connection refused, timeouts, network unreachable
+- **Non-Retryable Errors**: 4xx client errors (like 404 Not Found), context cancellation, invalid URLs
+- Smart classification prevents wasted retry attempts on permanent failures
+
+**How it Works:**
+- Uses exponential backoff algorithm: delay = baseDelay × 2^(attempt-1)
+- Adds jitter (±50% random variation) to prevent synchronized retry storms
+- Integrates with existing circuit breaker and connection pooling systems
+- Tracks detailed metrics for retry attempts and success rates
+- Respects context cancellation for graceful shutdown
+
+**Configuration via CLI:**
+```bash
+# Use default retry settings (3 attempts, 1s base, 30s max, jitter enabled)
+go run main.go run <feed-urls>
+
+# Custom retry configuration
+go run main.go run \
+  --retry-max-attempts 5 \
+  --retry-base-delay 2s \
+  --retry-max-delay 60s \
+  --retry-jitter=false \
+  <feed-urls>
+```
+
+**Programmatic Configuration:**
+Retry settings can be configured in the `store.Config` struct:
+```go
+config := store.Config{
+    Feeds:            []string{"https://example.com/feed.xml"},
+    RetryMaxAttempts: 5,                    // Max retry attempts
+    RetryBaseDelay:   2 * time.Second,      // Base delay
+    RetryMaxDelay:    60 * time.Second,     // Maximum delay cap
+    RetryJitter:      true,                 // Enable jitter
+}
+```
+
+**Retry Metrics:**
+The system tracks comprehensive retry metrics accessible via `store.GetRetryMetrics()`:
+- `TotalAttempts`: Total HTTP requests made (including retries)
+- `TotalRetries`: Number of retry attempts (excluding initial requests)
+- `SuccessfulFeeds`: Count of feeds that succeeded (eventually)
+- `FailedFeeds`: Count of feeds that failed after all retries
+- `RetrySuccessRate`: Percentage of feeds that succeeded
+
+**Best Practices:**
+- Default settings work well for most feeds - no configuration needed
+- Increase `RetryMaxAttempts` for unreliable feeds (up to 5-10)
+- Decrease `RetryBaseDelay` for fast-recovering issues (down to 500ms)
+- Increase `RetryMaxDelay` for feeds with long recovery times
+- Keep jitter enabled unless you have specific requirements
+- Monitor retry metrics to tune settings based on feed behavior
+
+**Integration:**
+- Works seamlessly with circuit breakers (retries happen before circuit opens)
+- Respects rate limiting (each retry attempt follows rate limits)
+- Uses existing HTTP connection pooling for efficiency
+- Properly handles context cancellation during shutdown
 
 ### Graceful Shutdown
 

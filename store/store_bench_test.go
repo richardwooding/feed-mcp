@@ -45,11 +45,11 @@ func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 	// Create multiple test servers to simulate multiple feeds
 	servers := make([]*httptest.Server, 10)
 	urls := make([]string, 10)
-	
+
 	for i := 0; i < 10; i++ {
 		server := createTestFeedServer(
 			"Benchmark Feed",
-			"A test feed for benchmarking", 
+			"A test feed for benchmarking",
 			"Test Item",
 			"http://example.com/item",
 			"Test content",
@@ -57,7 +57,7 @@ func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 		servers[i] = server
 		urls[i] = server.URL
 	}
-	
+
 	// Clean up servers after benchmark
 	defer func() {
 		for _, server := range servers {
@@ -67,19 +67,19 @@ func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 
 	// Create store with minimal connection pool settings (simulating poor pooling)
 	store, err := NewStore(Config{
-		Feeds:                urls,
-		ExpireAfter:          1 * time.Millisecond, // Force cache misses
-		MaxIdleConns:         1,  // Minimal pooling
-		MaxConnsPerHost:      1,  // Only 1 connection per host
-		MaxIdleConnsPerHost: 1,  // Minimal idle connections
-		IdleConnTimeout:     1 * time.Second, // Short idle timeout
+		Feeds:               urls,
+		ExpireAfter:         1 * time.Millisecond, // Force cache misses
+		MaxIdleConns:        1,                    // Minimal pooling
+		MaxConnsPerHost:     1,                    // Only 1 connection per host
+		MaxIdleConnsPerHost: 1,                    // Minimal idle connections
+		IdleConnTimeout:     1 * time.Second,      // Short idle timeout
 	})
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_, err := store.GetAllFeeds(context.Background())
 		if err != nil {
@@ -93,11 +93,11 @@ func BenchmarkStore_WithConnectionPooling(b *testing.B) {
 	// Create multiple test servers to simulate multiple feeds
 	servers := make([]*httptest.Server, 10)
 	urls := make([]string, 10)
-	
+
 	for i := 0; i < 10; i++ {
 		server := createTestFeedServer(
 			"Benchmark Feed",
-			"A test feed for benchmarking", 
+			"A test feed for benchmarking",
 			"Test Item",
 			"http://example.com/item",
 			"Test content",
@@ -105,7 +105,7 @@ func BenchmarkStore_WithConnectionPooling(b *testing.B) {
 		servers[i] = server
 		urls[i] = server.URL
 	}
-	
+
 	// Clean up servers after benchmark
 	defer func() {
 		for _, server := range servers {
@@ -115,19 +115,19 @@ func BenchmarkStore_WithConnectionPooling(b *testing.B) {
 
 	// Create store with optimized connection pool settings
 	store, err := NewStore(Config{
-		Feeds:                urls,
-		ExpireAfter:          1 * time.Millisecond, // Force cache misses
-		MaxIdleConns:         100, // Generous connection pool
-		MaxConnsPerHost:      20,  // Multiple connections per host
-		MaxIdleConnsPerHost: 10,  // Keep connections alive
-		IdleConnTimeout:     90 * time.Second, // Long idle timeout
+		Feeds:               urls,
+		ExpireAfter:         1 * time.Millisecond, // Force cache misses
+		MaxIdleConns:        100,                  // Generous connection pool
+		MaxConnsPerHost:     20,                   // Multiple connections per host
+		MaxIdleConnsPerHost: 10,                   // Keep connections alive
+		IdleConnTimeout:     90 * time.Second,     // Long idle timeout
 	})
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_, err := store.GetAllFeeds(context.Background())
 		if err != nil {
@@ -141,7 +141,7 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 	// Create multiple test servers
 	servers := make([]*httptest.Server, 5)
 	urls := make([]string, 5)
-	
+
 	for i := 0; i < 5; i++ {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Simulate some processing time
@@ -159,7 +159,7 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 		servers[i] = server
 		urls[i] = server.URL
 	}
-	
+
 	defer func() {
 		for _, server := range servers {
 			server.Close()
@@ -168,10 +168,10 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 
 	// Create store with good connection pooling for concurrent access
 	store, err := NewStore(Config{
-		Feeds:                urls,
-		ExpireAfter:          1 * time.Millisecond, // Force cache misses
-		MaxIdleConns:         50,
-		MaxConnsPerHost:      15,
+		Feeds:               urls,
+		ExpireAfter:         1 * time.Millisecond, // Force cache misses
+		MaxIdleConns:        50,
+		MaxConnsPerHost:     15,
 		MaxIdleConnsPerHost: 8,
 		IdleConnTimeout:     60 * time.Second,
 	})
@@ -180,7 +180,7 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			_, err := store.GetAllFeeds(context.Background())
@@ -208,9 +208,9 @@ func BenchmarkHTTPClient_ConnectionReuse(b *testing.B) {
 			IdleConnTimeout:     90 * time.Second,
 		}
 		client := NewRateLimitedHTTPClient(1000.0, 1000, poolConfig) // High limits to avoid rate limiting
-		
+
 		b.ResetTimer()
-		
+
 		for i := 0; i < b.N; i++ {
 			resp, err := client.Get(server.URL)
 			if err != nil {
@@ -229,9 +229,9 @@ func BenchmarkHTTPClient_ConnectionReuse(b *testing.B) {
 			IdleConnTimeout:     1 * time.Second,
 		}
 		client := NewRateLimitedHTTPClient(1000.0, 1000, poolConfig) // High limits to avoid rate limiting
-		
+
 		b.ResetTimer()
-		
+
 		for i := 0; i < b.N; i++ {
 			resp, err := client.Get(server.URL)
 			if err != nil {
@@ -245,13 +245,13 @@ func BenchmarkHTTPClient_ConnectionReuse(b *testing.B) {
 // BenchmarkStore_ScalabilityTest tests performance with varying numbers of feeds
 func BenchmarkStore_ScalabilityTest(b *testing.B) {
 	feedCounts := []int{1, 5, 10, 25, 50}
-	
+
 	for _, feedCount := range feedCounts {
 		b.Run(fmt.Sprintf("Feeds_%d", feedCount), func(b *testing.B) {
 			// Create test servers
 			servers := make([]*httptest.Server, feedCount)
 			urls := make([]string, feedCount)
-			
+
 			for i := 0; i < feedCount; i++ {
 				server := createTestFeedServer(
 					"Scalability Feed",
@@ -263,7 +263,7 @@ func BenchmarkStore_ScalabilityTest(b *testing.B) {
 				servers[i] = server
 				urls[i] = server.URL
 			}
-			
+
 			defer func() {
 				for _, server := range servers {
 					server.Close()
@@ -272,10 +272,10 @@ func BenchmarkStore_ScalabilityTest(b *testing.B) {
 
 			// Create store with optimized settings for the feed count
 			store, err := NewStore(Config{
-				Feeds:                urls,
-				ExpireAfter:          1 * time.Millisecond, // Force cache misses
-				MaxIdleConns:         feedCount * 2,        // Scale with feed count
-				MaxConnsPerHost:      10,                   // Fixed per host
+				Feeds:               urls,
+				ExpireAfter:         1 * time.Millisecond, // Force cache misses
+				MaxIdleConns:        feedCount * 2,        // Scale with feed count
+				MaxConnsPerHost:     10,                   // Fixed per host
 				MaxIdleConnsPerHost: 5,                    // Fixed idle per host
 				IdleConnTimeout:     60 * time.Second,
 			})
@@ -284,7 +284,7 @@ func BenchmarkStore_ScalabilityTest(b *testing.B) {
 			}
 
 			b.ResetTimer()
-			
+
 			for i := 0; i < b.N; i++ {
 				_, err := store.GetAllFeeds(context.Background())
 				if err != nil {
