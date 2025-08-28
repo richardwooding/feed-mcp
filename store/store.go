@@ -330,7 +330,7 @@ func NewStore(config Config) (*Store, error) {
 	if config.RetryMaxDelay <= 0 {
 		config.RetryMaxDelay = 30 * time.Second // Default to 30 seconds max delay
 	}
-	// RetryJitter defaults to true (jitter is enabled by default unless explicitly disabled)
+	// RetryJitter defaults to true (handled by CLI flag default: "true")
 
 	// Create rate-limited HTTP client with connection pooling if not provided
 	if config.HttpClient == nil {
