@@ -231,4 +231,4 @@ The server exposes three MCP tools that Claude can use:
 - Log errors but continue serving other feeds if one fails
 - Always work in branches and submit PRs
 - Always use Context7, godoc, or github to get up to date information on libraries
-- This repository has branch protection rules reququire pull requests. When working on any issue, create a branch, and make a pr when you are done
+- This repository has branch protection rules require pull requests. When working on any issue, create a branch, and make a pr when you are done
