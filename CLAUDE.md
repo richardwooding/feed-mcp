@@ -86,8 +86,9 @@ The architecture follows clean Go patterns with strong separation of concerns:
 - Implements `AllFeedsGetter` and `FeedAndItemsGetter` interfaces
 - Uses gocache + ristretto for efficient in-memory caching
 - Concurrent feed fetching with goroutines and sync.WaitGroup
-- Configuration includes timeout, cache expiration, and rate limiting settings
+- Configuration includes timeout, cache expiration, rate limiting, and circuit breaker settings
 - Built-in rate limiting with configurable requests per second and burst capacity
+- Circuit breaker pattern for fault tolerance using sony/gobreaker library
 
 **`mcpserver/` - MCP Protocol Implementation**
 - Uses official MCP Go SDK
@@ -141,6 +142,8 @@ Core libraries that shape the architecture:
 - `github.com/modelcontextprotocol/go-sdk` - MCP protocol
 - `github.com/alecthomas/kong` - CLI framework
 - `github.com/gocolly/colly` - Web scraping for fetch_link
+- `github.com/sony/gobreaker` - Circuit breaker pattern implementation
+- `golang.org/x/time/rate` - Token bucket rate limiter
 
 ### Common Feed URLs for Testing
 
@@ -170,7 +173,7 @@ go run main.go run \
 ### Configuration Flow
 
 1. CLI args parsed by Kong → `RunCmd` struct
-2. Store config with defaults (timeout: 30s, cache expiry: 10m, rate limit: 2 req/s)
+2. Store config with defaults (timeout: 30s, cache expiry: 10m, rate limit: 2 req/s, circuit breaker disabled)
 3. Server config includes store, transport, and feed URLs
 4. Validation at each layer with meaningful error messages
 
@@ -203,6 +206,61 @@ config := store.Config{
 - Pass a custom `HttpClient` to bypass built-in rate limiting
 - Adjust `RequestsPerSecond` and `BurstCapacity` for different rate limits
 - Set to 0 or negative values to use sensible defaults
+
+### Circuit Breaker Pattern
+
+The feed-mcp server implements a circuit breaker pattern to handle failing feeds gracefully:
+
+**Purpose:**
+- Temporarily stop fetching from consistently failing feeds
+- Allow failing feeds time to recover without overwhelming them
+- Provide fault tolerance and improved overall system resilience
+
+**Default Settings:**
+- Circuit breaker is **enabled** by default
+- 3 consecutive failures before opening the circuit (configurable)
+- 30 second timeout before attempting half-open state
+- 3 maximum requests allowed in half-open state
+- 60 second interval for statistical calculations
+
+**How it Works:**
+- Uses `github.com/sony/gobreaker` for circuit breaker implementation  
+- Each feed gets its own circuit breaker instance
+- Circuit states: Closed (normal) → Open (failing) → Half-Open (testing) → Closed
+- When circuit is open, requests fail fast without attempting network calls
+- Feed results include `CircuitBreakerOpen` field to indicate circuit state
+
+**Configuration:**
+Circuit breakers are configured in the `store.Config` struct:
+```go
+config := store.Config{
+    Feeds:                          []string{"https://example.com/feed.xml"},
+    // CircuitBreakerEnabled is enabled by default, set to &false to disable
+    CircuitBreakerMaxRequests:      5,                    // Half-open state requests
+    CircuitBreakerInterval:         2 * time.Minute,     // Statistical interval  
+    CircuitBreakerTimeout:          45 * time.Second,    // Open state timeout
+    CircuitBreakerFailureThreshold: 5,                   // Failures before opening circuit
+}
+
+// To explicitly disable circuit breakers:
+disabled := false
+config := store.Config{
+    Feeds:                 []string{"https://example.com/feed.xml"},
+    CircuitBreakerEnabled: &disabled,
+}
+```
+
+**States and Behavior:**
+- **Closed**: Feed requests work normally, failures are counted
+- **Open**: All requests fail immediately, no network calls made  
+- **Half-Open**: Limited requests allowed to test if feed has recovered
+
+**Customization:**
+- Circuit breakers are **enabled by default** - no configuration needed for basic functionality
+- Disable with `CircuitBreakerEnabled: &false` (requires pointer to bool)
+- Adjust failure threshold with `CircuitBreakerFailureThreshold` (default: 3 failures)
+- Configure timeouts and intervals based on feed characteristics
+- Monitor circuit breaker state via the `CircuitBreakerOpen` field in responses
 
 ## Important Notes
 

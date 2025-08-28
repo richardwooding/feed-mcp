@@ -11,6 +11,7 @@ import (
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/mmcdole/gofeed"
 	"github.com/richardwooding/feed-mcp/model"
+	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
 	"net/http"
 	"sync"
@@ -18,17 +19,23 @@ import (
 )
 
 type Config struct {
-	Feeds             []string
-	Timeout           time.Duration
-	ExpireAfter       time.Duration
-	HttpClient        *http.Client
-	RequestsPerSecond float64
-	BurstCapacity     int
+	Feeds                        []string
+	Timeout                      time.Duration
+	ExpireAfter                  time.Duration
+	HttpClient                   *http.Client
+	RequestsPerSecond            float64
+	BurstCapacity                int
+	CircuitBreakerEnabled        *bool
+	CircuitBreakerMaxRequests    uint32
+	CircuitBreakerInterval       time.Duration
+	CircuitBreakerTimeout        time.Duration
+	CircuitBreakerFailureThreshold uint32
 }
 
 type Store struct {
 	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
+	circuitBreakers  map[string]*gobreaker.CircuitBreaker
 }
 
 // RateLimitedTransport wraps an http.RoundTripper with rate limiting
@@ -87,6 +94,20 @@ func NewStore(config Config) (*Store, error) {
 		config.BurstCapacity = 5 // Allow burst of 5 requests by default
 	}
 
+	// Set default circuit breaker values - enabled by default
+	if config.CircuitBreakerMaxRequests <= 0 {
+		config.CircuitBreakerMaxRequests = 3 // Allow 3 half-open requests
+	}
+	if config.CircuitBreakerInterval <= 0 {
+		config.CircuitBreakerInterval = 60 * time.Second // Check for recovery every 60s
+	}
+	if config.CircuitBreakerTimeout <= 0 {
+		config.CircuitBreakerTimeout = 30 * time.Second // Open circuit for 30s before trying half-open
+	}
+	if config.CircuitBreakerFailureThreshold <= 0 {
+		config.CircuitBreakerFailureThreshold = 3 // Open circuit after 3 consecutive failures
+	}
+
 	// Create rate-limited HTTP client if not provided
 	if config.HttpClient == nil {
 		config.HttpClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity)
@@ -103,8 +124,53 @@ func NewStore(config Config) (*Store, error) {
 
 	ristrettoStore := ristretto_store.NewRistretto(ristrettoCache)
 
+	// Initialize circuit breakers map - enabled by default unless explicitly disabled
+	var circuitBreakers map[string]*gobreaker.CircuitBreaker
+	circuitBreakerEnabled := config.CircuitBreakerEnabled == nil || *config.CircuitBreakerEnabled
+	
+	if circuitBreakerEnabled {
+		circuitBreakers = make(map[string]*gobreaker.CircuitBreaker)
+		for _, feedURL := range config.Feeds {
+			// Capture the failure threshold for this closure
+			failureThreshold := config.CircuitBreakerFailureThreshold
+			settings := gobreaker.Settings{
+				Name:        fmt.Sprintf("feed-%s", feedURL),
+				MaxRequests: config.CircuitBreakerMaxRequests,
+				Interval:    config.CircuitBreakerInterval,
+				Timeout:     config.CircuitBreakerTimeout,
+				ReadyToTrip: func(counts gobreaker.Counts) bool {
+					return counts.ConsecutiveFailures >= failureThreshold
+				},
+			}
+			circuitBreakers[feedURL] = gobreaker.NewCircuitBreaker(settings)
+		}
+	}
+
 	loadFunction := func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
 		if url, ok := key.(string); ok {
+			// Use circuit breaker if enabled
+			if circuitBreakerEnabled {
+				if cb, exists := circuitBreakers[url]; exists {
+					result, err := cb.Execute(func() (interface{}, error) {
+						fp := gofeed.NewParser()
+						if config.HttpClient != nil {
+							fp.Client = config.HttpClient
+						}
+						expireContext, cancel := context.WithTimeout(ctx, config.Timeout)
+						defer cancel()
+						return fp.ParseURLWithContext(url, expireContext)
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					if feed, ok := result.(*gofeed.Feed); ok {
+						return feed, []store.Option{store.WithExpiration(config.ExpireAfter)}, nil
+					}
+					return nil, nil, errors.New("unexpected result type from circuit breaker")
+				}
+			}
+
+			// Fallback to direct parsing if circuit breaker not enabled or URL not found
 			fp := gofeed.NewParser()
 			if config.HttpClient != nil {
 				fp.Client = config.HttpClient
@@ -143,6 +209,7 @@ func NewStore(config Config) (*Store, error) {
 	return &Store{
 		feeds:            feeds,
 		feedCacheManager: cacheManager,
+		circuitBreakers:  circuitBreakers,
 	}, nil
 }
 
@@ -155,20 +222,27 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 		go func(idx int, id string, url string) {
 			defer wg.Done()
 			feed, err := s.feedCacheManager.Get(ctx, url)
-			if err != nil {
-				results[idx] = &model.FeedResult{
-					ID:         id,
-					PublicURL:  url,
-					FetchError: err.Error(),
-				}
-			} else {
-				results[idx] = &model.FeedResult{
-					ID:        id,
-					PublicURL: url,
-					Title:     feed.Title,
-					Feed:      model.FromGoFeed(feed),
+			
+			result := &model.FeedResult{
+				ID:        id,
+				PublicURL: url,
+			}
+			
+			// Check circuit breaker state
+			if s.circuitBreakers != nil {
+				if cb, exists := s.circuitBreakers[url]; exists {
+					result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
 				}
 			}
+			
+			if err != nil {
+				result.FetchError = err.Error()
+			} else {
+				result.Title = feed.Title
+				result.Feed = model.FromGoFeed(feed)
+			}
+			
+			results[idx] = result
 		}(idx, id, url)
 		idx++
 	}
@@ -179,20 +253,29 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndItemsResult, error) {
 	if url, exists := s.feeds[id]; exists {
 		feed, err := s.feedCacheManager.Get(ctx, url)
-		if err != nil {
-			return &model.FeedAndItemsResult{
-				ID:         id,
-				PublicURL:  url,
-				FetchError: err.Error(),
-			}, nil
-		}
-		return &model.FeedAndItemsResult{
+		
+		result := &model.FeedAndItemsResult{
 			ID:        id,
 			PublicURL: url,
-			Title:     feed.Title,
-			Feed:      model.FromGoFeed(feed),
-			Items:     feed.Items,
-		}, nil
+		}
+		
+		// Check circuit breaker state
+		if s.circuitBreakers != nil {
+			if cb, exists := s.circuitBreakers[url]; exists {
+				result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
+			}
+		}
+		
+		if err != nil {
+			result.FetchError = err.Error()
+			return result, nil
+		}
+		
+		result.Title = feed.Title
+		result.Feed = model.FromGoFeed(feed)
+		result.Items = feed.Items
+		
+		return result, nil
 	}
 	return nil, fmt.Errorf("feed with ID %s not found", id)
 }
