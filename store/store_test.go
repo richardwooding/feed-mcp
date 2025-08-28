@@ -308,3 +308,397 @@ func TestStore_CustomHttpClientPreserved(t *testing.T) {
 		t.Errorf("expected Title 'CustomClientTest', got %q", results[0].Title)
 	}
 }
+
+func TestStore_CircuitBreakerDisabled(t *testing.T) {
+	srv := mockFeedServer(t, "CircuitBreakerTest")
+	defer srv.Close()
+
+	// Create store with circuit breaker explicitly disabled
+	disabled := false
+	store, err := NewStore(Config{
+		Feeds:                 []string{srv.URL},
+		CircuitBreakerEnabled: &disabled,
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Verify circuit breaker is not initialized
+	if store.circuitBreakers != nil {
+		t.Error("expected circuitBreakers to be nil when disabled")
+	}
+
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Circuit breaker should not be open since it's disabled
+	if results[0].CircuitBreakerOpen {
+		t.Error("expected CircuitBreakerOpen to be false when circuit breaker is disabled")
+	}
+}
+
+func TestStore_CircuitBreakerEnabledByDefault(t *testing.T) {
+	srv := mockFeedServer(t, "CircuitBreakerTest")
+	defer srv.Close()
+
+	// Create store without specifying circuit breaker setting - should be enabled by default
+	store, err := NewStore(Config{
+		Feeds:                 []string{srv.URL},
+		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for testing
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Verify circuit breaker is initialized by default
+	if store.circuitBreakers == nil {
+		t.Fatal("expected circuitBreakers to be initialized by default")
+	}
+
+	if cb, exists := store.circuitBreakers[srv.URL]; !exists {
+		t.Fatal("expected circuit breaker to exist for feed URL")
+	} else if cb == nil {
+		t.Fatal("expected circuit breaker to be non-nil")
+	}
+
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Circuit breaker should be closed initially
+	if results[0].CircuitBreakerOpen {
+		t.Error("expected CircuitBreakerOpen to be false initially")
+	}
+}
+
+func TestStore_CircuitBreakerExplicitlyEnabled(t *testing.T) {
+	srv := mockFeedServer(t, "CircuitBreakerTest")
+	defer srv.Close()
+
+	// Create store with circuit breaker explicitly enabled
+	enabled := true
+	store, err := NewStore(Config{
+		Feeds:                 []string{srv.URL},
+		CircuitBreakerEnabled: &enabled,
+		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for testing
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Verify circuit breaker is initialized
+	if store.circuitBreakers == nil {
+		t.Fatal("expected circuitBreakers to be initialized when enabled")
+	}
+
+	if cb, exists := store.circuitBreakers[srv.URL]; !exists {
+		t.Fatal("expected circuit breaker to exist for feed URL")
+	} else if cb == nil {
+		t.Fatal("expected circuit breaker to be non-nil")
+	}
+
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Circuit breaker should be closed initially
+	if results[0].CircuitBreakerOpen {
+		t.Error("expected CircuitBreakerOpen to be false initially")
+	}
+}
+
+func TestStore_CircuitBreakerFailures(t *testing.T) {
+	// Create a server that fails consistently
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failingServer.Close()
+
+	// Create store with circuit breaker enabled and aggressive settings
+	enabled := true
+	store, err := NewStore(Config{
+		Feeds:                 []string{failingServer.URL},
+		CircuitBreakerEnabled: &enabled,
+		CircuitBreakerTimeout: 1 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache expiry
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Make multiple requests to trigger circuit breaker
+	for i := 0; i < 5; i++ {
+		results, err := store.GetAllFeeds(ctx)
+		if err != nil {
+			t.Fatalf("GetAllFeeds failed on attempt %d: %v", i+1, err)
+		}
+
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result on attempt %d, got %d", i+1, len(results))
+		}
+
+		// Should have fetch error
+		if results[0].FetchError == "" {
+			t.Errorf("expected FetchError on attempt %d", i+1)
+		}
+
+		// Clear cache to force new requests
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// After multiple failures, circuit breaker should be open
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Circuit breaker should now be open
+	if !results[0].CircuitBreakerOpen {
+		t.Error("expected CircuitBreakerOpen to be true after multiple failures")
+	}
+}
+
+func TestStore_CircuitBreakerRecovery(t *testing.T) {
+	// Create a server that initially fails then recovers
+	var requestCount int64
+	recoveringServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt64(&requestCount, 1)
+		if count <= 3 {
+			// Fail first 3 requests
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// Succeed after that
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, err := w.Write([]byte(`
+			<rss version="2.0">
+				<channel>
+					<title>Recovered Feed</title>
+					<item>
+						<title>Recovery Item</title>
+						<link>http://example.com/recovery</link>
+					</item>
+				</channel>
+			</rss>
+		`))
+		if err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
+	}))
+	defer recoveringServer.Close()
+
+	// Create store with circuit breaker enabled
+	enabled := true
+	store, err := NewStore(Config{
+		Feeds:                 []string{recoveringServer.URL},
+		CircuitBreakerEnabled: &enabled,
+		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for quick recovery
+		ExpireAfter:           1 * time.Millisecond, // Force cache expiry
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// First 3 requests should fail and open the circuit
+	for i := 0; i < 3; i++ {
+		results, _ := store.GetAllFeeds(ctx)
+		if len(results) > 0 && results[0].FetchError == "" {
+			t.Errorf("expected failure on request %d", i+1)
+		}
+		time.Sleep(2 * time.Millisecond) // Clear cache
+	}
+
+	// Wait for circuit breaker timeout
+	time.Sleep(1100 * time.Millisecond)
+
+	// Next request should succeed and close the circuit
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed after recovery: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result after recovery, got %d", len(results))
+	}
+
+	// Should eventually succeed
+	maxAttempts := 3
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if results[0].FetchError == "" && results[0].Title == "Recovered Feed" {
+			break
+		}
+		if attempt == maxAttempts-1 {
+			t.Errorf("expected recovery after %d attempts, got FetchError: %q, Title: %q",
+				maxAttempts, results[0].FetchError, results[0].Title)
+		}
+		time.Sleep(100 * time.Millisecond)
+		results, _ = store.GetAllFeeds(ctx)
+		if len(results) == 0 {
+			continue
+		}
+	}
+}
+
+func TestStore_CircuitBreakerCustomSettings(t *testing.T) {
+	srv := mockFeedServer(t, "CustomSettingsTest")
+	defer srv.Close()
+
+	// Create store with custom circuit breaker settings
+	enabled := true
+	store, err := NewStore(Config{
+		Feeds:                          []string{srv.URL},
+		CircuitBreakerEnabled:          &enabled,
+		CircuitBreakerMaxRequests:      5,
+		CircuitBreakerInterval:         2 * time.Second,
+		CircuitBreakerTimeout:          3 * time.Second,
+		CircuitBreakerFailureThreshold: 2, // Custom failure threshold
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Verify settings are applied
+	if _, exists := store.circuitBreakers[srv.URL]; !exists {
+		t.Fatal("expected circuit breaker to exist")
+	}
+
+	// We can't directly access the settings, but we can verify the circuit breaker works
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Title != "CustomSettingsTest" {
+		t.Errorf("expected Title 'CustomSettingsTest', got %q", results[0].Title)
+	}
+}
+
+func TestStore_CircuitBreakerCustomFailureThreshold(t *testing.T) {
+	// Create a server that fails consistently
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failingServer.Close()
+
+	// Create store with custom failure threshold of 2 failures
+	enabled := true
+	store, err := NewStore(Config{
+		Feeds:                          []string{failingServer.URL},
+		CircuitBreakerEnabled:          &enabled,
+		CircuitBreakerTimeout:          1 * time.Second,
+		CircuitBreakerFailureThreshold: 2, // Should open after 2 failures instead of default 3
+		ExpireAfter:                    1 * time.Millisecond, // Force cache expiry
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Make 2 requests - should be enough to trigger circuit breaker with threshold of 2
+	for i := 0; i < 2; i++ {
+		results, err := store.GetAllFeeds(ctx)
+		if err != nil {
+			t.Fatalf("GetAllFeeds failed on attempt %d: %v", i+1, err)
+		}
+
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result on attempt %d, got %d", i+1, len(results))
+		}
+
+		// Should have fetch error
+		if results[0].FetchError == "" {
+			t.Errorf("expected FetchError on attempt %d", i+1)
+		}
+
+		// Clear cache to force new requests
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// After 2 failures with threshold of 2, circuit breaker should be open
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Circuit breaker should now be open with only 2 failures
+	if !results[0].CircuitBreakerOpen {
+		t.Error("expected CircuitBreakerOpen to be true after 2 failures with threshold of 2")
+	}
+}
+
+func TestGetFeedAndItems_CircuitBreakerState(t *testing.T) {
+	srv := mockFeedServer(t, "FeedAndItemsCircuitTest")
+	defer srv.Close()
+
+	// Create store with circuit breaker enabled (should be default, but let's be explicit for this test)
+	enabled := true
+	store, err := NewStore(Config{
+		Feeds:                 []string{srv.URL},
+		CircuitBreakerEnabled: &enabled,
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Find the ID for the feed
+	var id string
+	for k := range store.feeds {
+		id = k
+		break
+	}
+	if id == "" {
+		t.Fatal("no feed ID found")
+	}
+
+	ctx := context.Background()
+	result, err := store.GetFeedAndItems(ctx, id)
+	if err != nil {
+		t.Fatalf("GetFeedAndItems failed: %v", err)
+	}
+
+	// Circuit breaker should be closed initially
+	if result.CircuitBreakerOpen {
+		t.Error("expected CircuitBreakerOpen to be false initially")
+	}
+
+	if result.Title != "FeedAndItemsCircuitTest" {
+		t.Errorf("expected Title 'FeedAndItemsCircuitTest', got %q", result.Title)
+	}
+}

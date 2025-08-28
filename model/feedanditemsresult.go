@@ -5,10 +5,11 @@ import (
 )
 
 type FeedAndItemsResult struct {
-	ID         string         `json:"id"`
-	PublicURL  string         `json:"public_url"`
-	Title      string         `json:"title,omitempty"`
-	FetchError string         `json:"fetch_error,omitempty"`
-	Feed       *Feed          `json:"feed_result,omitempty"`
-	Items      []*gofeed.Item `json:"items,omitempty"`
+	ID                 string         `json:"id"`
+	PublicURL          string         `json:"public_url"`
+	Title              string         `json:"title,omitempty"`
+	FetchError         string         `json:"fetch_error,omitempty"`
+	Feed               *Feed          `json:"feed_result,omitempty"`
+	Items              []*gofeed.Item `json:"items,omitempty"`
+	CircuitBreakerOpen bool           `json:"circuit_breaker_open,omitempty"`
 }
