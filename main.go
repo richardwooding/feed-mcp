@@ -1,6 +1,11 @@
 package main
 
 import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/alecthomas/kong"
 	"github.com/richardwooding/feed-mcp/cmd"
 	"github.com/richardwooding/feed-mcp/model"
@@ -20,7 +25,7 @@ func main() {
 		},
 	}
 
-	ctx := kong.Parse(&cli,
+	kongCtx := kong.Parse(&cli,
 		kong.Name("feed-mcp"),
 		kong.Description("A MCP server for RSS and Atom feeds"),
 		kong.UsageOnError(),
@@ -30,6 +35,21 @@ func main() {
 		kong.Vars{
 			"version": version,
 		})
-	err := ctx.Run(&cli.Globals)
-	ctx.FatalIfErrorf(err)
+	
+	// Set up signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle SIGINT (Ctrl+C) and SIGTERM
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		cancel() // Cancel context on signal
+	}()
+	
+	// Pass the context to the command
+	err := kongCtx.Run(&cli.Globals, ctx)
+	kongCtx.FatalIfErrorf(err)
 }

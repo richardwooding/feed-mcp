@@ -98,7 +98,7 @@ func TestServerRunMethod(t *testing.T) {
 
 			done := make(chan error, 1)
 			go func() {
-				done <- server.Run()
+				done <- server.Run(ctx)
 			}()
 
 			select {

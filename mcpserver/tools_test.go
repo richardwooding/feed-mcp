@@ -424,7 +424,8 @@ func TestTransportErrorHandling(t *testing.T) {
 	}
 
 	// The Run method should return an error for unsupported transport
-	err = server.Run()
+	ctx := context.Background()
+	err = server.Run(ctx)
 	if err == nil {
 		t.Error("Run() should have failed for unsupported transport")
 	}
