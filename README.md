@@ -66,6 +66,8 @@ Add any of these configurations to your Claude Desktop to instantly access the l
 - Circuit breaker pattern for fault tolerance against failing feeds
 - HTTP connection pooling for improved performance with multiple feeds
 - Retry mechanism with exponential backoff and jitter for handling transient failures
+- **URL validation and sanitization** to prevent SSRF attacks and security vulnerabilities
+- Private IP and localhost blocking (configurable) for enhanced security
 - Graceful shutdown with signal handling (SIGINT/SIGTERM)
 - Supports multiple feeds simultaneously
 - Extensible and configurable
@@ -169,6 +171,42 @@ In your Claude Desktop configuration file, add the following configuration to th
   }
 }
 ```
+
+## Security
+
+`feed-mcp` includes several security features to protect against common web vulnerabilities:
+
+### URL Validation
+- **Scheme restriction**: Only HTTP and HTTPS URLs are allowed
+- **Private IP blocking**: Prevents SSRF attacks by blocking access to private IP ranges by default
+- **Localhost protection**: Blocks `localhost`, `127.x.x.x`, and IPv6 loopback addresses
+- **Malformed URL detection**: Rejects invalid or malicious URL formats
+
+### Private IP Ranges Blocked by Default
+- `10.0.0.0/8` (10.x.x.x)
+- `172.16.0.0/12` (172.16-31.x.x)  
+- `192.168.0.0/16` (192.168.x.x)
+- `127.0.0.0/8` (localhost/loopback)
+- `169.254.0.0/16` (link-local)
+- IPv6 loopback (`::1`) and link-local addresses
+
+### Configuration Options
+```bash
+# Allow private IPs and localhost (disabled by default for security)
+go run main.go run --allow-private-ips https://localhost/feed
+
+# Using Docker
+docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run \
+  --allow-private-ips \
+  https://192.168.1.100/api/feed
+```
+
+### Security Best Practices
+- Always validate feed URLs before deployment
+- Use HTTPS URLs when possible for encrypted transport
+- Regularly update to the latest version for security patches
+- Consider network-level restrictions for additional protection
+- Monitor logs for blocked URL attempts
 
 ## Dependencies
 

@@ -26,6 +26,8 @@ type RunCmd struct {
 	RetryBaseDelay   time.Duration `name:"retry-base-delay" default:"1s" help:"Base delay for exponential backoff between retry attempts."`
 	RetryMaxDelay    time.Duration `name:"retry-max-delay" default:"30s" help:"Maximum delay between retry attempts."`
 	RetryJitter      bool          `name:"retry-jitter" default:"true" help:"Enable jitter in retry delays to avoid thundering herd."`
+	// Security settings
+	AllowPrivateIPs  bool          `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
 }
 
 func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
@@ -35,6 +37,10 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	}
 	if len(c.Feeds) == 0 {
 		return errors.New("no feeds specified")
+	}
+	// Validate feed URLs for security
+	if err := model.SanitizeFeedURLs(c.Feeds, c.AllowPrivateIPs); err != nil {
+		return err
 	}
 	feedStore, err := store.NewStore(store.Config{
 		Feeds:               c.Feeds,

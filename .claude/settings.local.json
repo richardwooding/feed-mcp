@@ -29,7 +29,12 @@
       "Bash(git rebase:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "mcp__github__create_pending_pull_request_review",
+      "mcp__github__submit_pending_pull_request_review",
+      "mcp__github__get_issue_comments",
+      "Bash(./feed-mcp-test run:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
