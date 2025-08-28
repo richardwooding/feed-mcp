@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func mockFeedServer(t *testing.T, title string) *httptest.Server {
@@ -156,5 +158,153 @@ func TestGetFeedAndItems_FetchError(t *testing.T) {
 	}
 	if result.FetchError == "" {
 		t.Error("expected FetchError to be set")
+	}
+}
+
+func TestNewRateLimitedHTTPClient(t *testing.T) {
+	client := NewRateLimitedHTTPClient(1.0, 2)
+
+	if client == nil {
+		t.Fatal("expected client to be non-nil")
+	}
+
+	if client.Timeout != 30*time.Second {
+		t.Errorf("expected timeout to be 30s, got %v", client.Timeout)
+	}
+
+	// Verify it's our custom transport
+	if _, ok := client.Transport.(*RateLimitedTransport); !ok {
+		t.Error("expected RateLimitedTransport")
+	}
+}
+
+func TestRateLimitedTransport_RateLimit(t *testing.T) {
+	// Track number of requests
+	var requestCount int64
+
+	// Create a test server that tracks requests
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// Create a very restrictive rate limiter: 1 request per second with burst of 1
+	client := NewRateLimitedHTTPClient(1.0, 1)
+
+	start := time.Now()
+
+	// Make 3 requests - should take at least 2 seconds due to rate limiting
+	for i := 0; i < 3; i++ {
+		resp, err := client.Get(srv.URL)
+		if err != nil {
+			t.Fatalf("request %d failed: %v", i, err)
+		}
+		resp.Body.Close()
+	}
+
+	duration := time.Since(start)
+
+	// Should have taken at least 2 seconds (first request immediate, next two rate-limited)
+	if duration < 2*time.Second {
+		t.Errorf("expected at least 2s delay, got %v", duration)
+	}
+
+	// Verify all 3 requests were made
+	if atomic.LoadInt64(&requestCount) != 3 {
+		t.Errorf("expected 3 requests, got %d", atomic.LoadInt64(&requestCount))
+	}
+}
+
+func TestStore_DefaultRateLimiting(t *testing.T) {
+	srv := mockFeedServer(t, "RateLimitTest")
+	defer srv.Close()
+
+	// Create store without custom HTTP client - should use default rate limiting
+	store, err := NewStore(Config{
+		Feeds: []string{srv.URL},
+		// Don't set RequestsPerSecond or BurstCapacity - should use defaults
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Verify rate limiting is enabled by checking all feeds can be fetched
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Title != "RateLimitTest" {
+		t.Errorf("expected Title 'RateLimitTest', got %q", results[0].Title)
+	}
+}
+
+func TestStore_CustomRateLimiting(t *testing.T) {
+	srv := mockFeedServer(t, "CustomRateTest")
+	defer srv.Close()
+
+	// Create store with custom rate limiting settings
+	store, err := NewStore(Config{
+		Feeds:             []string{srv.URL},
+		RequestsPerSecond: 0.5, // Very slow: 1 request every 2 seconds
+		BurstCapacity:     1,   // No burst
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// The feed should still work, just rate-limited
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Title != "CustomRateTest" {
+		t.Errorf("expected Title 'CustomRateTest', got %q", results[0].Title)
+	}
+}
+
+func TestStore_CustomHttpClientPreserved(t *testing.T) {
+	srv := mockFeedServer(t, "CustomClientTest")
+	defer srv.Close()
+
+	// Create custom HTTP client
+	customClient := &http.Client{Timeout: 5 * time.Second}
+
+	// Create store with custom HTTP client - rate limiting should be skipped
+	store, err := NewStore(Config{
+		Feeds:             []string{srv.URL},
+		HttpClient:        customClient,
+		RequestsPerSecond: 10.0, // These should be ignored since HttpClient is provided
+		BurstCapacity:     20,
+	})
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	// Should still work with custom client
+	ctx := context.Background()
+	results, err := store.GetAllFeeds(ctx)
+	if err != nil {
+		t.Fatalf("GetAllFeeds failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Title != "CustomClientTest" {
+		t.Errorf("expected Title 'CustomClientTest', got %q", results[0].Title)
 	}
 }

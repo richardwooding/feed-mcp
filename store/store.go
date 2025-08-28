@@ -11,21 +11,57 @@ import (
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/mmcdole/gofeed"
 	"github.com/richardwooding/feed-mcp/model"
+	"golang.org/x/time/rate"
 	"net/http"
 	"sync"
 	"time"
 )
 
 type Config struct {
-	Feeds       []string
-	Timeout     time.Duration
-	ExpireAfter time.Duration
-	HttpClient  *http.Client
+	Feeds             []string
+	Timeout           time.Duration
+	ExpireAfter       time.Duration
+	HttpClient        *http.Client
+	RequestsPerSecond float64
+	BurstCapacity     int
 }
 
 type Store struct {
 	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
+}
+
+// RateLimitedTransport wraps an http.RoundTripper with rate limiting
+type RateLimitedTransport struct {
+	transport   http.RoundTripper
+	rateLimiter *rate.Limiter
+}
+
+// RoundTrip implements the http.RoundTripper interface with rate limiting
+func (r *RateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Wait for rate limiter permission
+	err := r.rateLimiter.Wait(req.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	// Proceed with the actual request
+	return r.transport.RoundTrip(req)
+}
+
+// NewRateLimitedHTTPClient creates an HTTP client with rate limiting
+func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int) *http.Client {
+	limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burstCapacity)
+
+	transport := &RateLimitedTransport{
+		transport:   http.DefaultTransport,
+		rateLimiter: limiter,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second, // Default timeout
+	}
 }
 
 func NewStore(config Config) (*Store, error) {
@@ -40,6 +76,20 @@ func NewStore(config Config) (*Store, error) {
 
 	if config.ExpireAfter == 0 {
 		config.ExpireAfter = 1 * time.Hour
+	}
+
+	// Set default rate limiting values
+	if config.RequestsPerSecond <= 0 {
+		config.RequestsPerSecond = 2.0 // 2 requests per second by default
+	}
+
+	if config.BurstCapacity <= 0 {
+		config.BurstCapacity = 5 // Allow burst of 5 requests by default
+	}
+
+	// Create rate-limited HTTP client if not provided
+	if config.HttpClient == nil {
+		config.HttpClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity)
 	}
 
 	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
