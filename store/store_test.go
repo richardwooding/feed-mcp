@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 func mockFeedServer(t *testing.T, title string) *httptest.Server {
@@ -46,9 +45,6 @@ func TestNewStore_AndGetAllFeeds(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 
-	// Wait for goroutines to finish (simulate, since feeds map is filled async)
-	time.Sleep(200 * time.Millisecond)
-
 	ctx := context.Background()
 	results, err := store.GetAllFeeds(ctx)
 	if err != nil {
@@ -73,7 +69,6 @@ func TestGetFeedAndItems_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
-	time.Sleep(200 * time.Millisecond)
 
 	// Find the ID for the feed
 	var id string
@@ -109,7 +104,6 @@ func TestGetFeedAndItems_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
-	time.Sleep(200 * time.Millisecond)
 
 	ctx := context.Background()
 	_, err = store.GetFeedAndItems(ctx, "nonexistent")
