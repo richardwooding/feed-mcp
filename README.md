@@ -65,6 +65,7 @@ Add any of these configurations to your Claude Desktop to instantly access the l
 - Built-in rate limiting (2 req/s default) to be respectful to feed servers
 - Circuit breaker pattern for fault tolerance against failing feeds
 - HTTP connection pooling for improved performance with multiple feeds
+- Retry mechanism with exponential backoff and jitter for handling transient failures
 - Graceful shutdown with signal handling (SIGINT/SIGTERM)
 - Supports multiple feeds simultaneously
 - Extensible and configurable
@@ -79,6 +80,7 @@ The core of `feed-mcp` is a Go server that fetches, parses, and serves RSS/Atom/
 - **Rate Limiting:** Built-in HTTP rate limiting using [golang.org/x/time/rate](https://pkg.go.dev/golang.org/x/time/rate) prevents overwhelming feed servers with requests.
 - **Circuit Breaker:** Implements circuit breaker pattern using [sony/gobreaker](https://github.com/sony/gobreaker) to temporarily stop fetching from consistently failing feeds, with configurable failure thresholds and recovery timeouts.
 - **HTTP Connection Pooling:** Optimized HTTP connection pooling with configurable pool sizes and timeouts for improved performance when fetching multiple feeds simultaneously.
+- **Retry Mechanism:** Automatic retry with exponential backoff and jitter for handling transient network failures, DNS errors, and server errors (5xx), while avoiding retries for client errors (4xx).
 - **MCP Protocol Server:** Implements the MCP protocol using the [official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk), allowing integration with clients like Claude Desktop.
 - **Transport Options:** Supports different transports (e.g., stdio, HTTP with SSE) for communication with MCP clients.
 - **Graceful Shutdown:** Handles SIGINT and SIGTERM signals for clean termination, with configurable shutdown timeout (default 30s).

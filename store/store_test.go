@@ -524,13 +524,14 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 	}))
 	defer recoveringServer.Close()
 
-	// Create store with circuit breaker enabled
+	// Create store with circuit breaker enabled but retry disabled for predictable testing
 	enabled := true
 	store, err := NewStore(Config{
 		Feeds:                 []string{recoveringServer.URL},
 		CircuitBreakerEnabled: &enabled,
-		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for quick recovery
+		CircuitBreakerTimeout: 1 * time.Second,      // Short timeout for quick recovery
 		ExpireAfter:           1 * time.Millisecond, // Force cache expiry
+		RetryMaxAttempts:      1,                    // Disable retry for circuit breaker testing
 	})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
@@ -630,7 +631,7 @@ func TestStore_CircuitBreakerCustomFailureThreshold(t *testing.T) {
 		Feeds:                          []string{failingServer.URL},
 		CircuitBreakerEnabled:          &enabled,
 		CircuitBreakerTimeout:          1 * time.Second,
-		CircuitBreakerFailureThreshold: 2, // Should open after 2 failures instead of default 3
+		CircuitBreakerFailureThreshold: 2,                    // Should open after 2 failures instead of default 3
 		ExpireAfter:                    1 * time.Millisecond, // Force cache expiry
 	})
 	if err != nil {
@@ -721,10 +722,10 @@ func TestStore_ConnectionPooling(t *testing.T) {
 
 	// Test with custom connection pool settings
 	store, err := NewStore(Config{
-		Feeds:                []string{srv.URL},
-		ExpireAfter:          1 * time.Hour,
-		MaxIdleConns:         50,
-		MaxConnsPerHost:      20,
+		Feeds:               []string{srv.URL},
+		ExpireAfter:         1 * time.Hour,
+		MaxIdleConns:        50,
+		MaxConnsPerHost:     20,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     60 * time.Second,
 	})
@@ -797,9 +798,9 @@ func TestNewRateLimitedHTTPClient_ConnectionPoolSettings(t *testing.T) {
 		MaxIdleConnsPerHost: 8,
 		IdleConnTimeout:     120 * time.Second,
 	}
-	
+
 	client := NewRateLimitedHTTPClient(2.0, 3, poolConfig)
-	
+
 	if client == nil {
 		t.Fatal("expected client to be non-nil")
 	}
@@ -831,5 +832,733 @@ func TestNewRateLimitedHTTPClient_ConnectionPoolSettings(t *testing.T) {
 
 	if httpTransport.IdleConnTimeout != 120*time.Second {
 		t.Errorf("expected IdleConnTimeout to be 120s, got %v", httpTransport.IdleConnTimeout)
+	}
+}
+
+// Retry mechanism tests
+
+func TestRetryMechanism_SuccessfulFetch(t *testing.T) {
+	server := mockFeedServer(t, "Test Feed")
+	defer server.Close()
+
+	config := Config{
+		Feeds:            []string{server.URL},
+		Timeout:          5 * time.Second,
+		ExpireAfter:      1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts: 3,
+		RetryBaseDelay:   100 * time.Millisecond,
+		RetryMaxDelay:    1 * time.Second,
+		RetryJitter:      false, // Disable jitter for predictable testing
+	}
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	if feeds[0].Title != "Test Feed" {
+		t.Errorf("expected feed title 'Test Feed', got %q", feeds[0].Title)
+	}
+}
+
+func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
+	var requestCount int64
+
+	// Server that fails first 2 requests, succeeds on 3rd
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt64(&requestCount, 1)
+		if count <= 2 {
+			w.WriteHeader(http.StatusInternalServerError) // 5xx error - retryable
+			return
+		}
+
+		// Success on 3rd attempt
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(`
+			<rss version="2.0">
+				<channel>
+					<title>Retry Test Feed</title>
+					<item>
+						<title>Item 1</title>
+						<link>http://example.com/1</link>
+					</item>
+				</channel>
+			</rss>
+		`))
+	}))
+	defer server.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        50 * time.Millisecond,
+		RetryMaxDelay:         1 * time.Second,
+		RetryJitter:           false, // Disable jitter for predictable testing
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should succeed after 3 attempts
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	if feeds[0].Title != "Retry Test Feed" {
+		t.Errorf("expected feed title 'Retry Test Feed', got %q", feeds[0].Title)
+	}
+
+	// Should have made exactly 3 requests
+	finalCount := atomic.LoadInt64(&requestCount)
+	if finalCount != 3 {
+		t.Errorf("expected 3 requests, got %d", finalCount)
+	}
+}
+
+func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
+	var requestCount int64
+
+	// Server that always fails with 5xx error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        50 * time.Millisecond,
+		RetryMaxDelay:         1 * time.Second,
+		RetryJitter:           false,
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	// Reset counter before NewStore call since it will trigger initial fetch
+	atomic.StoreInt64(&requestCount, 0)
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NewStore should have made exactly 3 attempts (retries during initialization)
+	initCount := atomic.LoadInt64(&requestCount)
+	if initCount != 3 {
+		t.Errorf("expected 3 requests during NewStore, got %d", initCount)
+	}
+
+	// Reset counter to test fresh fetch
+	atomic.StoreInt64(&requestCount, 0)
+
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal("expected success even with failed feeds")
+	}
+
+	// Should have a feed with error
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	if feeds[0].FetchError == "" {
+		t.Error("expected fetch error, got none")
+	}
+
+	// Should have made exactly 3 more attempts
+	finalCount := atomic.LoadInt64(&requestCount)
+	if finalCount != 3 {
+		t.Errorf("expected 3 requests during GetAllFeeds, got %d", finalCount)
+	}
+}
+
+func TestRetryMechanism_NonRetryableError(t *testing.T) {
+	var requestCount int64
+
+	// Server that returns 404 (non-retryable)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusNotFound) // 4xx error - not retryable
+	}))
+	defer server.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        50 * time.Millisecond,
+		RetryMaxDelay:         1 * time.Second,
+		RetryJitter:           false,
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	// Reset counter before NewStore call since it will trigger initial fetch
+	atomic.StoreInt64(&requestCount, 0)
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NewStore should have made only 1 attempt (4xx errors are not retryable)
+	initCount := atomic.LoadInt64(&requestCount)
+	if initCount != 1 {
+		t.Errorf("expected 1 request during NewStore, got %d", initCount)
+	}
+
+	// Reset counter to test fresh fetch
+	atomic.StoreInt64(&requestCount, 0)
+
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal("expected success even with failed feeds")
+	}
+
+	// Should have a feed with error
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	if feeds[0].FetchError == "" {
+		t.Error("expected fetch error, got none")
+	}
+
+	// Should have made only 1 more request (no retries for 4xx errors)
+	finalCount := atomic.LoadInt64(&requestCount)
+	if finalCount != 1 {
+		t.Errorf("expected 1 request during GetAllFeeds, got %d", finalCount)
+	}
+}
+
+func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
+	var requestCount int64
+	var timestamps []time.Time
+
+	// Server that always fails to test timing
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		timestamps = append(timestamps, time.Now())
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        100 * time.Millisecond,
+		RetryMaxDelay:         10 * time.Second,
+		RetryJitter:           false, // Disable jitter for timing tests
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	// Reset counters before NewStore call since it will trigger initial fetch
+	atomic.StoreInt64(&requestCount, 0)
+	timestamps = nil
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify NewStore made 3 attempts with proper timing
+	if len(timestamps) != 3 {
+		t.Fatalf("expected 3 timestamps during NewStore, got %d", len(timestamps))
+	}
+
+	// Reset for GetAllFeeds test
+	atomic.StoreInt64(&requestCount, 0)
+	timestamps = nil
+
+	startTime := time.Now()
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal("expected success even with failed feeds")
+	}
+
+	// Should have a feed with error
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	// Verify timing - should have delays of ~100ms, ~200ms between attempts
+	if len(timestamps) != 3 {
+		t.Fatalf("expected 3 timestamps during GetAllFeeds, got %d", len(timestamps))
+	}
+
+	// First delay should be ~100ms (base delay)
+	firstDelay := timestamps[1].Sub(timestamps[0])
+	if firstDelay < 90*time.Millisecond || firstDelay > 150*time.Millisecond {
+		t.Errorf("expected first delay ~100ms, got %v", firstDelay)
+	}
+
+	// Second delay should be ~200ms (base delay * 2)
+	secondDelay := timestamps[2].Sub(timestamps[1])
+	if secondDelay < 180*time.Millisecond || secondDelay > 250*time.Millisecond {
+		t.Errorf("expected second delay ~200ms, got %v", secondDelay)
+	}
+
+	// Total time should be at least 300ms
+	totalTime := time.Since(startTime)
+	if totalTime < 300*time.Millisecond {
+		t.Errorf("expected total time >= 300ms, got %v", totalTime)
+	}
+}
+
+func TestRetryMechanism_MaxDelayRespected(t *testing.T) {
+	var requestCount int64
+	var timestamps []time.Time
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		timestamps = append(timestamps, time.Now())
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	config := Config{
+		Feeds:            []string{server.URL},
+		Timeout:          5 * time.Second,
+		ExpireAfter:      1 * time.Millisecond,
+		RetryMaxAttempts: 4, // More attempts to test max delay
+		RetryBaseDelay:   100 * time.Millisecond,
+		RetryMaxDelay:    200 * time.Millisecond, // Small max delay
+		RetryJitter:      false,
+	}
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store.GetAllFeeds(context.Background())
+
+	// Verify that delays are capped at max delay
+	if len(timestamps) < 3 {
+		t.Fatalf("expected at least 3 timestamps, got %d", len(timestamps))
+	}
+
+	// Third delay should be capped at max delay (~200ms), not 400ms
+	if len(timestamps) >= 4 {
+		thirdDelay := timestamps[3].Sub(timestamps[2])
+		if thirdDelay > 250*time.Millisecond {
+			t.Errorf("expected third delay <= 250ms (max delay + tolerance), got %v", thirdDelay)
+		}
+	}
+}
+
+func TestIsRetryableError(t *testing.T) {
+	tests := []struct {
+		name      string
+		error     string
+		retryable bool
+	}{
+		{"nil error", "", false},
+		{"5xx server error", "HTTP error: status code 500", true},
+		{"502 bad gateway", "status code 502", true},
+		{"gofeed 5xx error", "http error: 500 Internal Server Error", true},
+		{"4xx client error", "status code 404", false},
+		{"401 unauthorized", "status code 401", false},
+		{"gofeed 4xx error", "http error: 404 Not Found", false},
+		{"DNS error", "no such host", true},
+		{"connection refused", "connection refused", true},
+		{"connection reset", "connection reset", true},
+		{"network unreachable", "network unreachable", true},
+		{"timeout", "timeout", true},
+		{"i/o timeout", "i/o timeout", true},
+		{"unknown error", "some other error", true}, // Default to retryable
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var err error
+			if tt.error != "" {
+				err = &testError{msg: tt.error}
+			}
+
+			result := isRetryableError(err)
+			if result != tt.retryable {
+				t.Errorf("expected %v, got %v for error: %q", tt.retryable, result, tt.error)
+			}
+		})
+	}
+}
+
+type testError struct {
+	msg string
+}
+
+func (e *testError) Error() string {
+	return e.msg
+}
+
+func TestCalculateRetryDelay(t *testing.T) {
+	tests := []struct {
+		name        string
+		attempt     int
+		baseDelay   time.Duration
+		maxDelay    time.Duration
+		useJitter   bool
+		minExpected time.Duration
+		maxExpected time.Duration
+	}{
+		{"first attempt", 1, 100 * time.Millisecond, 10 * time.Second, false, 100 * time.Millisecond, 100 * time.Millisecond},
+		{"second attempt", 2, 100 * time.Millisecond, 10 * time.Second, false, 200 * time.Millisecond, 200 * time.Millisecond},
+		{"third attempt", 3, 100 * time.Millisecond, 10 * time.Second, false, 400 * time.Millisecond, 400 * time.Millisecond},
+		{"capped by max delay", 10, 100 * time.Millisecond, 1 * time.Second, false, 1 * time.Second, 1 * time.Second},
+		{"zero attempt", 0, 100 * time.Millisecond, 10 * time.Second, false, 100 * time.Millisecond, 100 * time.Millisecond},
+		{"with jitter", 2, 100 * time.Millisecond, 10 * time.Second, true, 100 * time.Millisecond, 300 * time.Millisecond},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			delay := calculateRetryDelay(tt.attempt, tt.baseDelay, tt.maxDelay, tt.useJitter)
+
+			if delay < tt.minExpected || delay > tt.maxExpected {
+				t.Errorf("expected delay between %v and %v, got %v", tt.minExpected, tt.maxExpected, delay)
+			}
+		})
+	}
+}
+
+func TestRetryMechanism_DefaultConfiguration(t *testing.T) {
+	var requestCount int64
+
+	// Server that fails first 2 requests in each batch, succeeds on 3rd to test default retry count
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt64(&requestCount, 1)
+		// Fail first 2 requests in each "batch" of 3, succeed on 3rd
+		if (count-1)%3 < 2 {
+			w.WriteHeader(http.StatusInternalServerError) // 5xx error - retryable
+			return
+		}
+
+		// Success on every 3rd attempt (default retry count)
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(`
+			<rss version="2.0">
+				<channel>
+					<title>Default Config Feed</title>
+					<item>
+						<title>Item 1</title>
+						<link>http://example.com/1</link>
+					</item>
+				</channel>
+			</rss>
+		`))
+	}))
+	defer server.Close()
+
+	// Test that defaults work by creating a store with minimal config
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		CircuitBreakerEnabled: &disabled,
+		// Don't set retry values to test defaults (should be 3 attempts, 1s base delay)
+	}
+
+	// Reset counter
+	atomic.StoreInt64(&requestCount, 0)
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NewStore should succeed after 3 attempts (default retry max attempts)
+	initCount := atomic.LoadInt64(&requestCount)
+	if initCount != 3 {
+		t.Errorf("expected 3 requests during NewStore with defaults, got %d", initCount)
+	}
+
+	// Verify the store was created successfully and defaults worked
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	if feeds[0].Title != "Default Config Feed" {
+		t.Errorf("expected feed title 'Default Config Feed', got %q", feeds[0].Title)
+	}
+
+	// This test primarily verifies that the default retry configuration
+	// allows the store to succeed after 3 attempts during initialization
+}
+
+// Retry metrics tests
+
+func TestRetryMetrics_SuccessfulFeeds(t *testing.T) {
+	server := mockFeedServer(t, "Metrics Test Feed")
+	defer server.Close()
+
+	config := Config{
+		Feeds:            []string{server.URL},
+		Timeout:          5 * time.Second,
+		ExpireAfter:      1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts: 3,
+		RetryBaseDelay:   50 * time.Millisecond,
+		RetryMaxDelay:    1 * time.Second,
+		RetryJitter:      false,
+	}
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get initial metrics
+	initialMetrics := store.GetRetryMetrics()
+
+	// Should have 1 successful feed from initialization
+	if initialMetrics.SuccessfulFeeds != 1 {
+		t.Errorf("expected 1 successful feed in initial metrics, got %d", initialMetrics.SuccessfulFeeds)
+	}
+	if initialMetrics.TotalAttempts != 1 {
+		t.Errorf("expected 1 total attempt in initial metrics, got %d", initialMetrics.TotalAttempts)
+	}
+	if initialMetrics.TotalRetries != 0 {
+		t.Errorf("expected 0 retries in initial metrics, got %d", initialMetrics.TotalRetries)
+	}
+	if initialMetrics.RetrySuccessRate != 100.0 {
+		t.Errorf("expected 100%% success rate in initial metrics, got %f", initialMetrics.RetrySuccessRate)
+	}
+
+	// Wait for cache to expire then fetch again to trigger cache miss
+	time.Sleep(10 * time.Millisecond) // Wait for cache expiration
+	feeds, err := store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+
+	// Get final metrics
+	finalMetrics := store.GetRetryMetrics()
+
+	// Should have 2 successful feeds total
+	if finalMetrics.SuccessfulFeeds != 2 {
+		t.Errorf("expected 2 successful feeds in final metrics, got %d", finalMetrics.SuccessfulFeeds)
+	}
+	if finalMetrics.TotalAttempts != 2 {
+		t.Errorf("expected 2 total attempts in final metrics, got %d", finalMetrics.TotalAttempts)
+	}
+	if finalMetrics.TotalRetries != 0 {
+		t.Errorf("expected 0 retries in final metrics, got %d", finalMetrics.TotalRetries)
+	}
+	if finalMetrics.RetrySuccessRate != 100.0 {
+		t.Errorf("expected 100%% success rate in final metrics, got %f", finalMetrics.RetrySuccessRate)
+	}
+}
+
+func TestRetryMetrics_WithRetries(t *testing.T) {
+	var requestCount int64
+
+	// Server that fails first 2 requests, succeeds on 3rd
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt64(&requestCount, 1)
+		if count <= 2 {
+			w.WriteHeader(http.StatusInternalServerError) // 5xx error - retryable
+			return
+		}
+
+		// Success on 3rd attempt
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(`
+			<rss version="2.0">
+				<channel>
+					<title>Retry Metrics Test Feed</title>
+					<item>
+						<title>Item 1</title>
+						<link>http://example.com/1</link>
+					</item>
+				</channel>
+			</rss>
+		`))
+	}))
+	defer server.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        50 * time.Millisecond,
+		RetryMaxDelay:         1 * time.Second,
+		RetryJitter:           false,
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	// Reset counter
+	atomic.StoreInt64(&requestCount, 0)
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get metrics after initialization
+	metrics := store.GetRetryMetrics()
+
+	// Should have 1 successful feed with retries
+	if metrics.SuccessfulFeeds != 1 {
+		t.Errorf("expected 1 successful feed, got %d", metrics.SuccessfulFeeds)
+	}
+	if metrics.TotalAttempts != 3 {
+		t.Errorf("expected 3 total attempts, got %d", metrics.TotalAttempts)
+	}
+	if metrics.TotalRetries != 2 {
+		t.Errorf("expected 2 retries, got %d", metrics.TotalRetries)
+	}
+	if metrics.FailedFeeds != 0 {
+		t.Errorf("expected 0 failed feeds, got %d", metrics.FailedFeeds)
+	}
+	if metrics.RetrySuccessRate != 100.0 {
+		t.Errorf("expected 100%% success rate, got %f", metrics.RetrySuccessRate)
+	}
+}
+
+func TestRetryMetrics_FailedFeeds(t *testing.T) {
+	var requestCount int64
+
+	// Server that always fails with 5xx error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{server.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        50 * time.Millisecond,
+		RetryMaxDelay:         1 * time.Second,
+		RetryJitter:           false,
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	// Reset counter
+	atomic.StoreInt64(&requestCount, 0)
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get metrics after initialization
+	metrics := store.GetRetryMetrics()
+
+	// Should have 1 failed feed with retries
+	if metrics.SuccessfulFeeds != 0 {
+		t.Errorf("expected 0 successful feeds, got %d", metrics.SuccessfulFeeds)
+	}
+	if metrics.TotalAttempts != 3 {
+		t.Errorf("expected 3 total attempts, got %d", metrics.TotalAttempts)
+	}
+	if metrics.TotalRetries != 2 {
+		t.Errorf("expected 2 retries, got %d", metrics.TotalRetries)
+	}
+	if metrics.FailedFeeds != 1 {
+		t.Errorf("expected 1 failed feed, got %d", metrics.FailedFeeds)
+	}
+	if metrics.RetrySuccessRate != 0.0 {
+		t.Errorf("expected 0%% success rate, got %f", metrics.RetrySuccessRate)
+	}
+}
+
+func TestRetryMetrics_MixedResults(t *testing.T) {
+	// Create one working server and one failing server
+	workingServer := mockFeedServer(t, "Working Feed")
+	defer workingServer.Close()
+
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failingServer.Close()
+
+	// Disable circuit breaker to test retry mechanism in isolation
+	disabled := false
+	config := Config{
+		Feeds:                 []string{workingServer.URL, failingServer.URL},
+		Timeout:               5 * time.Second,
+		ExpireAfter:           1 * time.Millisecond, // Force cache miss
+		RetryMaxAttempts:      3,
+		RetryBaseDelay:        50 * time.Millisecond,
+		RetryMaxDelay:         1 * time.Second,
+		RetryJitter:           false,
+		CircuitBreakerEnabled: &disabled,
+	}
+
+	store, err := NewStore(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get metrics after initialization
+	metrics := store.GetRetryMetrics()
+
+	// Should have mixed results
+	if metrics.SuccessfulFeeds != 1 {
+		t.Errorf("expected 1 successful feed, got %d", metrics.SuccessfulFeeds)
+	}
+	if metrics.FailedFeeds != 1 {
+		t.Errorf("expected 1 failed feed, got %d", metrics.FailedFeeds)
+	}
+	// Working server: 1 attempt, failing server: 3 attempts
+	if metrics.TotalAttempts != 4 {
+		t.Errorf("expected 4 total attempts, got %d", metrics.TotalAttempts)
+	}
+	// Failing server: 2 retries
+	if metrics.TotalRetries != 2 {
+		t.Errorf("expected 2 retries, got %d", metrics.TotalRetries)
+	}
+	// 1 success out of 2 feeds = 50%
+	expectedSuccessRate := 50.0
+	if metrics.RetrySuccessRate != expectedSuccessRate {
+		t.Errorf("expected %.1f%% success rate, got %f", expectedSuccessRate, metrics.RetrySuccessRate)
 	}
 }

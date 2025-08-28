@@ -4,6 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/dgraph-io/ristretto"
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/eko/gocache/lib/v4/store"
@@ -13,10 +21,6 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
-	"net"
-	"net/http"
-	"sync"
-	"time"
 )
 
 // HTTPPoolConfig holds HTTP connection pool configuration
@@ -28,28 +32,44 @@ type HTTPPoolConfig struct {
 }
 
 type Config struct {
-	Feeds                        []string
-	Timeout                      time.Duration
-	ExpireAfter                  time.Duration
-	HttpClient                   *http.Client
-	RequestsPerSecond            float64
-	BurstCapacity                int
-	CircuitBreakerEnabled        *bool
-	CircuitBreakerMaxRequests    uint32
-	CircuitBreakerInterval       time.Duration
-	CircuitBreakerTimeout        time.Duration
+	Feeds                          []string
+	Timeout                        time.Duration
+	ExpireAfter                    time.Duration
+	HttpClient                     *http.Client
+	RequestsPerSecond              float64
+	BurstCapacity                  int
+	CircuitBreakerEnabled          *bool
+	CircuitBreakerMaxRequests      uint32
+	CircuitBreakerInterval         time.Duration
+	CircuitBreakerTimeout          time.Duration
 	CircuitBreakerFailureThreshold uint32
 	// HTTP connection pooling settings
 	MaxIdleConns        int
 	MaxConnsPerHost     int
 	MaxIdleConnsPerHost int
 	IdleConnTimeout     time.Duration
+	// Retry mechanism settings
+	RetryMaxAttempts int
+	RetryBaseDelay   time.Duration
+	RetryMaxDelay    time.Duration
+	RetryJitter      bool
+}
+
+// RetryMetrics holds metrics for retry operations
+type RetryMetrics struct {
+	TotalAttempts    int64   // Total number of HTTP attempts made
+	TotalRetries     int64   // Total number of retries (excluding initial attempts)
+	SuccessfulFeeds  int64   // Number of feeds successfully fetched
+	FailedFeeds      int64   // Number of feeds that failed after all retries
+	RetrySuccessRate float64 // Percentage of feeds that succeeded after retrying
 }
 
 type Store struct {
 	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
 	circuitBreakers  map[string]*gobreaker.CircuitBreaker
+	retryMetrics     *RetryMetrics
+	metricsMutex     sync.RWMutex
 }
 
 // RateLimitedTransport wraps an http.RoundTripper with rate limiting
@@ -81,8 +101,8 @@ func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, pool
 		MaxIdleConnsPerHost: poolConfig.MaxIdleConnsPerHost,
 		IdleConnTimeout:     poolConfig.IdleConnTimeout,
 		// Copy other default settings from http.DefaultTransport
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
@@ -100,6 +120,144 @@ func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, pool
 		Transport: transport,
 		Timeout:   30 * time.Second, // Default timeout
 	}
+}
+
+// isRetryableError determines if an error should trigger a retry
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// Context cancellation and timeout errors are not retryable
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	// DNS and network errors are retryable
+	if strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "network unreachable") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "i/o timeout") {
+		return true
+	}
+
+	// HTTP status errors (gofeed uses "http error: XXX" format)
+	if strings.Contains(errStr, "http error: 5") || strings.Contains(errStr, "status code 5") {
+		return true // 5xx server errors are retryable
+	}
+
+	if strings.Contains(errStr, "http error: 4") || strings.Contains(errStr, "status code 4") {
+		return false // 4xx client errors are not retryable
+	}
+
+	// Default to retryable for unknown network-related errors
+	return true
+}
+
+// calculateRetryDelay calculates the delay for the next retry with exponential backoff and optional jitter
+func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitter bool) time.Duration {
+	if attempt <= 0 {
+		return baseDelay
+	}
+
+	// Exponential backoff: baseDelay * 2^(attempt-1)
+	delay := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt-1)))
+
+	// Cap at maxDelay
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+
+	// Add jitter to avoid thundering herd
+	if useJitter && delay > 0 {
+		jitterRange := delay / 2
+		jitter := time.Duration(rand.Int63n(int64(jitterRange)))
+		delay = delay - jitterRange/2 + jitter
+	}
+
+	return delay
+}
+
+// retryableFeedFetch performs feed fetching with retry logic and metrics tracking
+func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, config Config, metrics *RetryMetrics, metricsMutex *sync.RWMutex) (*gofeed.Feed, error) {
+	var lastErr error
+	maxAttempts := config.RetryMaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1 // At least one attempt
+	}
+
+	attemptCount := 0
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attemptCount++
+
+		// Track total attempts
+		if metrics != nil && metricsMutex != nil {
+			metricsMutex.Lock()
+			metrics.TotalAttempts++
+			if attempt > 1 {
+				metrics.TotalRetries++
+			}
+			metricsMutex.Unlock()
+		}
+
+		// Create timeout context for this attempt
+		attemptCtx, cancel := context.WithTimeout(ctx, config.Timeout)
+
+		feed, err := parser.ParseURLWithContext(url, attemptCtx)
+		cancel()
+
+		// Success case
+		if err == nil {
+			// Track successful feed
+			if metrics != nil && metricsMutex != nil {
+				metricsMutex.Lock()
+				metrics.SuccessfulFeeds++
+				// Update success rate
+				totalFeeds := metrics.SuccessfulFeeds + metrics.FailedFeeds
+				if totalFeeds > 0 {
+					metrics.RetrySuccessRate = float64(metrics.SuccessfulFeeds) / float64(totalFeeds) * 100
+				}
+				metricsMutex.Unlock()
+			}
+			return feed, nil
+		}
+
+		lastErr = err
+
+		// Don't retry on the last attempt or non-retryable errors
+		if attempt >= maxAttempts || !isRetryableError(err) {
+			break
+		}
+
+		// Calculate delay and sleep before next attempt
+		delay := calculateRetryDelay(attempt, config.RetryBaseDelay, config.RetryMaxDelay, config.RetryJitter)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+			// Continue to next attempt
+		}
+	}
+
+	// Track failed feed
+	if metrics != nil && metricsMutex != nil {
+		metricsMutex.Lock()
+		metrics.FailedFeeds++
+		// Update success rate
+		totalFeeds := metrics.SuccessfulFeeds + metrics.FailedFeeds
+		if totalFeeds > 0 {
+			metrics.RetrySuccessRate = float64(metrics.SuccessfulFeeds) / float64(totalFeeds) * 100
+		}
+		metricsMutex.Unlock()
+	}
+
+	return nil, lastErr
 }
 
 func NewStore(config Config) (*Store, error) {
@@ -153,6 +311,18 @@ func NewStore(config Config) (*Store, error) {
 		config.IdleConnTimeout = 90 * time.Second // Default to 90 seconds idle timeout
 	}
 
+	// Set default retry values
+	if config.RetryMaxAttempts <= 0 {
+		config.RetryMaxAttempts = 3 // Default to 3 retry attempts
+	}
+	if config.RetryBaseDelay <= 0 {
+		config.RetryBaseDelay = 1 * time.Second // Default to 1 second base delay
+	}
+	if config.RetryMaxDelay <= 0 {
+		config.RetryMaxDelay = 30 * time.Second // Default to 30 seconds max delay
+	}
+	// RetryJitter defaults to true (jitter is enabled by default unless explicitly disabled)
+
 	// Create rate-limited HTTP client with connection pooling if not provided
 	if config.HttpClient == nil {
 		poolConfig := HTTPPoolConfig{
@@ -178,7 +348,7 @@ func NewStore(config Config) (*Store, error) {
 	// Initialize circuit breakers map - enabled by default unless explicitly disabled
 	var circuitBreakers map[string]*gobreaker.CircuitBreaker
 	circuitBreakerEnabled := config.CircuitBreakerEnabled == nil || *config.CircuitBreakerEnabled
-	
+
 	if circuitBreakerEnabled {
 		circuitBreakers = make(map[string]*gobreaker.CircuitBreaker)
 		for _, feedURL := range config.Feeds {
@@ -195,19 +365,27 @@ func NewStore(config Config) (*Store, error) {
 		}
 	}
 
+	// Create the store first
+	s := &Store{
+		feeds:           make(map[string]string, len(config.Feeds)),
+		circuitBreakers: circuitBreakers,
+		retryMetrics:    &RetryMetrics{},
+		metricsMutex:    sync.RWMutex{},
+	}
+
 	loadFunction := func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
 		if url, ok := key.(string); ok {
+			// Create parser with HTTP client
+			fp := gofeed.NewParser()
+			if config.HttpClient != nil {
+				fp.Client = config.HttpClient
+			}
+
 			// Use circuit breaker if enabled
 			if circuitBreakerEnabled {
 				if cb, exists := circuitBreakers[url]; exists {
 					result, err := cb.Execute(func() (interface{}, error) {
-						fp := gofeed.NewParser()
-						if config.HttpClient != nil {
-							fp.Client = config.HttpClient
-						}
-						expireContext, cancel := context.WithTimeout(ctx, config.Timeout)
-						defer cancel()
-						return fp.ParseURLWithContext(url, expireContext)
+						return retryableFeedFetch(ctx, url, fp, config, s.retryMetrics, &s.metricsMutex)
 					})
 					if err != nil {
 						return nil, nil, err
@@ -219,14 +397,8 @@ func NewStore(config Config) (*Store, error) {
 				}
 			}
 
-			// Fallback to direct parsing if circuit breaker not enabled or URL not found
-			fp := gofeed.NewParser()
-			if config.HttpClient != nil {
-				fp.Client = config.HttpClient
-			}
-			expireContext, cancel := context.WithTimeout(ctx, config.Timeout)
-			defer cancel()
-			feed, err := fp.ParseURLWithContext(url, expireContext)
+			// Fallback to direct retryable parsing if circuit breaker not enabled or URL not found
+			feed, err := retryableFeedFetch(ctx, url, fp, config, s.retryMetrics, &s.metricsMutex)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -240,6 +412,7 @@ func NewStore(config Config) (*Store, error) {
 		loadFunction,
 		cache.New[*gofeed.Feed](ristrettoStore),
 	)
+	s.feedCacheManager = cacheManager
 
 	feeds := make(map[string]string, len(config.Feeds))
 	var feedsMutex sync.Mutex
@@ -258,11 +431,8 @@ func NewStore(config Config) (*Store, error) {
 	}
 	wg.Wait()
 
-	return &Store{
-		feeds:            feeds,
-		feedCacheManager: cacheManager,
-		circuitBreakers:  circuitBreakers,
-	}, nil
+	s.feeds = feeds
+	return s, nil
 }
 
 func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
@@ -274,26 +444,26 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 		go func(idx int, id string, url string) {
 			defer wg.Done()
 			feed, err := s.feedCacheManager.Get(ctx, url)
-			
+
 			result := &model.FeedResult{
 				ID:        id,
 				PublicURL: url,
 			}
-			
+
 			// Check circuit breaker state
 			if s.circuitBreakers != nil {
 				if cb, exists := s.circuitBreakers[url]; exists {
 					result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
 				}
 			}
-			
+
 			if err != nil {
 				result.FetchError = err.Error()
 			} else {
 				result.Title = feed.Title
 				result.Feed = model.FromGoFeed(feed)
 			}
-			
+
 			results[idx] = result
 		}(idx, id, url)
 		idx++
@@ -305,29 +475,36 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndItemsResult, error) {
 	if url, exists := s.feeds[id]; exists {
 		feed, err := s.feedCacheManager.Get(ctx, url)
-		
+
 		result := &model.FeedAndItemsResult{
 			ID:        id,
 			PublicURL: url,
 		}
-		
+
 		// Check circuit breaker state
 		if s.circuitBreakers != nil {
 			if cb, exists := s.circuitBreakers[url]; exists {
 				result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
 			}
 		}
-		
+
 		if err != nil {
 			result.FetchError = err.Error()
 			return result, nil
 		}
-		
+
 		result.Title = feed.Title
 		result.Feed = model.FromGoFeed(feed)
 		result.Items = feed.Items
-		
+
 		return result, nil
 	}
 	return nil, fmt.Errorf("feed with ID %s not found", id)
+}
+
+// GetRetryMetrics returns a copy of the current retry metrics
+func (s *Store) GetRetryMetrics() RetryMetrics {
+	s.metricsMutex.RLock()
+	defer s.metricsMutex.RUnlock()
+	return *s.retryMetrics
 }
