@@ -4,7 +4,50 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-### Build and Run
+**🚀 Quick Start:** This project includes a comprehensive `Makefile` for all development tasks. Run `make help` to see all available targets.
+
+### Common Tasks (using Makefile)
+```bash
+# Show all available targets with descriptions
+make help
+
+# Set up development environment
+make dev-setup
+
+# Development workflow - format, fix, and test
+make dev
+
+# Build all packages
+make build
+
+# Run comprehensive checks (format, vet, lint, test)
+make check
+
+# Run tests with various options
+make test                  # All tests
+make test-verbose         # Verbose output
+make test-race           # With race detector
+make test-coverage       # With coverage
+make test-coverage-html  # Generate HTML coverage report
+
+# Linting and formatting
+make fmt        # Format code
+make vet        # Run go vet
+make lint       # Run comprehensive linting
+make lint-fix   # Lint with auto-fix
+make fix        # Format + lint-fix
+
+# Run the application with example feeds
+make run               # Tech news feeds
+make run-security      # Security feeds  
+make run-reddit        # Reddit feeds
+
+# Clean up
+make clean      # Remove build artifacts
+make clean-all  # Clean all build artifacts and cache
+```
+
+### Direct Go Commands (alternative to Makefile)
 ```bash
 # Build all packages
 go build ./...
@@ -19,51 +62,55 @@ go run main.go run https://techcrunch.com/feed/ https://www.wired.com/feed/rss
 go run main.go run --retry-max-attempts 5 --retry-base-delay 2s --retry-max-delay 60s https://unreliable-feed.example.com/rss
 ```
 
-### Testing
+### Testing (Makefile vs Direct)
 ```bash
-# Run all tests (unit tests + BDD tests)
-go test ./...
+# Using Makefile (recommended)
+make test                 # Run all tests
+make test-verbose        # Verbose output
+make test-race          # Race detector
+make test-coverage      # With coverage
+make test-coverage-html # HTML coverage report
 
-# Run tests with coverage
-go test -cover ./...
-
-# Run tests with verbose output
-go test -v ./...
-
-# Run a specific test
-go test -run TestFunctionName ./package_name
-
-# Run BDD tests (Cucumber/Godog) - automatically included in go test
-go test ./model
-
-# Run tests with race detector
-go test -race ./...
+# Direct Go commands
+go test ./...           # Run all tests (unit tests + BDD tests)
+go test -cover ./...    # Run tests with coverage
+go test -v ./...        # Run tests with verbose output
+go test -run TestFunctionName ./package_name  # Run a specific test
+go test ./model         # Run BDD tests (Cucumber/Godog)
+go test -race ./...     # Run tests with race detector
 ```
 
-### Linting and Formatting
+### Linting and Formatting (Makefile vs Direct)
 ```bash
-# Format code
-go fmt ./...
+# Using Makefile (recommended)
+make fmt        # Format code
+make vet        # Run go vet
+make lint       # Run comprehensive linting  
+make lint-fix   # Lint with auto-fix
+make fix        # Format + lint-fix combined
 
-# Run go vet for static analysis
-go vet ./...
+# Direct Go commands
+go fmt ./...    # Format code
+go vet ./...    # Run go vet for static analysis
 
 # Install and run golangci-lint v2 (comprehensive linting)
 curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0
 $(go env GOPATH)/bin/golangci-lint run
-
-# Run with auto-fix for formatting issues
-$(go env GOPATH)/bin/golangci-lint run --fix
+$(go env GOPATH)/bin/golangci-lint run --fix  # Run with auto-fix
 ```
 
 ### Pre-commit Hooks (Optional)
 To automatically run linting before commits, you can set up pre-commit hooks:
 
 ```bash
-# Install pre-commit (requires Python)
+# Using Makefile (recommended - handles installation and setup)
+make pre-commit-install
+
+# Manual setup (if you prefer direct control)
+# 1. Install pre-commit (requires Python)
 pip install pre-commit
 
-# Create .pre-commit-config.yaml in project root
+# 2. Create .pre-commit-config.yaml in project root
 cat > .pre-commit-config.yaml << 'EOF'
 repos:
   - repo: local
@@ -82,18 +129,18 @@ repos:
         pass_filenames: false
 EOF
 
-# Install the git hooks
+# 3. Install the git hooks
 pre-commit install
 ```
 
 Now golangci-lint will run automatically on every commit.
 
 ### Docker
-```bash
-# Build image locally (CI/CD handles official builds)
-docker build -t feed-mcp:local .
 
-# Run with Docker
+**Note:** Docker images are built via CI/CD using `ko` and `goreleaser`. No local Docker targets are provided in the Makefile.
+
+```bash
+# Use official images from CI/CD
 docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run <feed-urls>
 ```
 
