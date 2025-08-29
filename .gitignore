@@ -30,5 +30,5 @@ feed-mcp
 dist/
 main
 
-# Claude Code settings
+# Claude Code local settings
 .claude/settings.local.json
