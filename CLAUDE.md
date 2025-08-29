@@ -44,7 +44,7 @@ make run-reddit        # Reddit feeds
 
 # Clean up
 make clean      # Remove build artifacts
-make clean-all  # Clean everything including Docker
+make clean-all  # Clean all build artifacts and cache
 ```
 
 ### Direct Go Commands (alternative to Makefile)
@@ -135,16 +135,13 @@ pre-commit install
 
 Now golangci-lint will run automatically on every commit.
 
-### Docker (Makefile vs Direct)
-```bash
-# Using Makefile (recommended)
-make docker                                    # Build image locally
-make docker-run FEEDS="<feed-urls>"          # Run with Docker
-make docker-clean                             # Clean up Docker image
+### Docker
 
-# Direct Docker commands
-docker build -t feed-mcp:local .             # Build image locally (CI/CD handles official builds)
-docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run <feed-urls>  # Run with Docker
+**Note:** Docker images are built via CI/CD using `ko` and `goreleaser`. No local Docker targets are provided in the Makefile.
+
+```bash
+# Use official images from CI/CD
+docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run <feed-urls>
 ```
 
 ## Project Overview

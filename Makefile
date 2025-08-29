@@ -1,14 +1,13 @@
 # Makefile for feed-mcp development tasks
 # Run 'make help' to see all available targets
 
-.PHONY: help build test test-verbose test-race test-coverage test-coverage-html lint fmt vet fix run clean docker docker-run install-golangci pre-commit-install dev-setup version deps deps-update tidy check-deps security
+.PHONY: help build test test-verbose test-race test-coverage test-coverage-html lint fmt vet fix run clean install-golangci pre-commit-install dev-setup version deps deps-update tidy check-deps security check-only
 
 # Default target
 .DEFAULT_GOAL := help
 
 # Variables
 BINARY_NAME := feed-mcp
-DOCKER_IMAGE := feed-mcp:local
 GOLANGCI_LINT_VERSION := v2.4.0
 GOPATH := $(shell go env GOPATH)
 GOLANGCI_LINT := $(GOPATH)/bin/golangci-lint
@@ -68,6 +67,11 @@ test-coverage-html: ## Generate HTML coverage report
 	@echo "$(GREEN)Coverage report generated: coverage.html$(NC)"
 
 test-specific: ## Run specific test (usage: make test-specific TEST=TestName PACKAGE=./package)
+	@if [ -z "$(TEST)" ] || [ -z "$(PACKAGE)" ]; then \
+		echo "$(RED)Error: Both TEST and PACKAGE variables must be set.$(NC)"; \
+		echo "$(YELLOW)Usage: make test-specific TEST=TestName PACKAGE=./package$(NC)"; \
+		exit 1; \
+	fi
 	@echo "$(YELLOW)Running specific test...$(NC)"
 	go test -run $(TEST) $(PACKAGE)
 
@@ -117,23 +121,6 @@ dev-setup: install-golangci ## Set up development environment
 	go mod download
 	@echo "$(GREEN)Development environment ready!$(NC)"
 
-## Docker targets
-docker: ## Build Docker image locally
-	@echo "$(YELLOW)Building Docker image...$(NC)"
-	docker build -t $(DOCKER_IMAGE) .
-
-docker-run: ## Run with Docker (usage: make docker-run FEEDS="https://example.com/feed.xml")
-	@echo "$(YELLOW)Running feed-mcp in Docker...$(NC)"
-	@if [ -z "$(FEEDS)" ]; then \
-		echo "$(RED)Error: Please specify FEEDS. Example: make docker-run FEEDS=\"https://techcrunch.com/feed/\"$(NC)"; \
-		exit 1; \
-	fi
-	docker run -i --rm $(DOCKER_IMAGE) run $(FEEDS)
-
-docker-clean: ## Remove Docker image
-	@echo "$(YELLOW)Removing Docker image...$(NC)"
-	docker rmi $(DOCKER_IMAGE) || true
-
 ## Dependency management
 deps: ## Download dependencies
 	@echo "$(YELLOW)Downloading dependencies...$(NC)"
@@ -160,6 +147,9 @@ security: ## Run security checks
 	else \
 		echo "$(YELLOW)gosec not installed. Install with: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest$(NC)"; \
 	fi
+
+check-only: vet lint test ## Run validation checks without code modification
+	@echo "$(GREEN)All checks completed successfully!$(NC)"
 
 check: fmt vet lint test ## Run all checks (format, vet, lint, test)
 
@@ -197,7 +187,7 @@ clean: ## Clean build artifacts and cache
 	rm -f coverage.out coverage.html
 	rm -rf dist/
 
-clean-all: clean docker-clean ## Clean everything including Docker images
+clean-all: clean ## Clean all build artifacts and cache
 
 ## Utility targets
 version: ## Show version information

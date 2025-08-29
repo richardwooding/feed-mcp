@@ -42,7 +42,21 @@
       "Bash(sed:*)",
       "Bash(for i in {1..3})",
       "Bash(do echo \"Run $i:\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(gh pr view:*)",
+      "Bash(gh api:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run view:*)",
+      "mcp__github__get_job_logs",
+      "Bash(./golangci-lint config verify)",
+      "Read(/Users/richardwooding/go/bin/**)",
+      "Bash(/Users/richardwooding/go/bin/golangci-lint config verify)",
+      "Bash(/Users/richardwooding/go/bin/golangci-lint run)",
+      "Bash(for i in {1..5})",
+      "Bash(git stash:*)",
+      "Bash(make:*)",
+      "Bash(gh pr:*)",
+      "mcp__github__get_pull_request_reviews"
     ],
     "deny": [],
     "ask": []
