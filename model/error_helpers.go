@@ -3,6 +3,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -95,7 +96,7 @@ func CreateParsingError(err error, feedURL, content string) *FeedError {
 
 	// Try to extract parsing context from error
 	if parseCtx := extractParseContext(err, content); parseCtx != nil {
-		fe.WithParseContext(parseCtx)
+		fe = fe.WithParseContext(parseCtx)
 	}
 
 	return fe
@@ -108,20 +109,20 @@ func CreateValidationError(err error, feedURL string) *FeedError {
 
 	// Map existing validation errors to our error types
 	if err != nil {
-		switch err {
-		case ErrInvalidURL:
+		switch {
+		case errors.Is(err, ErrInvalidURL):
 			errorType = ErrorTypeInvalidURL
 			message = "Invalid URL format"
-		case ErrUnsupportedScheme:
+		case errors.Is(err, ErrUnsupportedScheme):
 			errorType = ErrorTypeUnsupportedScheme
 			message = "Unsupported URL scheme"
-		case ErrPrivateIPBlocked:
+		case errors.Is(err, ErrPrivateIPBlocked):
 			errorType = ErrorTypePrivateIP
 			message = "Private IP address blocked"
-		case ErrMissingHost:
+		case errors.Is(err, ErrMissingHost):
 			errorType = ErrorTypeInvalidURL
 			message = "URL missing host"
-		case ErrEmptyURL:
+		case errors.Is(err, ErrEmptyURL):
 			errorType = ErrorTypeInvalidURL
 			message = "URL cannot be empty"
 		}
@@ -134,7 +135,7 @@ func CreateValidationError(err error, feedURL string) *FeedError {
 }
 
 // CreateCircuitBreakerError creates a FeedError for circuit breaker events
-func CreateCircuitBreakerError(feedURL string, state string) *FeedError {
+func CreateCircuitBreakerError(feedURL, state string) *FeedError {
 	message := fmt.Sprintf("Circuit breaker is %s", state)
 
 	return NewFeedError(ErrorTypeCircuitBreaker, message).
@@ -149,7 +150,8 @@ func CreateRetryError(lastErr error, feedURL string, attempt, maxAttempts int) *
 
 	// Preserve the error type from the last error if it's a FeedError
 	errorType := ErrorTypeNetwork
-	if feedErr, ok := lastErr.(*FeedError); ok {
+	feedErr := &FeedError{}
+	if errors.As(lastErr, &feedErr) {
 		errorType = feedErr.ErrorType
 	}
 
@@ -180,12 +182,13 @@ func isTimeoutError(err error) bool {
 	}
 
 	// Check for context timeout
-	if err == context.DeadlineExceeded {
+	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 
 	// Check for net.Error timeout
-	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
 		return true
 	}
 
@@ -208,7 +211,8 @@ func isDNSError(err error) bool {
 	}
 
 	// Check for DNS error types
-	if dnsErr, ok := err.(*net.DNSError); ok {
+	dnsErr := &net.DNSError{}
+	if errors.As(err, &dnsErr) {
 		return dnsErr != nil
 	}
 
@@ -233,16 +237,16 @@ func isConnectionError(err error) bool {
 		return false
 	}
 
-	// Check for specific syscall errors
-	if opErr, ok := err.(*net.OpError); ok {
-		if syscallErr, ok := opErr.Err.(*syscall.Errno); ok {
-			// Common connection errors
-			switch *syscallErr {
-			case syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ECONNABORTED:
-				return true
-			case syscall.EHOSTUNREACH, syscall.ENETUNREACH:
-				return true
-			}
+	// Check for specific syscall errors using errors.Is for better cross-platform compatibility
+	opErr := &net.OpError{}
+	if errors.As(err, &opErr) {
+		// Common connection errors
+		if errors.Is(opErr.Err, syscall.ECONNREFUSED) ||
+			errors.Is(opErr.Err, syscall.ECONNRESET) ||
+			errors.Is(opErr.Err, syscall.ECONNABORTED) ||
+			errors.Is(opErr.Err, syscall.EHOSTUNREACH) ||
+			errors.Is(opErr.Err, syscall.ENETUNREACH) {
+			return true
 		}
 	}
 
@@ -267,49 +271,16 @@ func extractParseContext(err error, content string) *ParseContext {
 		return nil
 	}
 
-	errStr := err.Error()
 	ctx := &ParseContext{}
 
-	// Try to extract line number from common XML parsing errors
-	// Format: "XML syntax error on line X"
-	if strings.Contains(errStr, "line") {
-		parts := strings.Split(errStr, " ")
-		for i, part := range parts {
-			if part == "line" && i+1 < len(parts) {
-				if lineNum, parseErr := strconv.Atoi(parts[i+1]); parseErr == nil {
-					ctx.LineNumber = lineNum
-					break
-				}
-			}
-		}
-	}
+	// Extract line number from error message
+	ctx.LineNumber = extractLineNumber(err.Error())
 
 	// Determine feed format from content
-	contentLower := strings.TrimSpace(strings.ToLower(content))
-	if strings.HasPrefix(contentLower, "{") {
-		ctx.FeedFormat = "JSON"
-	} else if strings.HasPrefix(contentLower, "<") {
-		if strings.Contains(contentLower, "<rss") {
-			ctx.FeedFormat = "RSS"
-		} else if strings.Contains(contentLower, "<feed") {
-			ctx.FeedFormat = "Atom"
-		} else {
-			ctx.FeedFormat = "XML"
-		}
-	}
+	ctx.FeedFormat = determineFeedFormat(content)
 
 	// Extract content snippet around error location
-	if ctx.LineNumber > 0 && content != "" {
-		lines := strings.Split(content, "\n")
-		if ctx.LineNumber <= len(lines) {
-			// Get a few lines around the error for context
-			start := max(0, ctx.LineNumber-3)
-			end := min(len(lines), ctx.LineNumber+2)
-
-			contextLines := lines[start:end]
-			ctx.ContentSnippet = strings.Join(contextLines, "\n")
-		}
-	}
+	ctx.ContentSnippet = extractContentSnippet(content, ctx.LineNumber)
 
 	// Only return context if we found useful information
 	if ctx.LineNumber > 0 || ctx.FeedFormat != "" || ctx.ContentSnippet != "" {
@@ -319,17 +290,56 @@ func extractParseContext(err error, content string) *ParseContext {
 	return nil
 }
 
-// Helper functions for min/max (Go 1.21+ has built-in versions)
-func min(a, b int) int {
-	if a < b {
-		return a
+// extractLineNumber extracts line number from error message
+func extractLineNumber(errStr string) int {
+	if !strings.Contains(errStr, "line") {
+		return 0
 	}
-	return b
+
+	parts := strings.Split(errStr, " ")
+	for i, part := range parts {
+		if part == "line" && i+1 < len(parts) {
+			if lineNum, parseErr := strconv.Atoi(parts[i+1]); parseErr == nil {
+				return lineNum
+			}
+		}
+	}
+	return 0
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
+// determineFeedFormat determines feed format from content
+func determineFeedFormat(content string) string {
+	contentLower := strings.TrimSpace(strings.ToLower(content))
+	if strings.HasPrefix(contentLower, "{") {
+		return "JSON"
 	}
-	return b
+	if strings.HasPrefix(contentLower, "<") {
+		if strings.Contains(contentLower, "<rss") {
+			return "RSS"
+		}
+		if strings.Contains(contentLower, "<feed") {
+			return "Atom"
+		}
+		return "XML"
+	}
+	return ""
+}
+
+// extractContentSnippet extracts content snippet around error location
+func extractContentSnippet(content string, lineNumber int) string {
+	if lineNumber <= 0 || content == "" {
+		return ""
+	}
+
+	lines := strings.Split(content, "\n")
+	if lineNumber > len(lines) {
+		return ""
+	}
+
+	// Get a few lines around the error for context
+	start := max(0, lineNumber-3)
+	end := min(len(lines), lineNumber+2)
+
+	contextLines := lines[start:end]
+	return strings.Join(contextLines, "\n")
 }

@@ -14,44 +14,62 @@ import (
 type ErrorType string
 
 const (
-	// Network-related errors
-	ErrorTypeNetwork          ErrorType = "network"
-	ErrorTypeTimeout          ErrorType = "timeout"
+	// ErrorTypeNetwork represents general network-related errors
+	ErrorTypeNetwork ErrorType = "network"
+	// ErrorTypeTimeout represents request timeout errors
+	ErrorTypeTimeout ErrorType = "timeout"
+	// ErrorTypeConnectionFailed represents connection establishment failures
 	ErrorTypeConnectionFailed ErrorType = "connection_failed"
-	ErrorTypeDNSResolution    ErrorType = "dns_resolution"
+	// ErrorTypeDNSResolution represents DNS resolution failures
+	ErrorTypeDNSResolution ErrorType = "dns_resolution"
 
-	// HTTP-related errors
-	ErrorTypeHTTP            ErrorType = "http"
+	// ErrorTypeHTTP represents general HTTP errors
+	ErrorTypeHTTP ErrorType = "http"
+	// ErrorTypeHTTPClientError represents HTTP 4xx client errors
 	ErrorTypeHTTPClientError ErrorType = "http_client_error" // 4xx
+	// ErrorTypeHTTPServerError represents HTTP 5xx server errors
 	ErrorTypeHTTPServerError ErrorType = "http_server_error" // 5xx
-	ErrorTypeHTTPRedirect    ErrorType = "http_redirect"     // 3xx with issues
+	// ErrorTypeHTTPRedirect represents HTTP 3xx redirect issues
+	ErrorTypeHTTPRedirect ErrorType = "http_redirect" // 3xx with issues
 
-	// Feed parsing errors
-	ErrorTypeParsing       ErrorType = "parsing"
+	// ErrorTypeParsing represents feed parsing errors
+	ErrorTypeParsing ErrorType = "parsing"
+	// ErrorTypeInvalidFormat represents invalid feed format errors
 	ErrorTypeInvalidFormat ErrorType = "invalid_format"
-	ErrorTypeEmptyFeed     ErrorType = "empty_feed"
-	ErrorTypeMalformedXML  ErrorType = "malformed_xml"
+	// ErrorTypeEmptyFeed represents empty or no-content feed errors
+	ErrorTypeEmptyFeed ErrorType = "empty_feed"
+	// ErrorTypeMalformedXML represents malformed XML feed errors
+	ErrorTypeMalformedXML ErrorType = "malformed_xml"
+	// ErrorTypeMalformedJSON represents malformed JSON feed errors
 	ErrorTypeMalformedJSON ErrorType = "malformed_json"
 
-	// Validation errors
-	ErrorTypeValidation        ErrorType = "validation"
-	ErrorTypeInvalidURL        ErrorType = "invalid_url"
+	// ErrorTypeValidation represents URL validation errors
+	ErrorTypeValidation ErrorType = "validation"
+	// ErrorTypeInvalidURL represents invalid URL format errors
+	ErrorTypeInvalidURL ErrorType = "invalid_url"
+	// ErrorTypeUnsupportedScheme represents unsupported URL scheme errors
 	ErrorTypeUnsupportedScheme ErrorType = "unsupported_scheme"
-	ErrorTypePrivateIP         ErrorType = "private_ip_blocked"
+	// ErrorTypePrivateIP represents private IP address blocked errors
+	ErrorTypePrivateIP ErrorType = "private_ip_blocked"
 
-	// Configuration errors
+	// ErrorTypeConfiguration represents configuration-related errors
 	ErrorTypeConfiguration ErrorType = "configuration"
-	ErrorTypeTransport     ErrorType = "transport"
+	// ErrorTypeTransport represents transport configuration errors
+	ErrorTypeTransport ErrorType = "transport"
 
-	// System errors
-	ErrorTypeSystem         ErrorType = "system"
+	// ErrorTypeSystem represents system-level errors
+	ErrorTypeSystem ErrorType = "system"
+	// ErrorTypeCircuitBreaker represents circuit breaker state errors
 	ErrorTypeCircuitBreaker ErrorType = "circuit_breaker"
-	ErrorTypeRateLimit      ErrorType = "rate_limit"
-	ErrorTypeCache          ErrorType = "cache"
+	// ErrorTypeRateLimit represents rate limiting errors
+	ErrorTypeRateLimit ErrorType = "rate_limit"
+	// ErrorTypeCache represents caching-related errors
+	ErrorTypeCache ErrorType = "cache"
 
-	// Generic errors
+	// ErrorTypeInternal represents internal server errors
 	ErrorTypeInternal ErrorType = "internal"
-	ErrorTypeUnknown  ErrorType = "unknown"
+	// ErrorTypeUnknown represents unknown or unclassified errors
+	ErrorTypeUnknown ErrorType = "unknown"
 )
 
 // FeedError represents a structured error with additional context for debugging
@@ -120,8 +138,7 @@ func (fe *FeedError) Error() string {
 	}
 
 	// Add error type and ID for debugging
-	parts = append(parts, fmt.Sprintf("Type: %s", fe.ErrorType))
-	parts = append(parts, fmt.Sprintf("ID: %s", fe.ID))
+	parts = append(parts, fmt.Sprintf("Type: %s", fe.ErrorType), fmt.Sprintf("ID: %s", fe.ID))
 
 	return strings.Join(parts, " | ")
 }

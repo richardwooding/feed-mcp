@@ -63,7 +63,7 @@ func TestFeedError_Unwrap(t *testing.T) {
 	feedErr := NewFeedErrorWithCause(ErrorTypeNetwork, "network error", originalErr)
 
 	unwrapped := feedErr.Unwrap()
-	if unwrapped != originalErr {
+	if !errors.Is(unwrapped, originalErr) {
 		t.Errorf("expected unwrapped error %v, got %v", originalErr, unwrapped)
 	}
 }
@@ -305,7 +305,7 @@ func TestCreateValidationError(t *testing.T) {
 				t.Errorf("expected error type %v, got %v", tc.expectedType, err.ErrorType)
 			}
 
-			if err.Cause != tc.inputError {
+			if !errors.Is(err.Cause, tc.inputError) {
 				t.Errorf("expected cause to be preserved, got %v", err.Cause)
 			}
 		})

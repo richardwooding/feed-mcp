@@ -245,25 +245,20 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 			}
 
 			// Debug log successful fetch
-			if attempt > 1 {
-				model.DebugLogWithContext(
-					fmt.Sprintf("Successfully fetched feed after %d attempts", attempt),
-					"feed_fetcher", "retryable_fetch", url,
-					map[string]interface{}{
-						"attempt":      attempt,
-						"max_attempts": maxAttempts,
-						"items_count":  len(feed.Items),
-					},
-				)
-			} else {
-				model.DebugLogWithContext(
-					"Successfully fetched feed",
-					"feed_fetcher", "retryable_fetch", url,
-					map[string]interface{}{
-						"items_count": len(feed.Items),
-					},
-				)
+			extra := map[string]interface{}{
+				"items_count": len(feed.Items),
 			}
+			msg := "Successfully fetched feed"
+			if attempt > 1 {
+				extra["attempt"] = attempt
+				extra["max_attempts"] = maxAttempts
+				msg = fmt.Sprintf("Successfully fetched feed after %d attempts", attempt)
+			}
+			model.DebugLogWithContext(
+				msg,
+				"feed_fetcher", "retryable_fetch", url,
+				extra,
+			)
 
 			return feed, nil
 		}
@@ -467,10 +462,10 @@ func NewStore(config Config) (*Store, error) {
 					})
 					if err != nil {
 						// Check if this is a circuit breaker error
-						if err == gobreaker.ErrOpenState {
+						if errors.Is(err, gobreaker.ErrOpenState) {
 							return nil, nil, model.CreateCircuitBreakerError(url, "open")
 						}
-						if err == gobreaker.ErrTooManyRequests {
+						if errors.Is(err, gobreaker.ErrTooManyRequests) {
 							return nil, nil, model.CreateCircuitBreakerError(url, "half-open")
 						}
 						// Return the original error (likely from retryableFeedFetch)

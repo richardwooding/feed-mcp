@@ -14,9 +14,13 @@ import (
 type LogLevel int
 
 const (
+	// LogLevelError represents the error logging level
 	LogLevelError LogLevel = iota
+	// LogLevelWarn represents the warning logging level
 	LogLevelWarn
+	// LogLevelInfo represents the info logging level
 	LogLevelInfo
+	// LogLevelDebug represents the debug logging level
 	LogLevelDebug
 )
 
@@ -62,15 +66,21 @@ func NewDebugLogger() *DebugLogger {
 
 	// Configure from environment variables
 	if debugMode := os.Getenv("FEED_MCP_DEBUG"); debugMode != "" {
-		logger.enabled = strings.ToLower(debugMode) == "true" || debugMode == "1"
+		logger.enabled = strings.EqualFold(debugMode, "true") || debugMode == "1"
 	}
 
 	if logLevel := os.Getenv("FEED_MCP_LOG_LEVEL"); logLevel != "" {
-		logger.SetLevel(parseLogLevel(logLevel))
+		if level, err := parseLogLevel(logLevel); err != nil {
+			// Log warning about invalid level but continue with default
+			log.Printf("WARN: %v", err)
+			logger.SetLevel(LogLevelInfo)
+		} else {
+			logger.SetLevel(level)
+		}
 	}
 
 	if jsonMode := os.Getenv("FEED_MCP_JSON_LOGS"); jsonMode != "" {
-		logger.jsonMode = strings.ToLower(jsonMode) == "true" || jsonMode == "1"
+		logger.jsonMode = strings.EqualFold(jsonMode, "true") || jsonMode == "1"
 	}
 
 	return logger
@@ -135,14 +145,14 @@ func (d *DebugLogger) log(level LogLevel, message, component, operation, url str
 	}
 
 	if d.jsonMode {
-		d.logJSON(logMsg)
+		d.logJSON(&logMsg)
 	} else {
-		d.logText(logMsg)
+		d.logText(&logMsg)
 	}
 }
 
 // logJSON outputs the log message in JSON format
-func (d *DebugLogger) logJSON(msg LogMessage) {
+func (d *DebugLogger) logJSON(msg *LogMessage) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		// Fallback to simple text logging if JSON marshaling fails
@@ -153,7 +163,7 @@ func (d *DebugLogger) logJSON(msg LogMessage) {
 }
 
 // logText outputs the log message in human-readable text format
-func (d *DebugLogger) logText(msg LogMessage) {
+func (d *DebugLogger) logText(msg *LogMessage) {
 	// Build the log message parts
 	parts := []string{
 		msg.Timestamp.Format("2006-01-02T15:04:05.000Z"),
@@ -244,7 +254,7 @@ func (d *DebugLogger) LogFeedError(feedErr *FeedError) {
 		extra["http_status"] = feedErr.HTTPStatus
 	}
 
-	if feedErr.HTTPHeaders != nil && len(feedErr.HTTPHeaders) > 0 {
+	if len(feedErr.HTTPHeaders) > 0 {
 		extra["http_headers"] = feedErr.HTTPHeaders
 	}
 
@@ -314,17 +324,17 @@ func LogFeedError(feedErr *FeedError) {
 }
 
 // Helper function to parse log level from string
-func parseLogLevel(level string) LogLevel {
+func parseLogLevel(level string) (LogLevel, error) {
 	switch strings.ToUpper(level) {
 	case "ERROR":
-		return LogLevelError
+		return LogLevelError, nil
 	case "WARN", "WARNING":
-		return LogLevelWarn
+		return LogLevelWarn, nil
 	case "INFO":
-		return LogLevelInfo
+		return LogLevelInfo, nil
 	case "DEBUG":
-		return LogLevelDebug
+		return LogLevelDebug, nil
 	default:
-		return LogLevelInfo
+		return LogLevelInfo, fmt.Errorf("invalid log level: %s, defaulting to INFO", level)
 	}
 }
