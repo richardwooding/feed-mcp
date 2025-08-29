@@ -78,7 +78,6 @@ linters:
         - whyNoLint
 
     govet:
-      check-shadowing: true
       enable:
         - fieldalignment
 
@@ -88,7 +87,6 @@ linters:
           arguments: [checkPrivateReceivers, sayRepetitiveInsteadOfStutters]
 
     staticcheck:
-      go: "1.25"
       checks: ["all"]
 
     gosec:
@@ -149,7 +147,6 @@ formatters:
 
   settings:
     goimports:
-      local-prefixes: github.com/richardwooding/feed-mcp
+      local-prefixes: ["github.com/richardwooding/feed-mcp"]
 
-    gofumpt:
-      lang-version: "1.25"
+    gofumpt: {}
