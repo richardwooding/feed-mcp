@@ -14,9 +14,9 @@ type feedConversionTest struct {
 }
 
 type transportParsingTest struct {
-	parseError      error
-	outputTransport Transport
 	inputTransport  string
+	outputTransport Transport
+	parseError      error
 }
 
 func (f *feedConversionTest) iHaveAGofeedFeedWithTheFollowingProperties(table *godog.Table) error {

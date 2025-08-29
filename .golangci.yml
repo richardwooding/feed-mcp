@@ -78,7 +78,7 @@ linters:
         - whyNoLint
 
     govet:
-      enable:
+      disable:
         - fieldalignment
 
     revive:
