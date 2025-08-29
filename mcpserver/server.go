@@ -29,6 +29,7 @@ type Config struct {
 type Server struct {
 	allFeedsGetter     AllFeedsGetter
 	feedAndItemsGetter FeedAndItemsGetter
+	resourceManager    *ResourceManager
 	sessionID          string
 	transport          model.Transport
 }
@@ -56,12 +57,14 @@ func NewServer(config Config) (*Server, error) {
 			WithOperation("create_server").
 			WithComponent("mcp_server")
 	}
-	return &Server{
+	server := &Server{
 		transport:          config.Transport,
 		allFeedsGetter:     config.AllFeedsGetter,
 		feedAndItemsGetter: config.FeedAndItemsGetter,
 		sessionID:          generateSessionID(),
-	}, nil
+	}
+	server.resourceManager = NewResourceManager(config.AllFeedsGetter, config.FeedAndItemsGetter)
+	return server, nil
 }
 
 // FetchLinkParams contains parameters for the fetch_link tool.
@@ -170,7 +173,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	})
 
 	// Add resource handlers for MCP Resources support
-	// s.addResourceHandlers(srv) // TODO: Implement resource handlers
+	s.addResourceHandlers(srv)
 
 	switch s.transport {
 	case model.StdioTransport:
@@ -184,4 +187,17 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	}
 
 	return
+}
+
+// addResourceHandlers adds MCP Resource handlers to the server
+func (s *Server) addResourceHandlers(srv *mcp.Server) {
+	// Note: The MCP Go SDK resource handlers are still being designed
+	// For now, we prepare the infrastructure but cannot add handlers yet
+	// This will be implemented once the SDK provides resource handler support
+	
+	// When resource handlers are available, we would add them like this:
+	// srv.AddResourceHandler("resources/list", s.handleListResources)
+	// srv.AddResourceHandler("resources/read", s.handleReadResource)
+	// srv.AddResourceHandler("resources/subscribe", s.handleSubscribeResource)
+	// srv.AddResourceHandler("resources/unsubscribe", s.handleUnsubscribeResource)
 }

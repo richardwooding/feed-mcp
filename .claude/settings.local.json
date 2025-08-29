@@ -56,7 +56,10 @@
       "Bash(git stash:*)",
       "Bash(make:*)",
       "Bash(gh pr:*)",
-      "mcp__github__get_pull_request_reviews"
+      "mcp__github__get_pull_request_reviews",
+      "Bash(gh release create:*)",
+      "mcp__github__create_issue",
+      "Bash(./feed-mcp-dev:*)"
     ],
     "deny": [],
     "ask": []
