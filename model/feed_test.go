@@ -13,6 +13,12 @@ type feedConversionTest struct {
 	outputFeed *Feed
 }
 
+type transportParsingTest struct {
+	inputTransport  string
+	outputTransport Transport
+	parseError      error
+}
+
 func (f *feedConversionTest) iHaveAGofeedFeedWithTheFollowingProperties(table *godog.Table) error {
 	f.inputFeed = &gofeed.Feed{}
 
@@ -122,21 +128,90 @@ func (f *feedConversionTest) allFieldsShouldBeCorrectlyCopiedToTheInternalFeedMo
 	return nil
 }
 
-func InitializeScenario(ctx *godog.ScenarioContext) {
-	test := &feedConversionTest{}
+// Transport parsing step definitions
+func (t *transportParsingTest) iHaveATransportString(transportStr string) error {
+	t.inputTransport = transportStr
+	return nil
+}
 
-	ctx.Step(`^I have a gofeed Feed with the following properties:$`, test.iHaveAGofeedFeedWithTheFollowingProperties)
-	ctx.Step(`^I have a nil gofeed Feed$`, test.iHaveANilGofeedFeed)
-	ctx.Step(`^I have a gofeed Feed with complete information:$`, test.iHaveAGofeedFeedWithCompleteInformation)
-	ctx.Step(`^I convert it using FromGoFeed$`, test.iConvertItUsingFromGoFeed)
-	ctx.Step(`^the result should not be nil$`, test.theResultShouldNotBeNil)
-	ctx.Step(`^the result should be nil$`, test.theResultShouldBeNil)
-	ctx.Step(`^the converted feed should have the same Title$`, test.theConvertedFeedShouldHaveTheSameTitle)
-	ctx.Step(`^the converted feed should have the same Description$`, test.theConvertedFeedShouldHaveTheSameDescription)
-	ctx.Step(`^the converted feed should have the same Link$`, test.theConvertedFeedShouldHaveTheSameLink)
-	ctx.Step(`^the converted feed should have the same FeedType$`, test.theConvertedFeedShouldHaveTheSameFeedType)
-	ctx.Step(`^the converted feed should have the same FeedVersion$`, test.theConvertedFeedShouldHaveTheSameFeedVersion)
-	ctx.Step(`^all fields should be correctly copied to the internal Feed model$`, test.allFieldsShouldBeCorrectlyCopiedToTheInternalFeedModel)
+func (t *transportParsingTest) iParseItUsingParseTransport() error {
+	result, err := ParseTransport(t.inputTransport)
+	t.outputTransport = result
+	t.parseError = err
+	return nil
+}
+
+func (t *transportParsingTest) theResultShouldBeStdioTransport() error {
+	if t.outputTransport != StdioTransport {
+		return fmt.Errorf("expected StdioTransport, got %v", t.outputTransport)
+	}
+	return nil
+}
+
+func (t *transportParsingTest) theResultShouldBeHttpWithSSETransport() error {
+	if t.outputTransport != HTTPWithSSETransport {
+		return fmt.Errorf("expected HTTPWithSSETransport, got %v", t.outputTransport)
+	}
+	return nil
+}
+
+func (t *transportParsingTest) theResultShouldBeUndefinedTransport() error {
+	if t.outputTransport != UndefinedTransport {
+		return fmt.Errorf("expected UndefinedTransport, got %v", t.outputTransport)
+	}
+	return nil
+}
+
+func (t *transportParsingTest) thereShouldBeNoError() error {
+	if t.parseError != nil {
+		return fmt.Errorf("expected no error, got %v", t.parseError)
+	}
+	return nil
+}
+
+func (t *transportParsingTest) thereShouldBeAnError() error {
+	if t.parseError == nil {
+		return fmt.Errorf("expected an error, got nil")
+	}
+	return nil
+}
+
+func (t *transportParsingTest) theErrorStateShouldBeFalse() error {
+	return t.thereShouldBeNoError()
+}
+
+func (t *transportParsingTest) theErrorStateShouldBeTrue() error {
+	return t.thereShouldBeAnError()
+}
+
+func InitializeScenario(ctx *godog.ScenarioContext) {
+	feedTest := &feedConversionTest{}
+	transportTest := &transportParsingTest{}
+
+	// Feed conversion step definitions
+	ctx.Step(`^I have a gofeed Feed with the following properties:$`, feedTest.iHaveAGofeedFeedWithTheFollowingProperties)
+	ctx.Step(`^I have a nil gofeed Feed$`, feedTest.iHaveANilGofeedFeed)
+	ctx.Step(`^I have a gofeed Feed with complete information:$`, feedTest.iHaveAGofeedFeedWithCompleteInformation)
+	ctx.Step(`^I convert it using FromGoFeed$`, feedTest.iConvertItUsingFromGoFeed)
+	ctx.Step(`^the result should not be nil$`, feedTest.theResultShouldNotBeNil)
+	ctx.Step(`^the result should be nil$`, feedTest.theResultShouldBeNil)
+	ctx.Step(`^the converted feed should have the same Title$`, feedTest.theConvertedFeedShouldHaveTheSameTitle)
+	ctx.Step(`^the converted feed should have the same Description$`, feedTest.theConvertedFeedShouldHaveTheSameDescription)
+	ctx.Step(`^the converted feed should have the same Link$`, feedTest.theConvertedFeedShouldHaveTheSameLink)
+	ctx.Step(`^the converted feed should have the same FeedType$`, feedTest.theConvertedFeedShouldHaveTheSameFeedType)
+	ctx.Step(`^the converted feed should have the same FeedVersion$`, feedTest.theConvertedFeedShouldHaveTheSameFeedVersion)
+	ctx.Step(`^all fields should be correctly copied to the internal Feed model$`, feedTest.allFieldsShouldBeCorrectlyCopiedToTheInternalFeedModel)
+
+	// Transport parsing step definitions
+	ctx.Step(`^I have a transport string "([^"]*)"$`, transportTest.iHaveATransportString)
+	ctx.Step(`^I parse it using ParseTransport$`, transportTest.iParseItUsingParseTransport)
+	ctx.Step(`^the result should be StdioTransport$`, transportTest.theResultShouldBeStdioTransport)
+	ctx.Step(`^the result should be HttpWithSSETransport$`, transportTest.theResultShouldBeHttpWithSSETransport)
+	ctx.Step(`^the result should be UndefinedTransport$`, transportTest.theResultShouldBeUndefinedTransport)
+	ctx.Step(`^there should be no error$`, transportTest.thereShouldBeNoError)
+	ctx.Step(`^there should be an error$`, transportTest.thereShouldBeAnError)
+	ctx.Step(`^the error state should be false$`, transportTest.theErrorStateShouldBeFalse)
+	ctx.Step(`^the error state should be true$`, transportTest.theErrorStateShouldBeTrue)
 }
 
 func TestFeatures(t *testing.T) {
