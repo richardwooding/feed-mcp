@@ -1,3 +1,4 @@
+// Package store implements feed management with caching, circuit breaking, and retry logic.
 package store
 
 import (
@@ -18,9 +19,10 @@ import (
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/mmcdole/gofeed"
-	"github.com/richardwooding/feed-mcp/model"
 	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
+
+	"github.com/richardwooding/feed-mcp/model"
 )
 
 // HTTPPoolConfig holds HTTP connection pool configuration
@@ -33,27 +35,25 @@ type HTTPPoolConfig struct {
 
 // Config holds configuration settings for the feed store
 type Config struct {
-	Feeds                          []string
-	Timeout                        time.Duration
-	ExpireAfter                    time.Duration
-	HttpClient                     *http.Client
-	RequestsPerSecond              float64
-	BurstCapacity                  int
+	HTTPClient                     *http.Client
 	CircuitBreakerEnabled          *bool
-	CircuitBreakerMaxRequests      uint32
+	Feeds                          []string
 	CircuitBreakerInterval         time.Duration
+	RetryBaseDelay                 time.Duration
+	BurstCapacity                  int
+	ExpireAfter                    time.Duration
+	RequestsPerSecond              float64
+	Timeout                        time.Duration
 	CircuitBreakerTimeout          time.Duration
+	RetryMaxDelay                  time.Duration
+	MaxIdleConns                   int
+	MaxConnsPerHost                int
+	MaxIdleConnsPerHost            int
+	IdleConnTimeout                time.Duration
+	RetryMaxAttempts               int
+	CircuitBreakerMaxRequests      uint32
 	CircuitBreakerFailureThreshold uint32
-	// HTTP connection pooling settings
-	MaxIdleConns        int
-	MaxConnsPerHost     int
-	MaxIdleConnsPerHost int
-	IdleConnTimeout     time.Duration
-	// Retry mechanism settings
-	RetryMaxAttempts int
-	RetryBaseDelay   time.Duration
-	RetryMaxDelay    time.Duration
-	RetryJitter      bool
+	RetryJitter                    bool
 }
 
 // RetryMetrics holds metrics for retry operations
@@ -200,6 +200,8 @@ func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitt
 // retryableFeedFetch performs feed fetching with retry logic and comprehensive metrics tracking.
 // Attempts up to maxAttempts times for retryable errors, with exponential backoff delays.
 // Updates retry metrics and integrates with circuit breaker patterns for fault tolerance.
+//
+//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive retry logic with metrics and error handling
 func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, config Config, metrics *RetryMetrics, metricsMutex *sync.RWMutex) (*gofeed.Feed, error) {
 	var lastErr error
 	maxAttempts := config.RetryMaxAttempts
@@ -278,8 +280,9 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 }
 
 // NewStore creates a new feed store with the given configuration
+//
+//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
 func NewStore(config Config) (*Store, error) {
-
 	if len(config.Feeds) == 0 {
 		return nil, errors.New("at least one feedItem must be specified")
 	}
@@ -342,14 +345,14 @@ func NewStore(config Config) (*Store, error) {
 	// RetryJitter defaults to true (handled by CLI flag default: "true")
 
 	// Create rate-limited HTTP client with connection pooling if not provided
-	if config.HttpClient == nil {
+	if config.HTTPClient == nil {
 		poolConfig := HTTPPoolConfig{
 			MaxIdleConns:        config.MaxIdleConns,
 			MaxConnsPerHost:     config.MaxConnsPerHost,
 			MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
 			IdleConnTimeout:     config.IdleConnTimeout,
 		}
-		config.HttpClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig)
+		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig)
 	}
 
 	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
@@ -395,8 +398,8 @@ func NewStore(config Config) (*Store, error) {
 		if url, ok := key.(string); ok {
 			// Create parser with HTTP client
 			fp := gofeed.NewParser()
-			if config.HttpClient != nil {
-				fp.Client = config.HttpClient
+			if config.HTTPClient != nil {
+				fp.Client = config.HTTPClient
 			}
 
 			// Use circuit breaker if enabled
@@ -444,7 +447,6 @@ func NewStore(config Config) (*Store, error) {
 			feeds[id] = url
 			feedsMutex.Unlock()
 			_, _ = cacheManager.Get(context.Background(), url)
-
 		}(feedURL)
 	}
 	wg.Wait()

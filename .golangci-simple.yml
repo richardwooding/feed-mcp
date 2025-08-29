@@ -1,0 +1,27 @@
+# Simple golangci-lint configuration for testing
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - vendor
+
+linters:
+  disable:
+    - typecheck  # Disable typecheck due to Go version compatibility issues
+  enable:
+    - gofmt
+    - goimports
+    - misspell
+    - gosec
+    - govet
+    - ineffassign
+    - errcheck
+    - revive
+
+linters-settings:
+  gosec:
+    excludes:
+      - G404 # Use of weak random number generator
+  
+  misspell:
+    locale: US

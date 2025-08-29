@@ -1,3 +1,4 @@
+// Package mcpserver implements the Model Context Protocol server for serving RSS/Atom/JSON feeds.
 package mcpserver
 
 import (
@@ -11,6 +12,7 @@ import (
 	"github.com/gocolly/colly"
 	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/richardwooding/feed-mcp/model"
 )
 
@@ -18,17 +20,17 @@ var sessionCounter int64
 
 // Config holds the configuration for creating a new MCP server
 type Config struct {
-	Transport          model.Transport
 	AllFeedsGetter     AllFeedsGetter
 	FeedAndItemsGetter FeedAndItemsGetter
+	Transport          model.Transport
 }
 
 // Server implements an MCP server for serving syndication feeds
 type Server struct {
-	transport          model.Transport
 	allFeedsGetter     AllFeedsGetter
 	feedAndItemsGetter FeedAndItemsGetter
 	sessionID          string
+	transport          model.Transport
 }
 
 // generateSessionID creates a unique session ID for this server instance
@@ -56,17 +58,18 @@ func NewServer(config Config) (*Server, error) {
 	}, nil
 }
 
+// FetchLinkParams contains parameters for the fetch_link tool.
 type FetchLinkParams struct {
 	URL string
 }
 
+// GetSyndicationFeedParams contains parameters for the get_syndication_feed_items tool.
 type GetSyndicationFeedParams struct {
 	ID string
 }
 
-// Run starts the MCP server and handles client connections until context is cancelled
+// Run starts the MCP server and handles client connections until context is canceled
 func (s *Server) Run(ctx context.Context) (err error) {
-
 	// Create a new MCP server
 	srv := mcp.NewServer(
 		&mcp.Implementation{
@@ -161,7 +164,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	switch s.transport {
 	case model.StdioTransport:
 		err = srv.Run(ctx, mcp.NewStdioTransport())
-	case model.HttpWithSSETransport:
+	case model.HTTPWithSSETransport:
 		err = srv.Run(ctx, mcp.NewStreamableServerTransport(s.sessionID))
 	default:
 		return errors.New("unsupported transport")

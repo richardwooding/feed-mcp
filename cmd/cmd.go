@@ -1,3 +1,4 @@
+// Package cmd provides CLI commands for the feed-mcp server.
 package cmd
 
 import (
@@ -28,7 +29,7 @@ type RunCmd struct {
 	RetryMaxDelay    time.Duration `name:"retry-max-delay" default:"30s" help:"Maximum delay between retry attempts."`
 	RetryJitter      bool          `name:"retry-jitter" default:"true" help:"Enable jitter in retry delays to avoid thundering herd."`
 	// Security settings
-	AllowPrivateIPs  bool          `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
+	AllowPrivateIPs bool `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
 }
 
 // Run executes the feed MCP server with the given configuration

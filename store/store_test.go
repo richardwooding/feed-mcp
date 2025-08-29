@@ -297,7 +297,7 @@ func TestStore_CustomHttpClientPreserved(t *testing.T) {
 	// Create store with custom HTTP client - rate limiting should be skipped
 	store, err := NewStore(Config{
 		Feeds:             []string{srv.URL},
-		HttpClient:        customClient,
+		HTTPClient:        customClient,
 		RequestsPerSecond: 10.0, // These should be ignored since HttpClient is provided
 		BurstCapacity:     20,
 	})
@@ -929,7 +929,8 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 		t.Errorf("expected feed title 'Retry Test Feed', got %q", feeds[0].Title)
 	}
 
-	// Should have made exactly 3 requests
+	// Should have made exactly 3 requests:
+	// Preloading + retry mechanism: 1st attempt fails, 2nd attempt fails, 3rd attempt succeeds
 	finalCount := atomic.LoadInt64(&requestCount)
 	if finalCount != 3 {
 		t.Errorf("expected 3 requests, got %d", finalCount)

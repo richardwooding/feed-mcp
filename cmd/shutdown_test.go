@@ -17,7 +17,7 @@ func TestGracefulShutdown(t *testing.T) {
 		ShutdownTimeout: 1 * time.Second,
 	}
 
-	// Create a context that will be cancelled to simulate shutdown
+	// Create a context that will be canceled to simulate shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -70,5 +70,5 @@ func TestDefaultShutdownTimeout(t *testing.T) {
 	// but we can verify the struct field has the right tag
 
 	// This is a compile-time check that the field exists with the right type
-	var _ time.Duration = cmd.ShutdownTimeout
+	_ = cmd.ShutdownTimeout
 }

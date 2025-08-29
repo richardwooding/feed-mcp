@@ -10,11 +10,11 @@ import (
 
 // URL validation errors
 var (
-	ErrInvalidURL          = errors.New("invalid URL format")
-	ErrUnsupportedScheme   = errors.New("unsupported URL scheme - only HTTP and HTTPS are allowed")
-	ErrPrivateIPBlocked    = errors.New("private IP addresses and localhost are blocked for security")
-	ErrMissingHost         = errors.New("URL must have a valid host")
-	ErrEmptyURL            = errors.New("URL cannot be empty")
+	ErrInvalidURL        = errors.New("invalid URL format")
+	ErrUnsupportedScheme = errors.New("unsupported URL scheme - only HTTP and HTTPS are allowed")
+	ErrPrivateIPBlocked  = errors.New("private IP addresses and localhost are blocked for security")
+	ErrMissingHost       = errors.New("URL must have a valid host")
+	ErrEmptyURL          = errors.New("URL cannot be empty")
 )
 
 // ValidateFeedURL validates a feed URL for security and format correctness.
@@ -29,7 +29,7 @@ func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
 	// Parse the URL
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidURL, err)
+		return fmt.Errorf("%w: %w", ErrInvalidURL, err)
 	}
 
 	// Validate scheme
@@ -101,28 +101,26 @@ func validateHost(host string) error {
 // isLocalhost checks for common localhost patterns
 func isLocalhost(hostname string) bool {
 	hostname = strings.ToLower(hostname)
-	
+
 	localhostPatterns := []string{
 		"localhost",
-		"127.0.0.1", 
+		"127.0.0.1",
 		"::1",
 		"[::1]", // IPv6 with brackets
 	}
-	
+
 	for _, pattern := range localhostPatterns {
 		if hostname == pattern {
 			return true
 		}
 	}
-	
-	if strings.HasPrefix(hostname, "127.") {
-		return true
-	}
-	
-	return false
+
+	return strings.HasPrefix(hostname, "127.")
 }
 
 // isPrivateIP checks if an IP address is in a private range
+//
+//nolint:gocyclo // Function complexity is necessary for comprehensive private IP range validation (security requirement)
 func isPrivateIP(ip net.IP) bool {
 	// Check for IPv4 private ranges
 	if ip4 := ip.To4(); ip4 != nil {

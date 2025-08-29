@@ -11,7 +11,7 @@ func TestParseTransport(t *testing.T) {
 		wantErr bool
 	}{
 		{"stdio", StdioTransport, false},
-		{"http-with-sse", HttpWithSSETransport, false},
+		{"http-with-sse", HTTPWithSSETransport, false},
 		{"invalid", UndefinedTransport, true},
 		{"", UndefinedTransport, true},
 	}
@@ -28,13 +28,13 @@ func TestParseTransport(t *testing.T) {
 
 func TestTransportString(t *testing.T) {
 	tests := []struct {
-		tr   Transport
 		want string
+		tr   Transport
 	}{
-		{StdioTransport, "stdio"},
-		{HttpWithSSETransport, "http-with-sse"},
-		{UndefinedTransport, "undefined"},
-		{Transport(99), "undefined"},
+		{"stdio", StdioTransport},
+		{"http-with-sse", HTTPWithSSETransport},
+		{"undefined", UndefinedTransport},
+		{"undefined", Transport(99)},
 	}
 	for _, tt := range tests {
 		if got := tt.tr.String(); got != tt.want {

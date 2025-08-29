@@ -4,15 +4,17 @@ import (
 	"errors"
 )
 
+// ErrInvalidTransport is returned when an invalid transport type is specified.
 var ErrInvalidTransport = errors.New("invalid transport")
 
 // Transport represents the communication transport method for the MCP server
 type Transport uint8
 
+// Transport constants define the available transport types.
 const (
 	UndefinedTransport Transport = iota
 	StdioTransport
-	HttpWithSSETransport
+	HTTPWithSSETransport
 )
 
 // ParseTransport converts a string to a Transport type
@@ -21,7 +23,7 @@ func ParseTransport(transport string) (Transport, error) {
 	case "stdio":
 		return StdioTransport, nil
 	case "http-with-sse":
-		return HttpWithSSETransport, nil
+		return HTTPWithSSETransport, nil
 	default:
 		return UndefinedTransport, ErrInvalidTransport
 	}
@@ -32,7 +34,7 @@ func (t Transport) String() string {
 	switch t {
 	case StdioTransport:
 		return "stdio"
-	case HttpWithSSETransport:
+	case HTTPWithSSETransport:
 		return "http-with-sse"
 	default:
 		return "undefined"

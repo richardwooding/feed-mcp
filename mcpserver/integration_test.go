@@ -2,15 +2,18 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/mmcdole/gofeed"
+
 	"github.com/richardwooding/feed-mcp/model"
 )
 
+//nolint:gocognit // Test function complexity is acceptable for comprehensive integration testing
 func TestServerRunMethod(t *testing.T) {
 	// Create a mock HTTP server for testing the fetch_link functionality
 	mockHTTPServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +71,7 @@ func TestServerRunMethod(t *testing.T) {
 			transport: model.UndefinedTransport,
 			expectErr: true,
 		},
-		// Note: We can't easily test StdioTransport and HttpWithSSETransport in unit tests
+		// Note: We can't easily test StdioTransport and HTTPWithSSETransport in unit tests
 		// because they require actual transport connections. Those would be integration tests.
 	}
 
@@ -219,7 +222,7 @@ func TestMockErrorScenarios(t *testing.T) {
 		}
 
 		_, err := mock.GetAllFeeds(context.Background())
-		if err != context.DeadlineExceeded {
+		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("Expected DeadlineExceeded error, got %v", err)
 		}
 	})
@@ -230,7 +233,7 @@ func TestMockErrorScenarios(t *testing.T) {
 		}
 
 		_, err := mock.GetFeedAndItems(context.Background(), "test")
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			t.Errorf("Expected Canceled error, got %v", err)
 		}
 	})

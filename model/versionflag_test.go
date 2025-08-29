@@ -2,10 +2,11 @@ package model
 
 import (
 	"bytes"
-	"github.com/alecthomas/kong"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/alecthomas/kong"
 )
 
 func TestVersionFlag_IsBool(t *testing.T) {

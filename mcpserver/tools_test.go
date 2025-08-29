@@ -12,14 +12,22 @@ import (
 	"github.com/mmcdole/gofeed"
 	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/richardwooding/feed-mcp/model"
 )
 
+const (
+	objectType = "object"
+	feed1ID    = "feed1"
+)
+
 // Test the schema definitions used in the tools
+//
+//nolint:gocognit // Test function complexity is acceptable for comprehensive schema validation
 func TestToolSchemas(t *testing.T) {
 	t.Run("fetch_link tool schema", func(t *testing.T) {
 		expected := &jsonschema.Schema{
-			Type:     "object",
+			Type:     objectType,
 			Required: []string{"URL"},
 			Properties: map[string]*jsonschema.Schema{
 				"URL": {
@@ -30,7 +38,7 @@ func TestToolSchemas(t *testing.T) {
 		}
 
 		// This tests that our schema definition is correct
-		if expected.Type != "object" {
+		if expected.Type != objectType {
 			t.Errorf("Expected type 'object', got %s", expected.Type)
 		}
 
@@ -54,7 +62,7 @@ func TestToolSchemas(t *testing.T) {
 
 	t.Run("get_syndication_feed_items tool schema", func(t *testing.T) {
 		expected := &jsonschema.Schema{
-			Type:     "object",
+			Type:     objectType,
 			Required: []string{"ID"},
 			Properties: map[string]*jsonschema.Schema{
 				"ID": {
@@ -65,7 +73,7 @@ func TestToolSchemas(t *testing.T) {
 		}
 
 		// This tests that our schema definition is correct
-		if expected.Type != "object" {
+		if expected.Type != objectType {
 			t.Errorf("Expected type 'object', got %s", expected.Type)
 		}
 
@@ -88,20 +96,22 @@ func TestToolSchemas(t *testing.T) {
 	})
 
 	t.Run("all_syndication_feeds tool schema", func(t *testing.T) {
-		expected := &jsonschema.Schema{Type: "object"}
+		expected := &jsonschema.Schema{Type: objectType}
 
-		if expected.Type != "object" {
+		if expected.Type != objectType {
 			t.Errorf("Expected type 'object', got %s", expected.Type)
 		}
 	})
 }
 
 // Test the tool logic by simulating what happens in the Run method
+//
+//nolint:gocognit // Test function complexity is acceptable for comprehensive tool logic validation
 func TestToolLogic(t *testing.T) {
 	// Setup test data
 	testFeeds := []*model.FeedResult{
 		{
-			ID:        "feed1",
+			ID:        feed1ID,
 			PublicURL: "https://example.com/feed1.xml",
 			Title:     "Test Feed 1",
 			Feed: &model.Feed{
@@ -119,8 +129,8 @@ func TestToolLogic(t *testing.T) {
 	}
 
 	testFeedAndItems := map[string]*model.FeedAndItemsResult{
-		"feed1": {
-			ID:        "feed1",
+		feed1ID: {
+			ID:        feed1ID,
 			PublicURL: "https://example.com/feed1.xml",
 			Title:     "Test Feed 1",
 			Feed: &model.Feed{
@@ -174,7 +184,7 @@ func TestToolLogic(t *testing.T) {
 
 		// Verify the marshaled data contains expected content
 		dataStr := string(data)
-		if !strings.Contains(dataStr, "feed1") {
+		if !strings.Contains(dataStr, feed1ID) {
 			t.Error("Marshaled data should contain 'feed1'")
 		}
 		if !strings.Contains(dataStr, "Test Feed 1") {
@@ -196,7 +206,7 @@ func TestToolLogic(t *testing.T) {
 		}
 
 		// Check that the data is preserved
-		if unmarshaled[0].ID != "feed1" {
+		if unmarshaled[0].ID != feed1ID {
 			t.Errorf("Expected first feed ID 'feed1', got %s", unmarshaled[0].ID)
 		}
 		if unmarshaled[1].FetchError != "Failed to fetch" {
@@ -207,7 +217,7 @@ func TestToolLogic(t *testing.T) {
 	t.Run("get_syndication_feed_items tool logic", func(t *testing.T) {
 		// Simulate the tool handler logic
 		ctx := context.Background()
-		feedResult, err := server.feedAndItemsGetter.GetFeedAndItems(ctx, "feed1")
+		feedResult, err := server.feedAndItemsGetter.GetFeedAndItems(ctx, feed1ID)
 		if err != nil {
 			t.Fatalf("GetFeedAndItems() failed: %v", err)
 		}
@@ -220,7 +230,7 @@ func TestToolLogic(t *testing.T) {
 
 		// Verify the marshaled data contains expected content
 		dataStr := string(data)
-		if !strings.Contains(dataStr, "feed1") {
+		if !strings.Contains(dataStr, feed1ID) {
 			t.Error("Marshaled data should contain 'feed1'")
 		}
 		if !strings.Contains(dataStr, "Item 1") {
@@ -237,7 +247,7 @@ func TestToolLogic(t *testing.T) {
 			t.Fatalf("Failed to unmarshal feed and items: %v", err)
 		}
 
-		if unmarshaled.ID != "feed1" {
+		if unmarshaled.ID != feed1ID {
 			t.Errorf("Expected feed ID 'feed1', got %s", unmarshaled.ID)
 		}
 
@@ -303,7 +313,7 @@ func TestMCPServerCreation(t *testing.T) {
 			Name:        "fetch_link",
 			Description: "Fetch link URL",
 			InputSchema: &jsonschema.Schema{
-				Type:     "object",
+				Type:     objectType,
 				Required: []string{"URL"},
 				Properties: map[string]*jsonschema.Schema{
 					"URL": {
@@ -330,14 +340,14 @@ func TestMCPServerCreation(t *testing.T) {
 		allFeedsTool := &mcp.Tool{
 			Name:        "all_syndication_feeds",
 			Description: "list available feedItem resources",
-			InputSchema: &jsonschema.Schema{Type: "object"},
+			InputSchema: &jsonschema.Schema{Type: objectType},
 		}
 
 		if allFeedsTool.Name != "all_syndication_feeds" {
 			t.Errorf("Expected tool name 'all_syndication_feeds', got %s", allFeedsTool.Name)
 		}
 
-		if allFeedsTool.InputSchema.Type != "object" {
+		if allFeedsTool.InputSchema.Type != objectType {
 			t.Errorf("Expected schema type 'object', got %s", allFeedsTool.InputSchema.Type)
 		}
 
@@ -346,7 +356,7 @@ func TestMCPServerCreation(t *testing.T) {
 			Name:        "get_syndication_feed_items",
 			Description: "get syndication feed and items by id",
 			InputSchema: &jsonschema.Schema{
-				Type:     "object",
+				Type:     objectType,
 				Required: []string{"ID"},
 				Properties: map[string]*jsonschema.Schema{
 					"ID": {
@@ -442,7 +452,7 @@ func TestTypeDefinitions(t *testing.T) {
 		serverType := reflect.TypeOf(Server{})
 
 		// Check that Server has the expected fields
-		expectedFields := []string{"transport", "allFeedsGetter", "feedAndItemsGetter", "sessionID"}
+		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "sessionID", "transport"}
 
 		if serverType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Server, got %d", len(expectedFields), serverType.NumField())
@@ -460,7 +470,7 @@ func TestTypeDefinitions(t *testing.T) {
 		configType := reflect.TypeOf(Config{})
 
 		// Check that Config has the expected fields
-		expectedFields := []string{"Transport", "AllFeedsGetter", "FeedAndItemsGetter"}
+		expectedFields := []string{"AllFeedsGetter", "FeedAndItemsGetter", "Transport"}
 
 		if configType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Config, got %d", len(expectedFields), configType.NumField())
