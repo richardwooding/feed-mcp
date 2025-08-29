@@ -14,9 +14,9 @@ type feedConversionTest struct {
 }
 
 type transportParsingTest struct {
-	inputTransport  string
-	outputTransport Transport
 	parseError      error
+	outputTransport Transport
+	inputTransport  string
 }
 
 func (f *feedConversionTest) iHaveAGofeedFeedWithTheFollowingProperties(table *godog.Table) error {
@@ -148,7 +148,7 @@ func (t *transportParsingTest) theResultShouldBeStdioTransport() error {
 	return nil
 }
 
-func (t *transportParsingTest) theResultShouldBeHttpWithSSETransport() error {
+func (t *transportParsingTest) theResultShouldBeHTTPWithSSETransport() error {
 	if t.outputTransport != HTTPWithSSETransport {
 		return fmt.Errorf("expected HTTPWithSSETransport, got %v", t.outputTransport)
 	}
@@ -164,7 +164,7 @@ func (t *transportParsingTest) theResultShouldBeUndefinedTransport() error {
 
 func (t *transportParsingTest) thereShouldBeNoError() error {
 	if t.parseError != nil {
-		return fmt.Errorf("expected no error, got %v", t.parseError)
+		return fmt.Errorf("expected no error, got %w", t.parseError)
 	}
 	return nil
 }
@@ -206,7 +206,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I have a transport string "([^"]*)"$`, transportTest.iHaveATransportString)
 	ctx.Step(`^I parse it using ParseTransport$`, transportTest.iParseItUsingParseTransport)
 	ctx.Step(`^the result should be StdioTransport$`, transportTest.theResultShouldBeStdioTransport)
-	ctx.Step(`^the result should be HttpWithSSETransport$`, transportTest.theResultShouldBeHttpWithSSETransport)
+	ctx.Step(`^the result should be HttpWithSSETransport$`, transportTest.theResultShouldBeHTTPWithSSETransport)
 	ctx.Step(`^the result should be UndefinedTransport$`, transportTest.theResultShouldBeUndefinedTransport)
 	ctx.Step(`^there should be no error$`, transportTest.thereShouldBeNoError)
 	ctx.Step(`^there should be an error$`, transportTest.thereShouldBeAnError)
