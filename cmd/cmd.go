@@ -3,7 +3,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/richardwooding/feed-mcp/mcpserver"
@@ -39,7 +38,9 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		return err
 	}
 	if len(c.Feeds) == 0 {
-		return errors.New("no feeds specified")
+		return model.NewFeedError(model.ErrorTypeConfiguration, "no feeds specified").
+			WithOperation("run_command").
+			WithComponent("cli")
 	}
 	// Validate feed URLs for security
 	if err := model.SanitizeFeedURLs(c.Feeds, c.AllowPrivateIPs); err != nil {
