@@ -66,7 +66,7 @@ func BenchmarkResourceReading(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			// Warm up cache
-			_ = rm.ReadResource(ctx, tc.uri)
+			_, _ = rm.ReadResource(ctx, tc.uri)
 
 			b.ResetTimer()
 			b.ReportAllocs()
@@ -135,7 +135,7 @@ func BenchmarkResourceReadingWithFilters(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			// Warm up cache
-			_ = rm.ReadResource(ctx, tc.uri)
+			_, _ = rm.ReadResource(ctx, tc.uri)
 
 			b.ResetTimer()
 			b.ReportAllocs()
@@ -271,11 +271,11 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				ctx := context.Background()
 
 				// Exercise the resource manager
-				_ = rm.ListResources(ctx)
+				_, _ = rm.ListResources(ctx)
 				for j := 0; j < 10; j++ {
 					feedID := generateFeedID(fmt.Sprintf("https://example.com/feed%d.xml", j%count))
 					uri := strings.Replace(FeedItemsURI, "{feedId}", feedID, 1)
-					_ = rm.ReadResource(ctx, uri)
+					_, _ = rm.ReadResource(ctx, uri)
 				}
 
 				// Force garbage collection to measure retained memory
@@ -309,10 +309,10 @@ func BenchmarkLargeScale(b *testing.B) {
 			// Mix of operations
 			switch time.Now().Nanosecond() % 4 {
 			case 0:
-				_ = rm.ListResources(ctx)
+				_, _ = rm.ListResources(ctx)
 			case 1:
 				uri := strings.Replace(FeedItemsURI, "{feedId}", feedID, 1)
-				_ = rm.ReadResource(ctx, uri)
+				_, _ = rm.ReadResource(ctx, uri)
 			case 2:
 				uri := strings.Replace(FeedURI, "{feedId}", feedID, 1)
 				_ = rm.Subscribe(sessionID, uri)
