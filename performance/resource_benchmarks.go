@@ -92,7 +92,7 @@ func (rpt *ResourcePerformanceTester) BenchmarkResourceReading(ctx context.Conte
 	// Pre-warm cache
 	feedID := generateFeedID("https://example.com/feed1.xml")
 	uri := fmt.Sprintf("feeds://feed/%s/items", feedID)
-	_, _ = rpt.resourceManager.ReadResource(ctx, uri)
+	_ = rpt.resourceManager.ReadResource(ctx, uri)
 
 	return rpt.runBenchmark(ctx, "ReadResource", func(ctx context.Context) error {
 		_, err := rpt.resourceManager.ReadResource(ctx, uri)

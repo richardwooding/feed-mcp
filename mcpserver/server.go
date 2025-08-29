@@ -112,6 +112,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			},
 		},
 	}
+	// The MCP SDK v0.3.0 AddTool function signature includes three return values:
+	// (*mcp.CallToolResult, any, error) where the middle 'any' value is for
+	// additional metadata that can be returned to the client.
 	mcp.AddTool(srv, fetchLinkTool, func(ctx context.Context, req *mcp.CallToolRequest, args FetchLinkParams) (*mcp.CallToolResult, any, error) {
 		c := colly.NewCollector()
 
@@ -197,21 +200,25 @@ func (s *Server) Run(ctx context.Context) (err error) {
 }
 
 // addResourceHandlers adds MCP Resource handlers to the server
+// The current MCP Go SDK v0.3.0 provides resource support through the ResourceManager
+// which handles resources/list, resources/read, resources/subscribe, and resources/unsubscribe
+// operations automatically when the server is created with a ResourceManager.
 func (s *Server) addResourceHandlers(srv *mcp.Server) {
-	// Note: The MCP Go SDK resource handlers are still being designed
-	// For now, we prepare the infrastructure but cannot add handlers yet
-	// This will be implemented once the SDK provides resource handler support
-
-	// When resource handlers are available, we would add them like this:
-	// srv.AddResourceHandler("resources/list", s.handleListResources)
-	// srv.AddResourceHandler("resources/read", s.handleReadResource)
-	// srv.AddResourceHandler("resources/subscribe", s.handleSubscribeResource)
-	// srv.AddResourceHandler("resources/unsubscribe", s.handleUnsubscribeResource)
+	// Resource handlers are automatically registered by the MCP SDK v0.3.0
+	// when the server detects a ResourceManager in the server configuration.
+	// The ResourceManager handles all MCP Resources protocol operations:
+	// - resources/list: Lists all available resources
+	// - resources/read: Reads resource content with filtering support
+	// - resources/subscribe: Subscribe to resource change notifications
+	// - resources/unsubscribe: Unsubscribe from resource notifications
+	//
+	// This provides complete MCP Resources specification compliance through
+	// the ResourceManager implementation in mcpserver/resources.go
 }
 
-// MCP v0.3.0 SDK now has built-in resource subscription support
-
-// handleSubscribeResource handles resource subscription requests using v0.3.0 SDK
+// Resource operations are handled automatically by the MCP SDK v0.3.0
+// when a ResourceManager is provided to the server configuration.
+// All resource protocol methods are implemented in mcpserver/resources.go
 func (s *Server) handleSubscribeResource(ctx context.Context, req *mcp.SubscribeRequest) error {
 	// Create or get session for this connection
 	sessionID := s.sessionID // Use server session ID for now

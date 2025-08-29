@@ -648,7 +648,7 @@ func generateFeedID(feedURL string) string {
 		// Truncate if too long and add hash suffix for uniqueness
 		if len(slug) > 40 {
 			h := fnv.New32a()
-			_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
+			_ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
 			hashStr := fmt.Sprintf("%x", h.Sum32())[:8]
 			slug = slug[:32] + "-" + hashStr
 		}
@@ -657,7 +657,7 @@ func generateFeedID(feedURL string) string {
 
 	// Fallback to hash if URL parsing fails
 	h := fnv.New32a()
-	_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
+	_ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
 	return fmt.Sprintf("feed-%x", h.Sum32())
 }
 
@@ -749,7 +749,7 @@ func (rm *ResourceManager) generateCacheKey(uri string) string {
 	if parsedURL.RawQuery != "" {
 		// Use a hash of the query parameters for consistent key generation
 		h := fnv.New64a()
-		_, _ = h.Write([]byte(parsedURL.RawQuery)) // FNV hash Write never returns an error
+		_ = h.Write([]byte(parsedURL.RawQuery)) // FNV hash Write never returns an error
 		queryHash := h.Sum64()
 		baseKey = fmt.Sprintf("%s?hash=%x", baseKey, queryHash)
 	}
