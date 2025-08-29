@@ -176,14 +176,6 @@ func (t *transportParsingTest) thereShouldBeAnError() error {
 	return nil
 }
 
-func (t *transportParsingTest) theErrorStateShouldBeFalse() error {
-	return t.thereShouldBeNoError()
-}
-
-func (t *transportParsingTest) theErrorStateShouldBeTrue() error {
-	return t.thereShouldBeAnError()
-}
-
 func InitializeScenario(ctx *godog.ScenarioContext) {
 	feedTest := &feedConversionTest{}
 	transportTest := &transportParsingTest{}
@@ -210,8 +202,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the result should be UndefinedTransport$`, transportTest.theResultShouldBeUndefinedTransport)
 	ctx.Step(`^there should be no error$`, transportTest.thereShouldBeNoError)
 	ctx.Step(`^there should be an error$`, transportTest.thereShouldBeAnError)
-	ctx.Step(`^the error state should be false$`, transportTest.theErrorStateShouldBeFalse)
-	ctx.Step(`^the error state should be true$`, transportTest.theErrorStateShouldBeTrue)
+	ctx.Step(`^the error state should be false$`, transportTest.thereShouldBeNoError)
+	ctx.Step(`^the error state should be true$`, transportTest.thereShouldBeAnError)
 }
 
 func TestFeatures(t *testing.T) {
