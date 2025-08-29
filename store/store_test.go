@@ -287,7 +287,7 @@ func TestStore_CustomRateLimiting(t *testing.T) {
 	}
 }
 
-func TestStore_CustomHttpClientPreserved(t *testing.T) {
+func TestStore_CustomHTTPClientPreserved(t *testing.T) {
 	srv := mockFeedServer(t, "CustomClientTest")
 	defer srv.Close()
 
@@ -297,8 +297,8 @@ func TestStore_CustomHttpClientPreserved(t *testing.T) {
 	// Create store with custom HTTP client - rate limiting should be skipped
 	store, err := NewStore(Config{
 		Feeds:             []string{srv.URL},
-		HttpClient:        customClient,
-		RequestsPerSecond: 10.0, // These should be ignored since HttpClient is provided
+		HTTPClient:        customClient,
+		RequestsPerSecond: 10.0, // These should be ignored since HTTPClient is provided
 		BurstCapacity:     20,
 	})
 	if err != nil {
@@ -902,7 +902,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	config := Config{
 		Feeds:                 []string{server.URL},
 		Timeout:               5 * time.Second,
-		ExpireAfter:           10 * time.Second, // Keep cache valid for test
+		ExpireAfter:           1 * time.Hour, // Long cache to prevent double requests
 		RetryMaxAttempts:      3,
 		RetryBaseDelay:        50 * time.Millisecond,
 		RetryMaxDelay:         1 * time.Second,
@@ -929,7 +929,11 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 		t.Errorf("expected feed title 'Retry Test Feed', got %q", feeds[0].Title)
 	}
 
-	// Should have made exactly 3 requests
+	// Small delay to ensure all goroutines complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Should have made exactly 3 requests:
+	// 1st attempt fails, 2nd attempt fails, 3rd attempt succeeds
 	finalCount := atomic.LoadInt64(&requestCount)
 	if finalCount != 3 {
 		t.Errorf("expected 3 requests, got %d", finalCount)

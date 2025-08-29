@@ -48,9 +48,45 @@ go fmt ./...
 # Run go vet for static analysis
 go vet ./...
 
-# Install and run golangci-lint (if available)
-golangci-lint run
+# Install and run golangci-lint v2 (comprehensive linting)
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0
+$(go env GOPATH)/bin/golangci-lint run
+
+# Run with auto-fix for formatting issues
+$(go env GOPATH)/bin/golangci-lint run --fix
 ```
+
+### Pre-commit Hooks (Optional)
+To automatically run linting before commits, you can set up pre-commit hooks:
+
+```bash
+# Install pre-commit (requires Python)
+pip install pre-commit
+
+# Create .pre-commit-config.yaml in project root
+cat > .pre-commit-config.yaml << 'EOF'
+repos:
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        language: system
+        entry: go fmt ./...
+        files: \.go$
+      
+      - id: golangci-lint
+        name: golangci-lint
+        language: system
+        entry: golangci-lint run --fix
+        files: \.go$
+        pass_filenames: false
+EOF
+
+# Install the git hooks
+pre-commit install
+```
+
+Now golangci-lint will run automatically on every commit.
 
 ### Docker
 ```bash
@@ -573,3 +609,4 @@ The server exposes three MCP tools that Claude can use:
 - Always use Context7, godoc, or github to get up to date information on libraries
 - This repository has branch protection rules require pull requests. When working on any issue, create a branch, and make a pr when you are done
 - Add docstring comments wherever needed
+- I only want to use golangci-lint v2, it's the version installed not the config files problem

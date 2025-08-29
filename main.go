@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/alecthomas/kong"
+
 	"github.com/richardwooding/feed-mcp/cmd"
 	"github.com/richardwooding/feed-mcp/model"
 )

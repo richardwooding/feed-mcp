@@ -1,34 +1,36 @@
+// Package model provides data structures and types for the feed-mcp server.
 package model
 
 import (
+	"time"
+
 	"github.com/mmcdole/gofeed"
 	ext "github.com/mmcdole/gofeed/extensions"
-	"time"
 )
 
 // Feed represents a syndication feed (RSS, Atom, or JSON Feed)
 type Feed struct {
-	Title           string                   `json:"title,omitempty"`
-	Description     string                   `json:"description,omitempty"`
-	Link            string                   `json:"link,omitempty"`
-	FeedLink        string                   `json:"feedLink,omitempty"`
-	Links           []string                 `json:"links,omitempty"`
-	Updated         string                   `json:"updated,omitempty"`
-	UpdatedParsed   *time.Time               `json:"updatedParsed,omitempty"`
-	Published       string                   `json:"published,omitempty"`
 	PublishedParsed *time.Time               `json:"publishedParsed,omitempty"`
-	Authors         []*gofeed.Person         `json:"authors,omitempty"`
-	Language        string                   `json:"language,omitempty"`
+	Custom          map[string]string        `json:"custom,omitempty"`
+	Extensions      ext.Extensions           `json:"extensions,omitempty"`
+	ITunesExt       *ext.ITunesFeedExtension `json:"itunesExt,omitempty"`
+	DublinCoreExt   *ext.DublinCoreExtension `json:"dcExt,omitempty"`
 	Image           *gofeed.Image            `json:"image,omitempty"`
+	UpdatedParsed   *time.Time               `json:"updatedParsed,omitempty"`
+	Updated         string                   `json:"updated,omitempty"`
+	Link            string                   `json:"link,omitempty"`
+	FeedVersion     string                   `json:"feedVersion"`
+	Language        string                   `json:"language,omitempty"`
+	Title           string                   `json:"title,omitempty"`
 	Copyright       string                   `json:"copyright,omitempty"`
 	Generator       string                   `json:"generator,omitempty"`
-	Categories      []string                 `json:"categories,omitempty"`
-	DublinCoreExt   *ext.DublinCoreExtension `json:"dcExt,omitempty"`
-	ITunesExt       *ext.ITunesFeedExtension `json:"itunesExt,omitempty"`
-	Extensions      ext.Extensions           `json:"extensions,omitempty"`
-	Custom          map[string]string        `json:"custom,omitempty"`
 	FeedType        string                   `json:"feedType"`
-	FeedVersion     string                   `json:"feedVersion"`
+	Description     string                   `json:"description,omitempty"`
+	FeedLink        string                   `json:"feedLink,omitempty"`
+	Published       string                   `json:"published,omitempty"`
+	Links           []string                 `json:"links,omitempty"`
+	Categories      []string                 `json:"categories,omitempty"`
+	Authors         []*gofeed.Person         `json:"authors,omitempty"`
 }
 
 // FromGoFeed converts a gofeed.Feed to our internal Feed representation

@@ -1,0 +1,152 @@
+# golangci-lint v2 configuration
+# https://golangci-lint.run/usage/configuration/
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  go: '1.25'
+
+issues:
+  # Maximum issues count per one linter. Set to 0 to disable the limit.
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text. Set to 0 to disable the limit.
+  max-same-issues: 0
+  
+  # Show only new issues if it's a pull request
+  new-from-rev: ""
+
+linters:
+  default: none
+  enable:
+    # Security
+    - gosec          # Inspects source code for security problems
+    
+    # Performance  
+    - prealloc       # Finds slice declarations that could potentially be pre-allocated
+    
+    # Complexity
+    - gocyclo        # Computes and checks the cyclomatic complexity of functions
+    - gocognit       # Computes and checks the cognitive complexity of functions
+    
+    # Enhanced linting
+    - revive         # Fast, configurable, extensible, flexible, and beautiful linter for Go
+    - staticcheck    # Advanced Go linter (includes gosimple, stylecheck)
+    - gocritic       # Provides diagnostics that check for bugs, performance and style issues
+    
+    # Built-in checks
+    - govet          # Reports suspicious constructs
+    - ineffassign    # Detects when assignments to existing variables are not used
+    
+    # Error handling
+    - errcheck       # Check for unchecked errors
+    - errorlint      # Find code that will cause problems with the error wrapping scheme introduced in Go 1.13
+    
+    # Code quality  
+    - dupl           # Tool for code clone detection
+    - goconst        # Finds repeated strings that could be replaced by a constant
+    - unconvert      # Remove unnecessary type conversions
+    - unused         # Check for unused constants, variables, functions and types
+    
+    # Logic issues
+    - rowserrcheck   # Checks whether Rows.Err of database/sql is checked
+    - sqlclosecheck  # Checks that sql.Rows and sql.Stmt are closed
+    
+    # Style preferences
+    - nolintlint     # Reports ill-formed or insufficient nolint directives
+    - misspell       # Finds commonly misspelled English words in comments
+
+  settings:
+    gocyclo:
+      min-complexity: 15
+
+    gocognit:
+      min-complexity: 20
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - dupImport # https://github.com/go-critic/go-critic/issues/845
+        - ifElseChain
+        - octalLiteral
+        - whyNoLint
+
+    govet:
+      enable:
+        - fieldalignment
+
+    revive:
+      rules:
+        - name: exported
+          arguments: [checkPrivateReceivers, sayRepetitiveInsteadOfStutters]
+
+    staticcheck:
+      checks: ["all"]
+
+    gosec:
+      excludes:
+        - G404 # Use of weak random number generator (math/rand instead of crypto/rand)
+        - G601 # Implicit memory aliasing in for loop (false positives in Go 1.22+)
+
+    misspell:
+      locale: US
+
+    lll:
+      line-length: 140
+
+    dupl:
+      threshold: 100
+
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+
+    prealloc:
+      # Report preallocation suggestions only on simple loops that have no returns/breaks/continues/gotos in them.
+      simple: true
+      range-loops: true # Report preallocation suggestions on range loops, true by default
+      for-loops: true # Report preallocation suggestions on for loops, false by default
+
+  exclusions:
+    rules:
+      # Exclude some linters from running on tests files
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - errcheck
+          - dupl
+          - gosec
+          - gocritic
+      
+      # Exclude shadow warnings for short variable names
+      - linters:
+          - govet
+        text: "shadow: declaration of \"err\" shadows declaration"
+      
+      # Exclude certain gosec rules that are too noisy
+      - linters:
+          - gosec
+        text: "G404:" # Use of weak random number generator
+        
+      # Allow long lines in generated files
+      - path: ".*\\.pb\\.go"
+        linters:
+          - lll
+
+formatters:
+  enable:
+    - gofmt          # Checks whether code was gofmt-ed
+    - goimports      # Check import statements are formatted according to the 'goimport' command
+    - gofumpt        # Checks whether code was gofumpt-ed
+
+  settings:
+    goimports:
+      local-prefixes: ["github.com/richardwooding/feed-mcp"]
+
+    gofumpt: {}

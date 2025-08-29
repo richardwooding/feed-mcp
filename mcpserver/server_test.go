@@ -10,13 +10,14 @@ import (
 	"testing"
 
 	"github.com/mmcdole/gofeed"
+
 	"github.com/richardwooding/feed-mcp/model"
 )
 
 // Mock implementations for testing
 type mockAllFeedsGetter struct {
-	feeds []*model.FeedResult
 	err   error
+	feeds []*model.FeedResult
 }
 
 func (m *mockAllFeedsGetter) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
@@ -41,12 +42,13 @@ func (m *mockFeedAndItemsGetter) GetFeedAndItems(ctx context.Context, id string)
 	return nil, errors.New("feed not found")
 }
 
+//nolint:gocognit // Test function complexity is acceptable for comprehensive validation scenarios
 func TestNewServer(t *testing.T) {
 	tests := []struct {
-		name    string
 		config  Config
-		wantErr bool
+		name    string
 		errMsg  string
+		wantErr bool
 	}{
 		{
 			name: "valid config",
@@ -167,6 +169,7 @@ func TestNewServerSessionIDUniqueness(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Test function complexity is acceptable for comprehensive tools integration testing
 func TestServerToolsIntegration(t *testing.T) {
 	// Create test data
 	testFeeds := []*model.FeedResult{
@@ -379,7 +382,7 @@ func TestServerTransportTypes(t *testing.T) {
 		},
 		{
 			name:      "http with sse transport",
-			transport: model.HttpWithSSETransport,
+			transport: model.HTTPWithSSETransport,
 			valid:     true,
 		},
 		{

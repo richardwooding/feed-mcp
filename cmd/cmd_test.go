@@ -8,8 +8,6 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 )
 
-type dummyGlobals struct{}
-
 func TestRunCmd_Run_InvalidTransport(t *testing.T) {
 	cmd := &RunCmd{
 		Transport: "invalid",

@@ -36,7 +36,13 @@
       "Bash(./feed-mcp-test run:*)",
       "Bash(timeout:*)",
       "mcp__github__get_pull_request",
-      "Bash(git rebase:*)"
+      "Bash(git rebase:*)",
+      "WebFetch(domain:golangci-lint.run)",
+      "Bash(./golangci-lint run)",
+      "Bash(sed:*)",
+      "Bash(for i in {1..3})",
+      "Bash(do echo \"Run $i:\")",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

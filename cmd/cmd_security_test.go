@@ -8,13 +8,14 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 )
 
+//nolint:gocognit // Test function complexity is acceptable for thorough validation
 func TestRunCmd_URLValidation(t *testing.T) {
 	tests := []struct {
 		name            string
+		errorContains   string
 		feeds           []string
 		allowPrivateIPs bool
 		expectError     bool
-		errorContains   string
 	}{
 		{
 			name:            "valid URLs",
@@ -37,7 +38,7 @@ func TestRunCmd_URLValidation(t *testing.T) {
 			errorContains:   "private IP addresses and localhost are blocked",
 		},
 		{
-			name:            "private IP blocked by default", 
+			name:            "private IP blocked by default",
 			feeds:           []string{"http://192.168.1.1/feed"},
 			allowPrivateIPs: false,
 			expectError:     true,
@@ -82,12 +83,12 @@ func TestRunCmd_URLValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &RunCmd{
 				Transport:       "stdio",
-				Feeds:          tt.feeds,
+				Feeds:           tt.feeds,
 				AllowPrivateIPs: tt.allowPrivateIPs,
 			}
 
 			err := cmd.Run(&model.Globals{}, context.Background())
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("expected error for feeds %v, but got none", tt.feeds)
@@ -158,7 +159,7 @@ func TestRunCmd_ValidationOrder(t *testing.T) {
 	if err == nil {
 		t.Error("expected malicious URL to be rejected")
 	}
-	
+
 	// Should get URL validation error, not a server setup error
 	if !strings.Contains(err.Error(), "unsupported URL scheme") {
 		t.Errorf("expected URL validation error, got: %v", err)
