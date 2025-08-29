@@ -188,7 +188,7 @@ func isTimeoutError(err error) bool {
 
 	// Check for net.Error timeout
 	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
 
@@ -211,9 +211,9 @@ func isDNSError(err error) bool {
 	}
 
 	// Check for DNS error types
-	dnsErr := &net.DNSError{}
+	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) {
-		return dnsErr != nil
+		return true
 	}
 
 	// Check error message for DNS indicators

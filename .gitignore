@@ -29,3 +29,6 @@ feed-mcp
 
 dist/
 main
+
+# Claude Code settings
+.claude/
