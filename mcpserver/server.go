@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/richardwooding/feed-mcp/model"
+	"github.com/richardwooding/feed-mcp/version"
 )
 
 var sessionCounter int64
@@ -75,13 +76,15 @@ type GetSyndicationFeedParams struct {
 
 // Run starts the MCP server and handles client connections until context is canceled
 func (s *Server) Run(ctx context.Context) (err error) {
-	// Create a new MCP server
+	// Create a new MCP server with resource support
 	srv := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "RSS, Atom, and JSON Feed Server",
-			Version: "1.0.0",
+			Version: version.GetVersion(),
 		},
-		nil,
+		&mcp.ServerOptions{
+			// Resource handlers will be added below
+		},
 	)
 
 	// Add fetch_link tool
@@ -165,6 +168,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 		}, nil
 	})
+
+	// Add resource handlers for MCP Resources support
+	// s.addResourceHandlers(srv) // TODO: Implement resource handlers
 
 	switch s.transport {
 	case model.StdioTransport:

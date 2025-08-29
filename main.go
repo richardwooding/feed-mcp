@@ -10,9 +10,8 @@ import (
 
 	"github.com/richardwooding/feed-mcp/cmd"
 	"github.com/richardwooding/feed-mcp/model"
+	"github.com/richardwooding/feed-mcp/version"
 )
-
-var version = "dev"
 
 type CLI struct {
 	model.Globals
@@ -20,9 +19,10 @@ type CLI struct {
 }
 
 func main() {
+	versionStr := version.GetVersion()
 	cli := CLI{
 		Globals: model.Globals{
-			Version: model.VersionFlag(version),
+			Version: model.VersionFlag(versionStr),
 		},
 	}
 
@@ -34,7 +34,7 @@ func main() {
 			Compact: true,
 		}),
 		kong.Vars{
-			"version": version,
+			"version": versionStr,
 		})
 
 	// Set up signal handling for graceful shutdown
