@@ -902,7 +902,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	config := Config{
 		Feeds:                 []string{server.URL},
 		Timeout:               5 * time.Second,
-		ExpireAfter:           10 * time.Second, // Keep cache valid for test
+		ExpireAfter:           1 * time.Hour, // Long cache to prevent double requests
 		RetryMaxAttempts:      3,
 		RetryBaseDelay:        50 * time.Millisecond,
 		RetryMaxDelay:         1 * time.Second,
@@ -929,8 +929,11 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 		t.Errorf("expected feed title 'Retry Test Feed', got %q", feeds[0].Title)
 	}
 
+	// Small delay to ensure all goroutines complete
+	time.Sleep(100 * time.Millisecond)
+
 	// Should have made exactly 3 requests:
-	// Preloading + retry mechanism: 1st attempt fails, 2nd attempt fails, 3rd attempt succeeds
+	// 1st attempt fails, 2nd attempt fails, 3rd attempt succeeds
 	finalCount := atomic.LoadInt64(&requestCount)
 	if finalCount != 3 {
 		t.Errorf("expected 3 requests, got %d", finalCount)
