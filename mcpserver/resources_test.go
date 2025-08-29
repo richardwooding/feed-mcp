@@ -4,8 +4,18 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/mmcdole/gofeed"
 
 	"github.com/richardwooding/feed-mcp/model"
+)
+
+// Test constants
+const (
+	testFeedURI  = "feeds://feed/test-feed"
+	testFeedURL1 = "https://example.com/feed1.xml"
+	testFeedURL2 = "https://example.com/feed2.xml"
 )
 
 // mockResourceAllFeedsGetter is a mock implementation of AllFeedsGetter for resource testing
@@ -21,7 +31,7 @@ func (m *mockResourceAllFeedsGetter) GetAllFeeds(ctx context.Context) ([]*model.
 	return m.feeds, nil
 }
 
-// mockResourceFeedAndItemsGetter is a mock implementation of FeedAndItemsGetter for resource testing  
+// mockResourceFeedAndItemsGetter is a mock implementation of FeedAndItemsGetter for resource testing
 type mockResourceFeedAndItemsGetter struct {
 	feeds map[string]*model.FeedAndItemsResult
 	err   error
@@ -37,14 +47,13 @@ func (m *mockResourceFeedAndItemsGetter) GetFeedAndItems(ctx context.Context, fe
 	return nil, model.NewFeedError(model.ErrorTypeValidation, "Feed not found")
 }
 
-// TestResourceManager tests the core ResourceManager functionality
-func TestResourceManager(t *testing.T) {
-	// Create mock feeds
+// createTestResourceManager creates a ResourceManager with mock data for testing
+func createTestResourceManager() *ResourceManager {
 	mockFeeds := []*model.FeedResult{
 		{
 			ID:        "test-feed-1",
 			Title:     "Test Feed 1",
-			PublicURL: "https://example.com/feed1.xml",
+			PublicURL: testFeedURL1,
 			Feed: &model.Feed{
 				Title:       "Test Feed 1",
 				Description: "A test feed",
@@ -53,9 +62,9 @@ func TestResourceManager(t *testing.T) {
 			},
 		},
 		{
-			ID:        "test-feed-2", 
+			ID:        "test-feed-2",
 			Title:     "Test Feed 2",
-			PublicURL: "https://example.com/feed2.xml",
+			PublicURL: testFeedURL2,
 			Feed: &model.Feed{
 				Title:       "Test Feed 2",
 				Description: "Another test feed",
@@ -69,149 +78,230 @@ func TestResourceManager(t *testing.T) {
 	feedsMap := make(map[string]*model.FeedAndItemsResult)
 	for _, feed := range mockFeeds {
 		feedID := generateFeedID(feed.PublicURL)
-		// Convert FeedResult to FeedAndItemsResult
 		feedAndItems := &model.FeedAndItemsResult{
 			ID:                 feed.ID,
 			PublicURL:          feed.PublicURL,
 			Title:              feed.Title,
 			FetchError:         feed.FetchError,
 			Feed:               feed.Feed,
-			Items:              nil, // No items for now
+			Items:              nil,
 			CircuitBreakerOpen: feed.CircuitBreakerOpen,
 		}
 		feedsMap[feedID] = feedAndItems
 	}
 	mockFeedGetter := &mockResourceFeedAndItemsGetter{feeds: feedsMap}
+	return NewResourceManager(mockAllFeeds, mockFeedGetter)
+}
 
+// TestListResources tests the ListResources functionality
+func TestListResources(t *testing.T) {
+	rm := createTestResourceManager()
+	ctx := context.Background()
+	resources, err := rm.ListResources(ctx)
+	if err != nil {
+		t.Fatalf("ListResources failed: %v", err)
+	}
+
+	// Should have 1 feed list resource + 3 resources per feed * 2 feeds = 7 total
+	expectedCount := 1 + (3 * 2)
+	if len(resources) != expectedCount {
+		t.Errorf("Expected %d resources, got %d", expectedCount, len(resources))
+	}
+
+	// Check feed list resource
+	foundFeedList := false
+	for _, resource := range resources {
+		if resource.URI == FeedListURI {
+			foundFeedList = true
+			if resource.Name != "All Feeds" {
+				t.Errorf("Expected feed list name 'All Feeds', got '%s'", resource.Name)
+			}
+			if resource.MIMEType != "application/json" {
+				t.Errorf("Expected MIME type 'application/json', got '%s'", resource.MIMEType)
+			}
+			break
+		}
+	}
+	if !foundFeedList {
+		t.Error("Feed list resource not found")
+	}
+}
+
+// TestReadFeedListResource tests reading the feed list resource
+func TestReadFeedListResource(t *testing.T) {
+	rm := createTestResourceManager()
+	ctx := context.Background()
+	result, err := rm.ReadResource(ctx, FeedListURI)
+	if err != nil {
+		t.Fatalf("ReadResource for feed list failed: %v", err)
+	}
+
+	if len(result.Contents) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
+	}
+
+	content := result.Contents[0]
+	if content.URI != FeedListURI {
+		t.Errorf("Expected URI %s, got %s", FeedListURI, content.URI)
+	}
+
+	if content.MIMEType != "application/json" {
+		t.Errorf("Expected MIME type 'application/json', got %s", content.MIMEType)
+	}
+
+	if !strings.Contains(content.Text, "Test Feed 1") {
+		t.Error("Feed list content should contain 'Test Feed 1'")
+	}
+	if !strings.Contains(content.Text, "feeds") {
+		t.Error("Feed list content should contain 'feeds' field")
+	}
+}
+
+// TestReadIndividualFeedResource tests reading individual feed resources
+func TestReadIndividualFeedResource(t *testing.T) {
+	rm := createTestResourceManager()
+	ctx := context.Background()
+	feedID := generateFeedID(testFeedURL1)
+	uri := expandURITemplate(FeedURI, map[string]string{"feedId": feedID})
+
+	result, err := rm.ReadResource(ctx, uri)
+	if err != nil {
+		t.Fatalf("ReadResource for individual feed failed: %v", err)
+	}
+
+	if len(result.Contents) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
+	}
+
+	content := result.Contents[0]
+	if content.URI != uri {
+		t.Errorf("Expected URI %s, got %s", uri, content.URI)
+	}
+
+	if !strings.Contains(content.Text, "Test Feed 1") {
+		t.Error("Feed content should contain 'Test Feed 1'")
+	}
+}
+
+// TestReadFeedItemsResource tests reading feed items resources
+func TestReadFeedItemsResource(t *testing.T) {
+	// Create test data with items
+	mockFeeds := []*model.FeedResult{
+		{
+			ID:        "test-feed-with-items",
+			Title:     "Test Feed With Items",
+			PublicURL: testFeedURL1,
+			Feed: &model.Feed{
+				Title:       "Test Feed With Items",
+				Description: "A test feed with items",
+				Link:        "https://example.com",
+				FeedType:    "rss",
+			},
+		},
+	}
+
+	// Create mock items using gofeed.Item
+	mockItems := []*gofeed.Item{
+		{
+			Title:       "Test Item 1",
+			Description: "First test item",
+			Link:        "https://example.com/item1",
+			Published:   "2024-01-01T10:00:00Z",
+		},
+		{
+			Title:       "Test Item 2",
+			Description: "Second test item",
+			Link:        "https://example.com/item2",
+			Published:   "2024-01-02T10:00:00Z",
+		},
+	}
+
+	mockAllFeeds := &mockResourceAllFeedsGetter{feeds: mockFeeds}
+	feedsMap := make(map[string]*model.FeedAndItemsResult)
+	for _, feed := range mockFeeds {
+		feedID := generateFeedID(feed.PublicURL)
+		feedAndItems := &model.FeedAndItemsResult{
+			ID:                 feed.ID,
+			PublicURL:          feed.PublicURL,
+			Title:              feed.Title,
+			FetchError:         feed.FetchError,
+			Feed:               feed.Feed,
+			Items:              mockItems, // Add the mock items
+			CircuitBreakerOpen: feed.CircuitBreakerOpen,
+		}
+		feedsMap[feedID] = feedAndItems
+	}
+	mockFeedGetter := &mockResourceFeedAndItemsGetter{feeds: feedsMap}
 	rm := NewResourceManager(mockAllFeeds, mockFeedGetter)
 
-	t.Run("ListResources", func(t *testing.T) {
-		ctx := context.Background()
-		resources, err := rm.ListResources(ctx)
+	ctx := context.Background()
+	feedID := generateFeedID(testFeedURL1)
+	uri := expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID})
 
-		if err != nil {
-			t.Fatalf("ListResources failed: %v", err)
-		}
+	result, err := rm.ReadResource(ctx, uri)
+	if err != nil {
+		t.Fatalf("ReadResource for feed items failed: %v", err)
+	}
 
-		// Should have 1 feed list resource + 3 resources per feed (feed, items, meta) * 2 feeds = 7 total
-		expectedCount := 1 + (3 * 2)
-		if len(resources) != expectedCount {
-			t.Errorf("Expected %d resources, got %d", expectedCount, len(resources))
-		}
+	if len(result.Contents) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
+	}
 
-		// Check feed list resource
-		foundFeedList := false
-		for _, resource := range resources {
-			if resource.URI == FeedListURI {
-				foundFeedList = true
-				if resource.Name != "All Feeds" {
-					t.Errorf("Expected feed list name 'All Feeds', got '%s'", resource.Name)
-				}
-				if resource.MIMEType != "application/json" {
-					t.Errorf("Expected MIME type 'application/json', got '%s'", resource.MIMEType)
-				}
-				break
-			}
-		}
-		if !foundFeedList {
-			t.Error("Feed list resource not found")
-		}
-	})
+	content := result.Contents[0]
+	if content.URI != uri {
+		t.Errorf("Expected URI %s, got %s", uri, content.URI)
+	}
 
-	t.Run("ReadFeedListResource", func(t *testing.T) {
-		ctx := context.Background()
-		result, err := rm.ReadResource(ctx, FeedListURI)
+	// Verify items are in the content
+	if !strings.Contains(content.Text, "Test Item 1") {
+		t.Error("Items content should contain 'Test Item 1'")
+	}
+	if !strings.Contains(content.Text, "Test Item 2") {
+		t.Error("Items content should contain 'Test Item 2'")
+	}
+	if !strings.Contains(content.Text, `"count":2`) {
+		t.Error("Items content should show count of 2")
+	}
+}
 
-		if err != nil {
-			t.Fatalf("ReadResource for feed list failed: %v", err)
-		}
+// TestReadFeedMetadataResource tests reading feed metadata resources
+func TestReadFeedMetadataResource(t *testing.T) {
+	rm := createTestResourceManager()
+	ctx := context.Background()
+	feedID := generateFeedID(testFeedURL1)
+	uri := expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID})
 
-		if len(result.Contents) != 1 {
-			t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
-		}
+	result, err := rm.ReadResource(ctx, uri)
+	if err != nil {
+		t.Fatalf("ReadResource for feed metadata failed: %v", err)
+	}
 
-		content := result.Contents[0]
-		if content.URI != FeedListURI {
-			t.Errorf("Expected URI %s, got %s", FeedListURI, content.URI)
-		}
+	if len(result.Contents) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
+	}
 
-		if content.MIMEType != "application/json" {
-			t.Errorf("Expected MIME type 'application/json', got %s", content.MIMEType)
-		}
+	content := result.Contents[0]
+	if !strings.Contains(content.Text, "description") {
+		t.Error("Metadata should contain 'description' field")
+	}
+	if !strings.Contains(content.Text, "public_url") {
+		t.Error("Metadata should contain 'public_url' field")
+	}
+}
 
-		// Check that the JSON content contains feed data
-		if !strings.Contains(content.Text, "Test Feed 1") {
-			t.Error("Feed list content should contain 'Test Feed 1'")
-		}
-		if !strings.Contains(content.Text, "feeds") {
-			t.Error("Feed list content should contain 'feeds' field")
-		}
-	})
+// TestInvalidResourceURI tests handling of invalid resource URIs
+func TestInvalidResourceURI(t *testing.T) {
+	rm := createTestResourceManager()
+	ctx := context.Background()
+	_, err := rm.ReadResource(ctx, "invalid://uri")
 
-	t.Run("ReadIndividualFeedResource", func(t *testing.T) {
-		ctx := context.Background()
-		feedID := generateFeedID("https://example.com/feed1.xml")
-		uri := expandURITemplate(FeedURI, map[string]string{"feedId": feedID})
-		
-		result, err := rm.ReadResource(ctx, uri)
+	if err == nil {
+		t.Error("Expected error for invalid URI, but got none")
+	}
 
-		if err != nil {
-			t.Fatalf("ReadResource for individual feed failed: %v", err)
-		}
-
-		if len(result.Contents) != 1 {
-			t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
-		}
-
-		content := result.Contents[0]
-		if content.URI != uri {
-			t.Errorf("Expected URI %s, got %s", uri, content.URI)
-		}
-
-		// Check that the JSON content contains the full feed data
-		if !strings.Contains(content.Text, "Test Feed 1") {
-			t.Error("Feed content should contain 'Test Feed 1'")
-		}
-	})
-
-	t.Run("ReadFeedMetadataResource", func(t *testing.T) {
-		ctx := context.Background()
-		feedID := generateFeedID("https://example.com/feed1.xml")
-		uri := expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID})
-		
-		result, err := rm.ReadResource(ctx, uri)
-
-		if err != nil {
-			t.Fatalf("ReadResource for feed metadata failed: %v", err)
-		}
-
-		if len(result.Contents) != 1 {
-			t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
-		}
-
-		content := result.Contents[0]
-		// Check that metadata contains expected fields
-		if !strings.Contains(content.Text, "description") {
-			t.Error("Metadata should contain 'description' field")
-		}
-		if !strings.Contains(content.Text, "public_url") {
-			t.Error("Metadata should contain 'public_url' field")
-		}
-	})
-
-	t.Run("InvalidResourceURI", func(t *testing.T) {
-		ctx := context.Background()
-		_, err := rm.ReadResource(ctx, "invalid://uri")
-
-		if err == nil {
-			t.Error("Expected error for invalid URI, but got none")
-		}
-
-		// Check that it contains the expected error message
-		if !strings.Contains(err.Error(), "Unknown resource URI") {
-			t.Error("Expected 'Unknown resource URI' error message")
-		}
-	})
+	if !strings.Contains(err.Error(), "URI does not match any supported resource patterns") {
+		t.Error("Expected 'URI does not match any supported resource patterns' error message")
+	}
 }
 
 // TestURITemplates tests the URI template helper functions
@@ -220,7 +310,7 @@ func TestURITemplates(t *testing.T) {
 		template := "feeds://feed/{feedId}/items"
 		params := map[string]string{"feedId": "test-feed"}
 		expected := "feeds://feed/test-feed/items"
-		
+
 		result := expandURITemplate(template, params)
 		if result != expected {
 			t.Errorf("Expected %s, got %s", expected, result)
@@ -229,9 +319,9 @@ func TestURITemplates(t *testing.T) {
 
 	t.Run("matchesTemplate", func(t *testing.T) {
 		template := "feeds://feed/{feedId}"
-		
+
 		// Test matching URI
-		uri := "feeds://feed/test-feed"
+		uri := testFeedURI
 		if !matchesTemplate(uri, template) {
 			t.Error("URI should match template")
 		}
@@ -246,7 +336,7 @@ func TestURITemplates(t *testing.T) {
 	t.Run("extractFeedIDFromURI", func(t *testing.T) {
 		template := "feeds://feed/{feedId}/items"
 		uri := "feeds://feed/test-feed/items"
-		
+
 		feedID, err := extractFeedIDFromURI(uri, template)
 		if err != nil {
 			t.Fatalf("extractFeedIDFromURI failed: %v", err)
@@ -261,10 +351,10 @@ func TestURITemplates(t *testing.T) {
 // TestGenerateFeedID tests the feed ID generation
 func TestGenerateFeedID(t *testing.T) {
 	testCases := []struct {
-		name        string
-		url         string
-		expectSlug  bool
-		expectHash  bool
+		name       string
+		url        string
+		expectSlug bool
+		expectHash bool
 	}{
 		{
 			name:       "Simple domain",
@@ -291,7 +381,7 @@ func TestGenerateFeedID(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			feedID := generateFeedID(tc.url)
-			
+
 			if feedID == "" {
 				t.Error("Feed ID should not be empty")
 			}
@@ -315,7 +405,7 @@ func TestGenerateFeedID(t *testing.T) {
 	}
 }
 
-// TestResourceSession tests the ResourceSession functionality  
+// TestResourceSession tests the ResourceSession functionality
 func TestResourceSession(t *testing.T) {
 	session := &ResourceSession{
 		id:            "test-session",
@@ -348,6 +438,107 @@ func TestResourceSession(t *testing.T) {
 		subs := session.GetSubscriptions()
 		if len(subs) != 0 {
 			t.Error("Subscription list should be empty after unsubscribe")
+		}
+	})
+}
+
+// TestResourceCaching tests the resource caching functionality
+func TestResourceCaching(t *testing.T) {
+	// Create mock feeds
+	mockFeeds := []*model.FeedResult{
+		{
+			ID:        "test-feed-cache",
+			Title:     "Test Feed Cache",
+			PublicURL: testFeedURL1,
+			Feed: &model.Feed{
+				Title:       "Test Feed Cache",
+				Description: "A test feed for cache testing",
+				Link:        "https://example.com",
+				FeedType:    "rss",
+			},
+		},
+	}
+
+	mockAllFeeds := &mockResourceAllFeedsGetter{feeds: mockFeeds}
+	feedsMap := make(map[string]*model.FeedAndItemsResult)
+	for _, feed := range mockFeeds {
+		feedID := generateFeedID(feed.PublicURL)
+		feedAndItems := &model.FeedAndItemsResult{
+			ID:                 feed.ID,
+			PublicURL:          feed.PublicURL,
+			Title:              feed.Title,
+			FetchError:         feed.FetchError,
+			Feed:               feed.Feed,
+			Items:              nil,
+			CircuitBreakerOpen: feed.CircuitBreakerOpen,
+		}
+		feedsMap[feedID] = feedAndItems
+	}
+	mockFeedGetter := &mockResourceFeedAndItemsGetter{feeds: feedsMap}
+	rm := NewResourceManager(mockAllFeeds, mockFeedGetter)
+
+	ctx := context.Background()
+
+	t.Run("Feed list caching", func(t *testing.T) {
+		// First call should be a cache miss
+		initialMetrics := rm.GetCacheMetrics()
+
+		result1, err := rm.ReadResource(ctx, FeedListURI)
+		if err != nil {
+			t.Fatalf("First ReadResource failed: %v", err)
+		}
+
+		// Check cache miss was recorded
+		metrics1 := rm.GetCacheMetrics()
+		if metrics1.Misses != initialMetrics.Misses+1 {
+			t.Errorf("Expected cache miss count to increase by 1, got %d->%d", initialMetrics.Misses, metrics1.Misses)
+		}
+
+		// Wait a moment for Ristretto cache to process Set operation
+		time.Sleep(100 * time.Millisecond)
+
+		// Second call should be a cache hit
+		result2, err := rm.ReadResource(ctx, FeedListURI)
+		if err != nil {
+			t.Fatalf("Second ReadResource failed: %v", err)
+		}
+
+		// Check cache hit was recorded
+		metrics2 := rm.GetCacheMetrics()
+		if metrics2.Hits != metrics1.Hits+1 {
+			t.Errorf("Expected cache hit count to increase by 1, got %d->%d", metrics1.Hits, metrics2.Hits)
+		}
+
+		// Results should be identical
+		if result1.Contents[0].Text != result2.Contents[0].Text {
+			t.Error("Cached result should be identical to original")
+		}
+	})
+
+	t.Run("Cache invalidation", func(t *testing.T) {
+		// Make a request to populate cache
+		_, err := rm.ReadResource(ctx, FeedListURI)
+		if err != nil {
+			t.Fatalf("ReadResource failed: %v", err)
+		}
+
+		// Invalidate cache
+		err = rm.InvalidateCache(ctx)
+		if err != nil {
+			t.Fatalf("InvalidateCache failed: %v", err)
+		}
+
+		// Next request should be a cache miss
+		initialMetrics := rm.GetCacheMetrics()
+		_, err = rm.ReadResource(ctx, FeedListURI)
+		if err != nil {
+			t.Fatalf("ReadResource after cache invalidation failed: %v", err)
+		}
+
+		// Should have recorded a cache miss
+		finalMetrics := rm.GetCacheMetrics()
+		if finalMetrics.Misses != initialMetrics.Misses+1 {
+			t.Errorf("Expected cache miss after invalidation, got %d->%d", initialMetrics.Misses, finalMetrics.Misses)
 		}
 	})
 }

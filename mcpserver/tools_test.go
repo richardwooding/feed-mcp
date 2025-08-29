@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mmcdole/gofeed"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/richardwooding/feed-mcp/model"
@@ -452,7 +452,7 @@ func TestTypeDefinitions(t *testing.T) {
 		serverType := reflect.TypeOf(Server{})
 
 		// Check that Server has the expected fields
-		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "sessionID", "transport"}
+		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "resourceManager", "sessionID", "transport"}
 
 		if serverType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Server, got %d", len(expectedFields), serverType.NumField())

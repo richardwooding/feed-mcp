@@ -641,6 +641,83 @@ The server exposes three MCP tools that Claude can use:
 2. `get_syndication_feed_items` - Returns items from a specific feed
 3. `fetch_link` - Fetches and returns content from any URL
 
+### MCP Resources with URI Parameter Filtering
+
+The feed-mcp server supports MCP Resources protocol with comprehensive URI parameter filtering for precise feed content retrieval:
+
+**Resource Types:**
+- `feeds://list` - List all available feeds
+- `feeds://feed/{feedId}` - Get a specific feed with metadata and items
+- `feeds://feed/{feedId}/items` - Get only items from a specific feed
+- `feeds://feed/{feedId}/metadata` - Get only metadata from a specific feed
+
+**URI Parameter Filtering:**
+All feed item resources support comprehensive filtering via URI parameters for precise content retrieval:
+
+```bash
+# Date range filtering (ISO 8601 format)
+feeds://feed/{feedId}/items?since=2023-01-01T00:00:00Z
+feeds://feed/{feedId}/items?until=2023-12-31T23:59:59Z
+feeds://feed/{feedId}/items?since=2023-06-01T00:00:00Z&until=2023-06-30T23:59:59Z
+
+# Pagination
+feeds://feed/{feedId}/items?limit=10
+feeds://feed/{feedId}/items?offset=20
+feeds://feed/{feedId}/items?limit=5&offset=10
+
+# Content filtering (case-insensitive)
+feeds://feed/{feedId}/items?category=technology
+feeds://feed/{feedId}/items?author=john%20smith
+feeds://feed/{feedId}/items?search=golang
+
+# Combined filtering
+feeds://feed/{feedId}/items?since=2023-01-01T00:00:00Z&limit=10&category=tech&search=programming
+```
+
+**Supported Filter Parameters:**
+- `since` - Filter items published after this date (ISO 8601 format)
+- `until` - Filter items published before this date (ISO 8601 format)  
+- `limit` - Maximum number of items to return (0-1000, capped at 1000)
+- `offset` - Number of items to skip for pagination (0 or positive)
+- `category` - Filter by category/tag (case-insensitive, checks categories and custom tags)
+- `author` - Filter by author name (case-insensitive, checks main author and authors list)
+- `search` - Full-text search across title, description, and content (case-insensitive)
+
+**Filter Features:**
+- **Case-insensitive matching** for category, author, and search filters
+- **Date validation** with clear error messages for invalid ISO 8601 dates
+- **Parameter validation** with meaningful error responses
+- **Automatic limit capping** at 1000 items for performance safety
+- **Date range validation** ensuring 'since' is before 'until'
+- **Filter summary** included in responses showing applied filters and result counts
+
+**Error Handling:**
+Invalid parameters return structured error responses:
+```json
+{
+  "error": "Invalid 'since' date format: parsing time \"2023-01-01\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"T\"",
+  "operation": "parse_since_parameter",
+  "component": "resource_filters"
+}
+```
+
+**Response Format:**
+Filtered responses include summary information:
+```json
+{
+  "items": [...],
+  "filter_summary": {
+    "total_items": 100,
+    "filtered_items": 25,
+    "applied_filters": {
+      "since": "2023-01-01T00:00:00Z",
+      "limit": 10,
+      "category": "tech"
+    }
+  }
+}
+```
+
 ### Cache Behavior
 - Default cache expiration: 10 minutes
 - Cache is in-memory only (resets on restart)
@@ -657,3 +734,4 @@ The server exposes three MCP tools that Claude can use:
 - This repository has branch protection rules require pull requests. When working on any issue, create a branch, and make a pr when you are done
 - Add docstring comments wherever needed
 - I only want to use golangci-lint v2, it's the version installed not the config files problem
+- I would prefer you use a non-cryptographic hash fucntion, hash/fnv is perfect. Please use that and note on Github Issue and tracking .md files. Carry on.
