@@ -287,7 +287,7 @@ func TestStore_CustomRateLimiting(t *testing.T) {
 	}
 }
 
-func TestStore_CustomHttpClientPreserved(t *testing.T) {
+func TestStore_CustomHTTPClientPreserved(t *testing.T) {
 	srv := mockFeedServer(t, "CustomClientTest")
 	defer srv.Close()
 
@@ -298,7 +298,7 @@ func TestStore_CustomHttpClientPreserved(t *testing.T) {
 	store, err := NewStore(Config{
 		Feeds:             []string{srv.URL},
 		HTTPClient:        customClient,
-		RequestsPerSecond: 10.0, // These should be ignored since HttpClient is provided
+		RequestsPerSecond: 10.0, // These should be ignored since HTTPClient is provided
 		BurstCapacity:     20,
 	})
 	if err != nil {
