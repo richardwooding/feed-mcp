@@ -243,18 +243,67 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 				}
 				metricsMutex.Unlock()
 			}
+
+			// Debug log successful fetch
+			extra := map[string]interface{}{
+				"items_count": len(feed.Items),
+			}
+			msg := "Successfully fetched feed"
+			if attempt > 1 {
+				extra["attempt"] = attempt
+				extra["max_attempts"] = maxAttempts
+				msg = fmt.Sprintf("Successfully fetched feed after %d attempts", attempt)
+			}
+			model.DebugLogWithContext(
+				msg,
+				"feed_fetcher", "retryable_fetch", url,
+				extra,
+			)
+
 			return feed, nil
 		}
 
 		lastErr = err
 
+		// Debug log the error
+		model.DebugLogWithContext(
+			fmt.Sprintf("Feed fetch attempt %d failed", attempt),
+			"feed_fetcher", "retryable_fetch", url,
+			map[string]interface{}{
+				"attempt":      attempt,
+				"max_attempts": maxAttempts,
+				"error":        err.Error(),
+				"retryable":    isRetryableError(err),
+			},
+		)
+
 		// Don't retry on the last attempt or non-retryable errors
 		if attempt >= maxAttempts || !isRetryableError(err) {
+			if !isRetryableError(err) {
+				model.DebugLogWithContext(
+					"Error is not retryable, stopping retry attempts",
+					"feed_fetcher", "retryable_fetch", url,
+					map[string]interface{}{
+						"attempt": attempt,
+						"error":   err.Error(),
+					},
+				)
+			}
 			break
 		}
 
 		// Calculate delay and sleep before next attempt
 		delay := calculateRetryDelay(attempt, config.RetryBaseDelay, config.RetryMaxDelay, config.RetryJitter)
+
+		model.DebugLogWithContext(
+			fmt.Sprintf("Retrying in %v", delay),
+			"feed_fetcher", "retryable_fetch", url,
+			map[string]interface{}{
+				"attempt":      attempt,
+				"next_attempt": attempt + 1,
+				"delay_ms":     delay.Milliseconds(),
+			},
+		)
 
 		select {
 		case <-ctx.Done():
@@ -276,7 +325,8 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 		metricsMutex.Unlock()
 	}
 
-	return nil, lastErr
+	// Create a comprehensive error with retry context
+	return nil, model.CreateRetryError(lastErr, url, attemptCount, maxAttempts)
 }
 
 // NewStore creates a new feed store with the given configuration
@@ -284,7 +334,9 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 //nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
 func NewStore(config Config) (*Store, error) {
 	if len(config.Feeds) == 0 {
-		return nil, errors.New("at least one feedItem must be specified")
+		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "at least one feed must be specified").
+			WithOperation("create_store").
+			WithComponent("store_manager")
 	}
 
 	if config.Timeout == 0 {
@@ -409,12 +461,23 @@ func NewStore(config Config) (*Store, error) {
 						return retryableFeedFetch(ctx, url, fp, config, s.retryMetrics, &s.metricsMutex)
 					})
 					if err != nil {
+						// Check if this is a circuit breaker error
+						if errors.Is(err, gobreaker.ErrOpenState) {
+							return nil, nil, model.CreateCircuitBreakerError(url, "open")
+						}
+						if errors.Is(err, gobreaker.ErrTooManyRequests) {
+							return nil, nil, model.CreateCircuitBreakerError(url, "half-open")
+						}
+						// Return the original error (likely from retryableFeedFetch)
 						return nil, nil, err
 					}
 					if feed, ok := result.(*gofeed.Feed); ok {
 						return feed, []store.Option{store.WithExpiration(config.ExpireAfter)}, nil
 					}
-					return nil, nil, errors.New("unexpected result type from circuit breaker")
+					return nil, nil, model.NewFeedError(model.ErrorTypeSystem, "unexpected result type from circuit breaker").
+						WithURL(url).
+						WithOperation("load_feed").
+						WithComponent("circuit_breaker")
 				}
 			}
 
@@ -425,7 +488,9 @@ func NewStore(config Config) (*Store, error) {
 			}
 			return feed, []store.Option{store.WithExpiration(config.ExpireAfter)}, nil
 		} else {
-			return nil, nil, errors.New("invalid key type")
+			return nil, nil, model.NewFeedError(model.ErrorTypeSystem, "invalid key type for cache loader").
+				WithOperation("load_feed").
+				WithComponent("cache_manager")
 		}
 	}
 
@@ -521,7 +586,9 @@ func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndI
 
 		return result, nil
 	}
-	return nil, fmt.Errorf("feed with ID %s not found", id)
+	return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with ID %s not found", id)).
+		WithOperation("get_feed_and_items").
+		WithComponent("feed_store")
 }
 
 // GetRetryMetrics returns a copy of the current retry metrics

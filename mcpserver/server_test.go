@@ -99,8 +99,8 @@ func TestNewServer(t *testing.T) {
 					t.Errorf("NewServer() error = nil, wantErr %v", tt.wantErr)
 					return
 				}
-				if err.Error() != tt.errMsg {
-					t.Errorf("NewServer() error = %v, want %v", err.Error(), tt.errMsg)
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("NewServer() error = %v, want to contain %v", err.Error(), tt.errMsg)
 				}
 				return
 			}

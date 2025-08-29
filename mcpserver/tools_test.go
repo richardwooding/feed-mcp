@@ -441,8 +441,8 @@ func TestTransportErrorHandling(t *testing.T) {
 	}
 
 	expectedErr := "unsupported transport"
-	if err.Error() != expectedErr {
-		t.Errorf("Expected error '%s', got '%s'", expectedErr, err.Error())
+	if !strings.Contains(err.Error(), expectedErr) {
+		t.Errorf("Expected error to contain '%s', got '%s'", expectedErr, err.Error())
 	}
 }
 

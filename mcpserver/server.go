@@ -4,7 +4,6 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -42,13 +41,19 @@ func generateSessionID() string {
 // NewServer creates a new MCP server with the given configuration
 func NewServer(config Config) (*Server, error) {
 	if config.Transport == model.UndefinedTransport {
-		return nil, errors.New("transport must be specified")
+		return nil, model.NewFeedError(model.ErrorTypeTransport, "transport must be specified").
+			WithOperation("create_server").
+			WithComponent("mcp_server")
 	}
 	if config.AllFeedsGetter == nil {
-		return nil, errors.New("AllFeedsGetter is required")
+		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "AllFeedsGetter is required").
+			WithOperation("create_server").
+			WithComponent("mcp_server")
 	}
 	if config.FeedAndItemsGetter == nil {
-		return nil, errors.New("FeedAndItemsGetter is required")
+		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "FeedAndItemsGetter is required").
+			WithOperation("create_server").
+			WithComponent("mcp_server")
 	}
 	return &Server{
 		transport:          config.Transport,
@@ -167,7 +172,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	case model.HTTPWithSSETransport:
 		err = srv.Run(ctx, mcp.NewStreamableServerTransport(s.sessionID))
 	default:
-		return errors.New("unsupported transport")
+		return model.NewFeedError(model.ErrorTypeTransport, "unsupported transport").
+			WithOperation("run_server").
+			WithComponent("mcp_server")
 	}
 
 	return

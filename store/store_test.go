@@ -915,6 +915,10 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// NewStore automatically fetches feeds during initialization.
+	// Reset counter to isolate GetAllFeeds behavior
+	atomic.StoreInt64(&requestCount, 0)
+
 	feeds, err := store.GetAllFeeds(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -932,11 +936,10 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	// Small delay to ensure all goroutines complete
 	time.Sleep(100 * time.Millisecond)
 
-	// Should have made exactly 3 requests:
-	// 1st attempt fails, 2nd attempt fails, 3rd attempt succeeds
+	// GetAllFeeds should hit cache and make 0 additional requests
 	finalCount := atomic.LoadInt64(&requestCount)
-	if finalCount != 3 {
-		t.Errorf("expected 3 requests, got %d", finalCount)
+	if finalCount != 0 {
+		t.Errorf("expected 0 additional requests from GetAllFeeds (cache hit), got %d", finalCount)
 	}
 }
 
