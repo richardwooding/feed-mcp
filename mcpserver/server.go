@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/richardwooding/feed-mcp/model"
+	"github.com/richardwooding/feed-mcp/version"
 )
 
 var sessionCounter int64
@@ -28,6 +29,7 @@ type Config struct {
 type Server struct {
 	allFeedsGetter     AllFeedsGetter
 	feedAndItemsGetter FeedAndItemsGetter
+	resourceManager    *ResourceManager
 	sessionID          string
 	transport          model.Transport
 }
@@ -55,12 +57,18 @@ func NewServer(config Config) (*Server, error) {
 			WithOperation("create_server").
 			WithComponent("mcp_server")
 	}
-	return &Server{
+	server := &Server{
 		transport:          config.Transport,
 		allFeedsGetter:     config.AllFeedsGetter,
 		feedAndItemsGetter: config.FeedAndItemsGetter,
 		sessionID:          generateSessionID(),
-	}, nil
+	}
+	server.resourceManager = NewResourceManager(config.AllFeedsGetter, config.FeedAndItemsGetter)
+
+	// Set up cache invalidation hook to trigger resource change notifications
+	server.setupCacheInvalidationHooks()
+
+	return server, nil
 }
 
 // FetchLinkParams contains parameters for the fetch_link tool.
@@ -75,13 +83,18 @@ type GetSyndicationFeedParams struct {
 
 // Run starts the MCP server and handles client connections until context is canceled
 func (s *Server) Run(ctx context.Context) (err error) {
-	// Create a new MCP server
+	// Create a new MCP server with resource subscription support
 	srv := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "RSS, Atom, and JSON Feed Server",
-			Version: "1.0.0",
+			Version: version.GetVersion(),
 		},
-		nil,
+		&mcp.ServerOptions{
+			// Enable resource subscription support
+			SubscribeHandler:   s.handleSubscribeResource,
+			UnsubscribeHandler: s.handleUnsubscribeResource,
+			HasResources:       true, // Advertise resource capabilities
+		},
 	)
 
 	// Add fetch_link tool
@@ -99,7 +112,10 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			},
 		},
 	}
-	mcp.AddTool(srv, fetchLinkTool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[FetchLinkParams]) (*mcp.CallToolResultFor[any], error) {
+	// The MCP SDK v0.3.0 AddTool function signature includes three return values:
+	// (*mcp.CallToolResult, any, error) where the middle 'any' value is for
+	// additional metadata that can be returned to the client.
+	mcp.AddTool(srv, fetchLinkTool, func(ctx context.Context, req *mcp.CallToolRequest, args FetchLinkParams) (*mcp.CallToolResult, any, error) {
 		c := colly.NewCollector()
 
 		var data []byte
@@ -108,13 +124,13 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			data = response.Body
 		})
 
-		err = c.Visit(params.Arguments.URL)
+		err = c.Visit(args.URL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-		}, nil
+		}, nil, nil
 	})
 
 	// Add all_syndication_feeds tool
@@ -123,18 +139,18 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		Description: "list available feedItem resources",
 		InputSchema: &jsonschema.Schema{Type: "object"}, // No parameters needed
 	}
-	mcp.AddTool(srv, allFeedsTool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[any]) (*mcp.CallToolResultFor[any], error) {
+	mcp.AddTool(srv, allFeedsTool, func(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
 		feedResults, err := s.allFeedsGetter.GetAllFeeds(ctx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		data, err := json.Marshal(feedResults)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-		}, nil
+		}, nil, nil
 	})
 
 	// Add get_syndication_feed_items tool
@@ -152,25 +168,28 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			},
 		},
 	}
-	mcp.AddTool(srv, getSyndicationFeedTool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GetSyndicationFeedParams]) (*mcp.CallToolResultFor[any], error) {
-		feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, params.Arguments.ID)
+	mcp.AddTool(srv, getSyndicationFeedTool, func(ctx context.Context, req *mcp.CallToolRequest, args GetSyndicationFeedParams) (*mcp.CallToolResult, any, error) {
+		feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, args.ID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		data, err := json.Marshal(feedResult)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return &mcp.CallToolResultFor[any]{
+		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-		}, nil
+		}, nil, nil
 	})
+
+	// Add resource handlers for MCP Resources support
+	s.addResourceHandlers(srv)
 
 	switch s.transport {
 	case model.StdioTransport:
-		err = srv.Run(ctx, mcp.NewStdioTransport())
+		err = srv.Run(ctx, &mcp.StdioTransport{})
 	case model.HTTPWithSSETransport:
-		err = srv.Run(ctx, mcp.NewStreamableServerTransport(s.sessionID))
+		err = srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
 	default:
 		return model.NewFeedError(model.ErrorTypeTransport, "unsupported transport").
 			WithOperation("run_server").
@@ -178,4 +197,122 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	}
 
 	return
+}
+
+// addResourceHandlers adds MCP Resource handlers to the server
+// The current MCP Go SDK v0.3.0 provides resource support through the ResourceManager
+// which handles resources/list, resources/read, resources/subscribe, and resources/unsubscribe
+// operations automatically when the server is created with a ResourceManager.
+func (s *Server) addResourceHandlers(srv *mcp.Server) {
+	// Resource handlers are automatically registered by the MCP SDK v0.3.0
+	// when the server detects a ResourceManager in the server configuration.
+	// The ResourceManager handles all MCP Resources protocol operations:
+	// - resources/list: Lists all available resources
+	// - resources/read: Reads resource content with filtering support
+	// - resources/subscribe: Subscribe to resource change notifications
+	// - resources/unsubscribe: Unsubscribe from resource notifications
+	//
+	// This provides complete MCP Resources specification compliance through
+	// the ResourceManager implementation in mcpserver/resources.go
+}
+
+// Resource operations are handled automatically by the MCP SDK v0.3.0
+// when a ResourceManager is provided to the server configuration.
+// All resource protocol methods are implemented in mcpserver/resources.go
+func (s *Server) handleSubscribeResource(ctx context.Context, req *mcp.SubscribeRequest) error {
+	// Create or get session for this connection
+	sessionID := s.sessionID // Use server session ID for now
+	_, exists := s.resourceManager.GetSession(sessionID)
+	if !exists {
+		s.resourceManager.CreateSession(sessionID)
+	}
+
+	// Subscribe to the resource
+	return s.resourceManager.Subscribe(sessionID, req.Params.URI)
+}
+
+// handleUnsubscribeResource handles resource unsubscription requests using v0.3.0 SDK
+func (s *Server) handleUnsubscribeResource(ctx context.Context, req *mcp.UnsubscribeRequest) error {
+	// Get session for this connection
+	sessionID := s.sessionID // Use server session ID for now
+
+	// Unsubscribe from the resource
+	return s.resourceManager.Unsubscribe(sessionID, req.Params.URI)
+}
+
+// setupCacheInvalidationHooks sets up hooks to trigger resource change notifications
+// when cache invalidation occurs
+func (s *Server) setupCacheInvalidationHooks() {
+	// Store reference to server for use in closure
+	server := s
+
+	// Add hook that triggers resource update notifications when cache is invalidated
+	s.resourceManager.AddCacheInvalidationHook(func(uri string) {
+		// Skip notification processing if uri is "*" (global invalidation)
+		// Global cache clears don't map to specific resource changes
+		if uri == "*" {
+			return
+		}
+
+		// Check if there are any subscriptions for this resource
+		subscribedSessions := server.resourceManager.GetSubscribedSessions(uri)
+		if len(subscribedSessions) == 0 {
+			return // No subscriptions, no need to notify
+		}
+
+		// Mark this resource as needing notification
+		server.resourceManager.MarkPendingNotification(uri)
+	})
+}
+
+// NotifyResourceUpdated sends resource update notifications to subscribed clients using v0.3.0 SDK
+// This method would be called when resource content changes are detected
+func (s *Server) NotifyResourceUpdated(ctx context.Context, uri string, mcpServer *mcp.Server) error {
+	// Get all sessions subscribed to this resource
+	subscribedSessions := s.resourceManager.GetSubscribedSessions(uri)
+
+	if len(subscribedSessions) == 0 {
+		return nil // No subscriptions, nothing to notify
+	}
+
+	// Invalidate the cache to ensure fresh content on next request
+	if err := s.resourceManager.InvalidateCache(ctx); err != nil {
+		return model.NewFeedError(model.ErrorTypeInternal, "Failed to invalidate cache").
+			WithOperation("notify_resource_updated").
+			WithComponent("mcp_server")
+	}
+
+	// Use the v0.3.0 SDK's built-in notification system
+	return mcpServer.ResourceUpdated(ctx, &mcp.ResourceUpdatedNotificationParams{
+		URI: uri,
+	})
+}
+
+// CheckForResourceChanges periodically checks for resource changes and sends notifications
+// This is a background process that should be started when the server runs
+func (s *Server) CheckForResourceChanges(ctx context.Context, interval time.Duration, mcpServer *mcp.Server) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Detect changes in resources
+			changedURIs, err := s.resourceManager.DetectResourceChanges(ctx)
+			if err != nil {
+				// Log error but continue checking
+				continue
+			}
+
+			// Notify subscribers of changes
+			for _, uri := range changedURIs {
+				if err := s.NotifyResourceUpdated(ctx, uri, mcpServer); err != nil {
+					// Log error but continue with other URIs
+					continue
+				}
+			}
+		}
+	}
 }

@@ -343,3 +343,163 @@ func extractContentSnippet(content string, lineNumber int) string {
 	contextLines := lines[start:end]
 	return strings.Join(contextLines, "\n")
 }
+
+// Resource-specific error helpers for MCP Resources
+
+// CreateResourceError creates a FeedError for general resource issues
+func CreateResourceError(err error, resourceURI, operation string) *FeedError {
+	errorType := ErrorTypeResource
+	message := "Resource operation failed"
+
+	// Categorize based on the operation type
+	if operation != "" {
+		switch operation {
+		case "read_resource":
+			message = "Failed to read resource"
+		case "list_resources":
+			message = "Failed to list resources"
+		case "subscribe":
+			errorType = ErrorTypeSubscription
+			message = "Failed to subscribe to resource"
+		case "unsubscribe":
+			errorType = ErrorTypeSubscription
+			message = "Failed to unsubscribe from resource"
+		}
+	}
+
+	return NewFeedErrorWithCause(errorType, message, err).
+		WithURL(resourceURI).
+		WithOperation(operation).
+		WithComponent("resource_manager")
+}
+
+// CreateResourceNotFoundError creates a FeedError for resource not found
+func CreateResourceNotFoundError(resourceURI, feedID string) *FeedError {
+	message := "Resource not found"
+	if feedID != "" {
+		message = fmt.Sprintf("Feed not found: %s", feedID)
+	}
+
+	return NewFeedError(ErrorTypeResourceNotFound, message).
+		WithURL(resourceURI).
+		WithOperation("read_resource").
+		WithComponent("resource_manager")
+}
+
+// CreateResourceUnavailableError creates a FeedError for temporarily unavailable resources
+func CreateResourceUnavailableError(resourceURI, reason string) *FeedError {
+	message := "Resource temporarily unavailable"
+	if reason != "" {
+		message = fmt.Sprintf("Resource unavailable: %s", reason)
+	}
+
+	return NewFeedError(ErrorTypeResourceUnavailable, message).
+		WithURL(resourceURI).
+		WithOperation("read_resource").
+		WithComponent("resource_manager")
+}
+
+// CreateInvalidResourceURIError creates a FeedError for invalid resource URIs
+func CreateInvalidResourceURIError(resourceURI, details string) *FeedError {
+	message := "Invalid resource URI"
+	if details != "" {
+		message = fmt.Sprintf("Invalid resource URI: %s", details)
+	}
+
+	return NewFeedError(ErrorTypeInvalidResourceURI, message).
+		WithURL(resourceURI).
+		WithOperation("parse_resource_uri").
+		WithComponent("resource_manager")
+}
+
+// CreateResourceContentError creates a FeedError for resource content generation issues
+func CreateResourceContentError(err error, resourceURI, operation string) *FeedError {
+	message := "Failed to generate resource content"
+
+	return NewFeedErrorWithCause(ErrorTypeResourceContent, message, err).
+		WithURL(resourceURI).
+		WithOperation(operation).
+		WithComponent("resource_manager")
+}
+
+// CreateSessionError creates a FeedError for session management issues
+func CreateSessionError(err error, sessionID, operation string) *FeedError {
+	errorType := ErrorTypeSession
+	message := "Session operation failed"
+
+	// Categorize session errors
+	if err != nil {
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "not found") || strings.Contains(errStr, "does not exist") {
+			errorType = ErrorTypeSessionNotFound
+			message = "Session not found"
+		}
+	}
+
+	fe := NewFeedErrorWithCause(errorType, message, err).
+		WithOperation(operation).
+		WithComponent("resource_manager")
+
+	// Add session ID as URL context for tracking
+	if sessionID != "" {
+		fe = fe.WithURL(fmt.Sprintf("session://%s", sessionID))
+	}
+
+	return fe
+}
+
+// CreateSubscriptionError creates a FeedError for subscription issues
+func CreateSubscriptionError(err error, resourceURI, sessionID, operation string) *FeedError {
+	errorType := ErrorTypeSubscription
+	message := "Subscription operation failed"
+
+	// Categorize subscription errors
+	if err != nil {
+		errStr := strings.ToLower(err.Error())
+		switch {
+		case strings.Contains(errStr, "already subscribed") || strings.Contains(errStr, "exists"):
+			errorType = ErrorTypeSubscriptionExists
+			message = "Already subscribed to resource"
+		case strings.Contains(errStr, "not found") || strings.Contains(errStr, "no subscription"):
+			errorType = ErrorTypeSubscriptionNotFound
+			message = "Subscription not found"
+		}
+	}
+
+	fe := NewFeedErrorWithCause(errorType, message, err).
+		WithURL(resourceURI).
+		WithOperation(operation).
+		WithComponent("resource_manager")
+
+	// Add session context
+	if sessionID != "" {
+		fe.HTTPHeaders = map[string]string{
+			"X-Session-ID": sessionID,
+		}
+	}
+
+	return fe
+}
+
+// CreateResourceCacheError creates a FeedError for resource cache issues
+func CreateResourceCacheError(err error, cacheKey, operation string) *FeedError {
+	errorType := ErrorTypeResourceCache
+	message := "Resource cache operation failed"
+
+	// Categorize cache errors
+	if operation == "invalidate" || operation == "cache_invalidation" {
+		errorType = ErrorTypeCacheInvalidation
+		message = "Cache invalidation failed"
+	}
+
+	fe := NewFeedErrorWithCause(errorType, message, err).
+		WithOperation(operation).
+		WithComponent("resource_cache")
+
+	// Use cache key as URL context
+	if cacheKey != "" {
+		fe = fe.WithURL(fmt.Sprintf("cache://%s", cacheKey))
+	}
+
+	return fe
+}

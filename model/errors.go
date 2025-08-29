@@ -70,6 +70,33 @@ const (
 	ErrorTypeInternal ErrorType = "internal"
 	// ErrorTypeUnknown represents unknown or unclassified errors
 	ErrorTypeUnknown ErrorType = "unknown"
+
+	// ErrorTypeResource represents general resource-related errors
+	ErrorTypeResource ErrorType = "resource"
+	// ErrorTypeResourceNotFound represents resource not found errors
+	ErrorTypeResourceNotFound ErrorType = "resource_not_found"
+	// ErrorTypeResourceUnavailable represents resource temporarily unavailable
+	ErrorTypeResourceUnavailable ErrorType = "resource_unavailable"
+	// ErrorTypeInvalidResourceURI represents invalid resource URI format
+	ErrorTypeInvalidResourceURI ErrorType = "invalid_resource_uri"
+	// ErrorTypeResourceContent represents resource content generation errors
+	ErrorTypeResourceContent ErrorType = "resource_content"
+
+	// ErrorTypeSession represents session management errors
+	ErrorTypeSession ErrorType = "session"
+	// ErrorTypeSessionNotFound represents session not found errors
+	ErrorTypeSessionNotFound ErrorType = "session_not_found"
+	// ErrorTypeSubscription represents subscription operation errors
+	ErrorTypeSubscription ErrorType = "subscription"
+	// ErrorTypeSubscriptionExists represents duplicate subscription errors
+	ErrorTypeSubscriptionExists ErrorType = "subscription_exists"
+	// ErrorTypeSubscriptionNotFound represents subscription not found errors
+	ErrorTypeSubscriptionNotFound ErrorType = "subscription_not_found"
+
+	// ErrorTypeResourceCache represents resource cache operation errors
+	ErrorTypeResourceCache ErrorType = "resource_cache"
+	// ErrorTypeCacheInvalidation represents cache invalidation errors
+	ErrorTypeCacheInvalidation ErrorType = "cache_invalidation"
 )
 
 // FeedError represents a structured error with additional context for debugging
@@ -251,6 +278,24 @@ func getSuggestionForErrorType(errorType ErrorType) string {
 		ErrorTypeConfiguration:     "Review configuration parameters for correctness",
 		ErrorTypeSystem:            "Check system resources and permissions",
 		ErrorTypeInternal:          "Internal server error occurred, check logs for details",
+
+		// Resource-specific error suggestions
+		ErrorTypeResource:            "Check the resource URI and ensure it's properly formatted",
+		ErrorTypeResourceNotFound:    "Verify the resource URI exists and the feed ID is correct",
+		ErrorTypeResourceUnavailable: "The resource is temporarily unavailable, try again later",
+		ErrorTypeInvalidResourceURI:  "Ensure the resource URI follows the feeds:// scheme format",
+		ErrorTypeResourceContent:     "Check the feed data and ensure it can be serialized properly",
+
+		// Session and subscription error suggestions
+		ErrorTypeSession:              "Check session management and ensure proper session lifecycle",
+		ErrorTypeSessionNotFound:      "Verify the session ID exists and hasn't expired",
+		ErrorTypeSubscription:         "Check subscription parameters and permissions",
+		ErrorTypeSubscriptionExists:   "This resource is already subscribed to in this session",
+		ErrorTypeSubscriptionNotFound: "No active subscription found for this resource",
+
+		// Resource cache error suggestions
+		ErrorTypeResourceCache:     "Check cache configuration and available memory",
+		ErrorTypeCacheInvalidation: "Cache invalidation failed, check cache connectivity",
 	}
 
 	if suggestion, exists := suggestions[errorType]; exists {
