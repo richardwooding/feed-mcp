@@ -933,13 +933,25 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 		t.Errorf("expected feed title 'Retry Test Feed', got %q", feeds[0].Title)
 	}
 
-	// Small delay to ensure all goroutines complete
-	time.Sleep(100 * time.Millisecond)
+	// Wait for Ristretto cache to process async writes
+	// Ristretto is asynchronous, so we need to give it time to actually cache the data
+	time.Sleep(200 * time.Millisecond)
 
-	// GetAllFeeds should hit cache and make 0 additional requests
+	// Reset counter before testing cache hit behavior
+	atomic.StoreInt64(&requestCount, 0)
+
+	// Second call to GetAllFeeds should hit cache and make 0 additional requests
+	_, err = store.GetAllFeeds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Additional delay to ensure cache operations complete
+	time.Sleep(50 * time.Millisecond)
+
 	finalCount := atomic.LoadInt64(&requestCount)
 	if finalCount != 0 {
-		t.Errorf("expected 0 additional requests from GetAllFeeds (cache hit), got %d", finalCount)
+		t.Errorf("expected 0 additional requests from second GetAllFeeds (cache hit), got %d", finalCount)
 	}
 }
 

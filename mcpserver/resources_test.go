@@ -77,7 +77,7 @@ func createTestResourceManager() *ResourceManager {
 	mockAllFeeds := &mockResourceAllFeedsGetter{feeds: mockFeeds}
 	feedsMap := make(map[string]*model.FeedAndItemsResult)
 	for _, feed := range mockFeeds {
-		feedID := generateFeedID(feed.PublicURL)
+		feedID := model.GenerateFeedID(feed.PublicURL)
 		feedAndItems := &model.FeedAndItemsResult{
 			ID:                 feed.ID,
 			PublicURL:          feed.PublicURL,
@@ -161,7 +161,7 @@ func TestReadFeedListResource(t *testing.T) {
 func TestReadIndividualFeedResource(t *testing.T) {
 	rm := createTestResourceManager()
 	ctx := context.Background()
-	feedID := generateFeedID(testFeedURL1)
+	feedID := model.GenerateFeedID(testFeedURL1)
 	uri := expandURITemplate(FeedURI, map[string]string{"feedId": feedID})
 
 	result, err := rm.ReadResource(ctx, uri)
@@ -219,7 +219,7 @@ func TestReadFeedItemsResource(t *testing.T) {
 	mockAllFeeds := &mockResourceAllFeedsGetter{feeds: mockFeeds}
 	feedsMap := make(map[string]*model.FeedAndItemsResult)
 	for _, feed := range mockFeeds {
-		feedID := generateFeedID(feed.PublicURL)
+		feedID := model.GenerateFeedID(feed.PublicURL)
 		feedAndItems := &model.FeedAndItemsResult{
 			ID:                 feed.ID,
 			PublicURL:          feed.PublicURL,
@@ -235,7 +235,7 @@ func TestReadFeedItemsResource(t *testing.T) {
 	rm := NewResourceManager(mockAllFeeds, mockFeedGetter)
 
 	ctx := context.Background()
-	feedID := generateFeedID(testFeedURL1)
+	feedID := model.GenerateFeedID(testFeedURL1)
 	uri := expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID})
 
 	result, err := rm.ReadResource(ctx, uri)
@@ -268,7 +268,7 @@ func TestReadFeedItemsResource(t *testing.T) {
 func TestReadFeedMetadataResource(t *testing.T) {
 	rm := createTestResourceManager()
 	ctx := context.Background()
-	feedID := generateFeedID(testFeedURL1)
+	feedID := model.GenerateFeedID(testFeedURL1)
 	uri := expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID})
 
 	result, err := rm.ReadResource(ctx, uri)
@@ -380,7 +380,7 @@ func TestGenerateFeedID(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			feedID := generateFeedID(tc.url)
+			feedID := model.GenerateFeedID(tc.url)
 
 			if feedID == "" {
 				t.Error("Feed ID should not be empty")
@@ -397,7 +397,7 @@ func TestGenerateFeedID(t *testing.T) {
 			}
 
 			// Multiple calls should return the same ID (stable)
-			feedID2 := generateFeedID(tc.url)
+			feedID2 := model.GenerateFeedID(tc.url)
 			if feedID != feedID2 {
 				t.Error("Feed ID generation should be stable")
 			}
@@ -462,7 +462,7 @@ func TestResourceCaching(t *testing.T) {
 	mockAllFeeds := &mockResourceAllFeedsGetter{feeds: mockFeeds}
 	feedsMap := make(map[string]*model.FeedAndItemsResult)
 	for _, feed := range mockFeeds {
-		feedID := generateFeedID(feed.PublicURL)
+		feedID := model.GenerateFeedID(feed.PublicURL)
 		feedAndItems := &model.FeedAndItemsResult{
 			ID:                 feed.ID,
 			PublicURL:          feed.PublicURL,
