@@ -55,9 +55,86 @@ Here are some practical configurations for Claude Desktop that demonstrate commo
 
 Add any of these configurations to your Claude Desktop to instantly access the latest news and articles from your chosen topics.
 
+## OPML Support
+
+feed-mcp supports loading feed URLs from OPML (Outline Processor Markup Language) files, making it easy to import subscription lists from RSS readers like Feedly, Inoreader, or any other feed aggregator.
+
+### Using OPML Files
+
+Instead of specifying individual feed URLs, you can use an OPML file:
+
+```bash
+# Load from local OPML file
+go run main.go run --opml feeds.opml
+
+# Load from remote OPML URL
+go run main.go run --opml https://example.com/my-feeds.opml
+```
+
+### Docker with OPML
+
+You can also use OPML files with Docker:
+
+```json
+{
+  "mcpServers": {
+    "feed-from-opml": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/path/to/your/feeds.opml:/feeds.opml:ro",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run", "--opml", "/feeds.opml"
+      ]
+    }
+  }
+}
+```
+
+### OPML Format Support
+
+feed-mcp supports standard OPML 2.0 format with nested categories:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <head>
+        <title>My Feed Subscriptions</title>
+    </head>
+    <body>
+        <outline text="Technology">
+            <outline text="TechCrunch" xmlUrl="https://techcrunch.com/feed/" />
+            <outline text="The Verge" xmlUrl="https://www.theverge.com/rss/index.xml" />
+        </outline>
+        <outline text="Security">
+            <outline text="Krebs on Security" xmlUrl="https://krebsonsecurity.com/feed/" />
+        </outline>
+    </body>
+</opml>
+```
+
+### Key Features
+
+- **Backwards Compatible**: Existing feed URL usage continues to work unchanged
+- **Flexible Input**: Supports both local files and remote URLs
+- **Nested Categories**: Handles OPML files with folder structures from feed readers
+- **Security**: Same URL validation and security features apply to OPML-loaded feeds
+- **Error Handling**: Clear error messages for invalid OPML files or network issues
+
+### Exporting from Popular Feed Readers
+
+Most RSS readers support OPML export:
+- **Feedly**: Settings → OPML → Export
+- **Inoreader**: Preferences → Folders and Tags → Export OPML
+- **NewsBlur**: Account → Import/Export → Export Stories
+- **The Old Reader**: Settings → Import/Export → Export
+
+Simply export your subscriptions and use the resulting OPML file with feed-mcp!
+
 ## Features
 
 - Serves RSS, Atom, and JSON feeds via the MCP protocol
+- **OPML support** for importing feed subscriptions from RSS readers (Feedly, Inoreader, etc.)
 - **MCP Resources support** with dynamic feed discovery and real-time subscriptions
 - **MCP Tools support** for direct feed operations (legacy compatibility)
 - Supports Docker and Podman for easy deployment
