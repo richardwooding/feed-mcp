@@ -636,10 +636,70 @@ func TestURLValidation(t *testing.T) {
 - Docker images are automatically built and pushed to GitHub Container Registry
 
 ### Working with MCP Tools
-The server exposes three MCP tools that Claude can use:
+The server exposes MCP tools that Claude can use:
+
+**Core Feed Tools:**
 1. `all_syndication_feeds` - Returns a list of all configured feeds
 2. `get_syndication_feed_items` - Returns items from a specific feed
 3. `fetch_link` - Fetches and returns content from any URL
+
+**Dynamic Feed Management Tools (when `--allow-runtime-feeds` is enabled):**
+4. `add_feed` - Add a new RSS/Atom/JSON feed at runtime
+5. `remove_feed` - Remove a feed by ID or URL
+6. `list_managed_feeds` - List all managed feeds with metadata and status
+
+#### Dynamic Feed Management
+
+The feed-mcp server supports dynamic feed management, allowing feeds to be added, removed, and managed at runtime when enabled with the `--allow-runtime-feeds` flag.
+
+**Enabling Dynamic Feed Management:**
+```bash
+# Enable runtime feed management
+go run main.go run --allow-runtime-feeds https://techcrunch.com/feed/
+
+# Start with no feeds and add them dynamically
+go run main.go run --allow-runtime-feeds
+```
+
+**Dynamic Feed Management Features:**
+- **Add Feed**: Add new RSS/Atom/JSON feeds with optional metadata (title, category, description)
+- **Remove Feed**: Remove feeds by ID or URL (only runtime-added feeds can be removed)
+- **List Feeds**: View all feeds with status, source, and metadata
+- **Feed Metadata**: Track source type (startup, OPML, or runtime), status (active/error/paused), and error information
+- **Security**: Uses same URL validation and private IP blocking as startup feeds
+
+**Feed Sources:**
+- `startup` - Feeds specified via CLI arguments
+- `opml` - Feeds loaded from OPML file
+- `runtime` - Feeds added dynamically via tools
+
+**Example Usage in Claude:**
+```json
+// Add a new feed
+{
+  "tool": "add_feed",
+  "parameters": {
+    "url": "https://example.com/feed.xml",
+    "title": "Example News",
+    "category": "technology",
+    "description": "Latest tech news"
+  }
+}
+
+// Remove a feed by URL
+{
+  "tool": "remove_feed", 
+  "parameters": {
+    "url": "https://example.com/feed.xml"
+  }
+}
+
+// List all managed feeds
+{
+  "tool": "list_managed_feeds",
+  "parameters": {}
+}
+```
 
 ### MCP Resources with URI Parameter Filtering
 

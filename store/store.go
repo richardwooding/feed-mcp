@@ -53,6 +53,8 @@ type Config struct {
 	CircuitBreakerMaxRequests      uint32
 	CircuitBreakerFailureThreshold uint32
 	RetryJitter                    bool
+	OPML                           string // OPML file path for metadata source detection
+	AllowPrivateIPs                bool   // Allow private IP addresses in URLs
 }
 
 // RetryMetrics holds metrics for retry operations

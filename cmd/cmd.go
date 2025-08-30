@@ -30,6 +30,8 @@ type RunCmd struct {
 	RetryJitter      bool          `name:"retry-jitter" default:"true" help:"Enable jitter in retry delays to avoid thundering herd."`
 	// Security settings
 	AllowPrivateIPs bool `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
+	// Runtime feed management settings
+	AllowRuntimeFeeds bool `name:"allow-runtime-feeds" default:"false" help:"Enable runtime feed management tools (add_feed, remove_feed, list_managed_feeds)."`
 }
 
 // Run executes the feed MCP server with the given configuration
@@ -68,8 +70,10 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	if err := model.SanitizeFeedURLs(feedURLs, c.AllowPrivateIPs); err != nil {
 		return err
 	}
-	feedStore, err := store.NewStore(store.Config{
+
+	storeConfig := store.Config{
 		Feeds:               feedURLs,
+		OPML:                c.OPML, // Pass OPML path for metadata source detection
 		Timeout:             c.Timeout,
 		ExpireAfter:         c.ExpireAfter,
 		MaxIdleConns:        c.MaxIdleConns,
@@ -80,15 +84,33 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		RetryBaseDelay:      c.RetryBaseDelay,
 		RetryMaxDelay:       c.RetryMaxDelay,
 		RetryJitter:         c.RetryJitter,
-	})
-	if err != nil {
-		return err
+		AllowPrivateIPs:     c.AllowPrivateIPs,
 	}
-	server, err := mcpserver.NewServer(mcpserver.Config{
-		Transport:          transport,
-		AllFeedsGetter:     feedStore,
-		FeedAndItemsGetter: feedStore,
-	})
+
+	serverConfig := mcpserver.Config{
+		Transport: transport,
+	}
+
+	if c.AllowRuntimeFeeds {
+		// Use DynamicStore for runtime feed management
+		dynamicStore, err := store.NewDynamicStore(&storeConfig, true)
+		if err != nil {
+			return err
+		}
+		serverConfig.AllFeedsGetter = dynamicStore
+		serverConfig.FeedAndItemsGetter = dynamicStore
+		serverConfig.DynamicFeedManager = dynamicStore
+	} else {
+		// Use regular Store
+		feedStore, err := store.NewStore(storeConfig)
+		if err != nil {
+			return err
+		}
+		serverConfig.AllFeedsGetter = feedStore
+		serverConfig.FeedAndItemsGetter = feedStore
+	}
+
+	server, err := mcpserver.NewServer(serverConfig)
 	if err != nil {
 		return err
 	}
