@@ -66,7 +66,7 @@ func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 	}()
 
 	// Create store with minimal connection pool settings (simulating poor pooling)
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:               urls,
 		ExpireAfter:         1 * time.Millisecond, // Force cache misses
 		MaxIdleConns:        1,                    // Minimal pooling
@@ -114,7 +114,7 @@ func BenchmarkStore_WithConnectionPooling(b *testing.B) {
 	}()
 
 	// Create store with optimized connection pool settings
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:               urls,
 		ExpireAfter:         1 * time.Millisecond, // Force cache misses
 		MaxIdleConns:        100,                  // Generous connection pool
@@ -167,7 +167,7 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 	}()
 
 	// Create store with good connection pooling for concurrent access
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:               urls,
 		ExpireAfter:         1 * time.Millisecond, // Force cache misses
 		MaxIdleConns:        50,
@@ -271,7 +271,7 @@ func BenchmarkStore_ScalabilityTest(b *testing.B) {
 			}()
 
 			// Create store with optimized settings for the feed count
-			store, err := NewStore(Config{
+			store, err := NewStore(&Config{
 				Feeds:               urls,
 				ExpireAfter:         1 * time.Millisecond, // Force cache misses
 				MaxIdleConns:        feedCount * 2,        // Scale with feed count
