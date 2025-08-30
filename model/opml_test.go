@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -341,7 +342,7 @@ func BenchmarkExtractFeedURLsFromOPML(b *testing.B) {
 		<outline text="Category ` + string(rune('A'+i)) + `">`
 		for j := 0; j < 10; j++ {
 			opmlContent += `
-			<outline text="Feed ` + string(rune('0'+j)) + `" xmlUrl="https://example` + string(rune('0'+j)) + `.com/feed.xml" />`
+			<outline text="Feed ` + strconv.Itoa(j) + `" xmlUrl="https://example` + strconv.Itoa(j) + `.com/feed.xml" />`
 		}
 		opmlContent += `
 		</outline>`
