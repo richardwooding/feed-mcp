@@ -200,20 +200,21 @@ func (s *Server) Run(ctx context.Context) (err error) {
 }
 
 // addResourceHandlers adds MCP Resource handlers to the server
-// The current MCP Go SDK v0.3.0 provides resource support through the ResourceManager
-// which handles resources/list, resources/read, resources/subscribe, and resources/unsubscribe
-// operations automatically when the server is created with a ResourceManager.
 func (s *Server) addResourceHandlers(srv *mcp.Server) {
-	// Resource handlers are automatically registered by the MCP SDK v0.3.0
-	// when the server detects a ResourceManager in the server configuration.
-	// The ResourceManager handles all MCP Resources protocol operations:
-	// - resources/list: Lists all available resources
-	// - resources/read: Reads resource content with filtering support
-	// - resources/subscribe: Subscribe to resource change notifications
-	// - resources/unsubscribe: Unsubscribe from resource notifications
-	//
-	// This provides complete MCP Resources specification compliance through
-	// the ResourceManager implementation in mcpserver/resources.go
+	// Get all resources from ResourceManager and add them
+	ctx := context.Background()
+	resources, err := s.resourceManager.ListResources(ctx)
+	if err != nil {
+		// Log error but continue - resources will be empty
+		return
+	}
+
+	// Add each resource with its handler
+	for _, resource := range resources {
+		srv.AddResource(resource, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			return s.resourceManager.ReadResource(ctx, req.Params.URI)
+		})
+	}
 }
 
 // Resource operations are handled automatically by the MCP SDK v0.3.0

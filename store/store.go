@@ -17,7 +17,6 @@ import (
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/eko/gocache/lib/v4/store"
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/mmcdole/gofeed"
 	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
@@ -507,7 +506,7 @@ func NewStore(config Config) (*Store, error) {
 		wg.Add(1)
 		go func(url string) {
 			defer wg.Done()
-			id, _ := gonanoid.New()
+			id := model.GenerateFeedID(url)
 			feedsMutex.Lock()
 			feeds[id] = url
 			feedsMutex.Unlock()

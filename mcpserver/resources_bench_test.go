@@ -51,7 +51,7 @@ func BenchmarkResourceListingConcurrent(b *testing.B) {
 func BenchmarkResourceReading(b *testing.B) {
 	rm := createBenchmarkResourceManager(10)
 	ctx := context.Background()
-	feedID := generateFeedID("https://example.com/feed1.xml")
+	feedID := model.GenerateFeedID("https://example.com/feed1.xml")
 
 	testCases := []struct {
 		name string
@@ -85,7 +85,7 @@ func BenchmarkResourceReading(b *testing.B) {
 func BenchmarkResourceReadingColdCache(b *testing.B) {
 	rm := createBenchmarkResourceManager(10)
 	ctx := context.Background()
-	feedID := generateFeedID("https://example.com/feed1.xml")
+	feedID := model.GenerateFeedID("https://example.com/feed1.xml")
 
 	testCases := []struct {
 		name string
@@ -119,7 +119,7 @@ func BenchmarkResourceReadingColdCache(b *testing.B) {
 func BenchmarkResourceReadingWithFilters(b *testing.B) {
 	rm := createBenchmarkResourceManager(5)
 	ctx := context.Background()
-	feedID := generateFeedID("https://example.com/feed1.xml")
+	feedID := model.GenerateFeedID("https://example.com/feed1.xml")
 
 	testCases := []struct {
 		name string
@@ -194,7 +194,7 @@ func BenchmarkCacheOperations(b *testing.B) {
 // BenchmarkSubscriptionOperations tests subscription performance
 func BenchmarkSubscriptionOperations(b *testing.B) {
 	rm := createBenchmarkResourceManager(10)
-	feedID := generateFeedID("https://example.com/feed1.xml")
+	feedID := model.GenerateFeedID("https://example.com/feed1.xml")
 	uri := strings.Replace(FeedItemsURI, "{feedId}", feedID, 1)
 
 	testCases := []struct {
@@ -239,7 +239,7 @@ func BenchmarkSubscriptionOperations(b *testing.B) {
 // BenchmarkConcurrentSubscriptions tests concurrent subscription handling
 func BenchmarkConcurrentSubscriptions(b *testing.B) {
 	rm := createBenchmarkResourceManager(10)
-	feedID := generateFeedID("https://example.com/feed1.xml")
+	feedID := model.GenerateFeedID("https://example.com/feed1.xml")
 	uri := strings.Replace(FeedItemsURI, "{feedId}", feedID, 1)
 
 	b.ResetTimer()
@@ -273,7 +273,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				// Exercise the resource manager
 				_, _ = rm.ListResources(ctx)
 				for j := 0; j < 10; j++ {
-					feedID := generateFeedID(fmt.Sprintf("https://example.com/feed%d.xml", j%count))
+					feedID := model.GenerateFeedID(fmt.Sprintf("https://example.com/feed%d.xml", j%count))
 					uri := strings.Replace(FeedItemsURI, "{feedId}", feedID, 1)
 					_, _ = rm.ReadResource(ctx, uri)
 				}
@@ -304,7 +304,7 @@ func BenchmarkLargeScale(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			sessionID := sessions[time.Now().Nanosecond()%sessionCount]
-			feedID := generateFeedID(fmt.Sprintf("https://example.com/feed%d.xml", time.Now().Nanosecond()%100))
+			feedID := model.GenerateFeedID(fmt.Sprintf("https://example.com/feed%d.xml", time.Now().Nanosecond()%100))
 
 			// Mix of operations
 			switch time.Now().Nanosecond() % 4 {
@@ -335,7 +335,7 @@ func createBenchmarkResourceManager(feedCount int) *ResourceManager {
 
 	for i := 0; i < feedCount; i++ {
 		url := fmt.Sprintf("https://example.com/feed%d.xml", i)
-		feedID := generateFeedID(url)
+		feedID := model.GenerateFeedID(url)
 
 		// Create feed with realistic data size
 		feed := &model.FeedResult{

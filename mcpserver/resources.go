@@ -30,6 +30,11 @@ const (
 	FeedMetaURI  = "feeds://feed/{feedId}/meta"
 )
 
+// MIME type constants
+const (
+	JSONMIMEType = "application/json"
+)
+
 // ResourceManager handles MCP resource operations for feeds
 type ResourceManager struct {
 	store                AllFeedsGetter
@@ -194,7 +199,7 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 		URI:         FeedListURI,
 		Name:        "All Feeds",
 		Description: "List of all available syndication feeds",
-		MIMEType:    "application/json",
+		MIMEType:    JSONMIMEType,
 	})
 
 	// Get all feeds to create individual feed resources
@@ -207,7 +212,7 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 
 	// Create resources for each feed
 	for _, feed := range feedResults {
-		feedID := generateFeedID(feed.PublicURL)
+		feedID := model.GenerateFeedID(feed.PublicURL)
 
 		// Add all three feed resources at once
 		resources = append(resources,
@@ -215,19 +220,19 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 				URI:         expandURITemplate(FeedURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Feed: %s", feed.Title),
 				Description: fmt.Sprintf("Complete feed data for %s", feed.Title),
-				MIMEType:    "application/json",
+				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Items: %s", feed.Title),
 				Description: fmt.Sprintf("Feed items only for %s", feed.Title),
-				MIMEType:    "application/json",
+				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Metadata: %s", feed.Title),
 				Description: fmt.Sprintf("Feed metadata for %s", feed.Title),
-				MIMEType:    "application/json",
+				MIMEType:    JSONMIMEType,
 			},
 		)
 	}
@@ -262,7 +267,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      FeedListURI,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -281,7 +286,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 	// Create a simplified feed list for the resource
 	feedList := make([]map[string]interface{}, 0, len(feedResults))
 	for _, feed := range feedResults {
-		feedID := generateFeedID(feed.PublicURL)
+		feedID := model.GenerateFeedID(feed.PublicURL)
 		feedList = append(feedList, map[string]interface{}{
 			"id":                   feedID,
 			"title":                feed.Title,
@@ -310,7 +315,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      FeedListURI,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -327,7 +332,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -394,7 +399,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     contentJSON,
 				},
 			},
@@ -415,7 +420,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      uri,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -432,7 +437,7 @@ func (rm *ResourceManager) readFeedItems(ctx context.Context, uri string) (*mcp.
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -499,7 +504,7 @@ func (rm *ResourceManager) readFeedItems(ctx context.Context, uri string) (*mcp.
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      uri,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -516,7 +521,7 @@ func (rm *ResourceManager) readFeedMeta(ctx context.Context, uri string) (*mcp.R
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -588,7 +593,7 @@ func (rm *ResourceManager) readFeedMeta(ctx context.Context, uri string) (*mcp.R
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      uri,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -631,35 +636,6 @@ func (rs *ResourceSession) GetSubscriptions() []string {
 }
 
 // Helper functions
-
-// generateFeedID creates a stable feed ID from a URL
-func generateFeedID(feedURL string) string {
-	// Parse URL to extract host and path for a more readable ID
-	if parsedURL, err := url.Parse(feedURL); err == nil {
-		// Create a slug-like ID from the host and path
-		slug := strings.ToLower(parsedURL.Host)
-		if parsedURL.Path != "" && parsedURL.Path != "/" {
-			// Clean the path and append to host
-			path := strings.Trim(parsedURL.Path, "/")
-			path = regexp.MustCompile(`[^a-z0-9-_]`).ReplaceAllString(path, "-")
-			path = regexp.MustCompile(`-+`).ReplaceAllString(path, "-")
-			slug = slug + "-" + path
-		}
-		// Truncate if too long and add hash suffix for uniqueness
-		if len(slug) > 40 {
-			h := fnv.New32a()
-			_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
-			hashStr := fmt.Sprintf("%x", h.Sum32())[:8]
-			slug = slug[:32] + "-" + hashStr
-		}
-		return slug
-	}
-
-	// Fallback to hash if URL parsing fails
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
-	return fmt.Sprintf("feed-%x", h.Sum32())
-}
 
 // expandURITemplate expands a URI template with the given parameters
 func expandURITemplate(template string, params map[string]string) string {
@@ -981,7 +957,7 @@ func (rm *ResourceManager) DetectResourceChanges(ctx context.Context) ([]string,
 
 	// Check individual feeds for changes
 	for _, feed := range feedResults {
-		feedID := generateFeedID(feed.PublicURL)
+		feedID := model.GenerateFeedID(feed.PublicURL)
 
 		// For each feed, assume all its resources might have changed
 		// In a real implementation, you'd check timestamps, content hashes, etc.
