@@ -50,10 +50,10 @@ func TestGenerateFeedID(t *testing.T) {
 func TestGenerateFeedID_Consistency(t *testing.T) {
 	// Test that the same URL always generates the same ID
 	url := "https://feeds.bbci.co.uk/news/world/africa/rss.xml"
-	
+
 	id1 := GenerateFeedID(url)
 	id2 := GenerateFeedID(url)
-	
+
 	if id1 != id2 {
 		t.Errorf("GenerateFeedID should be deterministic, got %q and %q", id1, id2)
 	}
@@ -63,12 +63,12 @@ func TestGenerateFeedID_InvalidURL(t *testing.T) {
 	// Test with invalid URL that should fallback to hash
 	invalidURL := "not-a-url"
 	result := GenerateFeedID(invalidURL)
-	
+
 	// Should start with "feed-" followed by hash
 	if len(result) == 0 {
 		t.Error("GenerateFeedID should not return empty string")
 	}
-	
+
 	// Should be deterministic even for invalid URLs
 	result2 := GenerateFeedID(invalidURL)
 	if result != result2 {

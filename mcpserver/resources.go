@@ -30,6 +30,11 @@ const (
 	FeedMetaURI  = "feeds://feed/{feedId}/meta"
 )
 
+// MIME type constants
+const (
+	JSONMIMEType = "application/json"
+)
+
 // ResourceManager handles MCP resource operations for feeds
 type ResourceManager struct {
 	store                AllFeedsGetter
@@ -194,7 +199,7 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 		URI:         FeedListURI,
 		Name:        "All Feeds",
 		Description: "List of all available syndication feeds",
-		MIMEType:    "application/json",
+		MIMEType:    JSONMIMEType,
 	})
 
 	// Get all feeds to create individual feed resources
@@ -215,19 +220,19 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 				URI:         expandURITemplate(FeedURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Feed: %s", feed.Title),
 				Description: fmt.Sprintf("Complete feed data for %s", feed.Title),
-				MIMEType:    "application/json",
+				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Items: %s", feed.Title),
 				Description: fmt.Sprintf("Feed items only for %s", feed.Title),
-				MIMEType:    "application/json",
+				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Metadata: %s", feed.Title),
 				Description: fmt.Sprintf("Feed metadata for %s", feed.Title),
-				MIMEType:    "application/json",
+				MIMEType:    JSONMIMEType,
 			},
 		)
 	}
@@ -262,7 +267,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      FeedListURI,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -310,7 +315,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      FeedListURI,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -327,7 +332,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -394,7 +399,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     contentJSON,
 				},
 			},
@@ -415,7 +420,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      uri,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -432,7 +437,7 @@ func (rm *ResourceManager) readFeedItems(ctx context.Context, uri string) (*mcp.
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -499,7 +504,7 @@ func (rm *ResourceManager) readFeedItems(ctx context.Context, uri string) (*mcp.
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      uri,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -516,7 +521,7 @@ func (rm *ResourceManager) readFeedMeta(ctx context.Context, uri string) (*mcp.R
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "application/json",
+					MIMEType: JSONMIMEType,
 					Text:     cachedContent,
 				},
 			},
@@ -588,7 +593,7 @@ func (rm *ResourceManager) readFeedMeta(ctx context.Context, uri string) (*mcp.R
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      uri,
-				MIMEType: "application/json",
+				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
 		},
@@ -631,7 +636,6 @@ func (rs *ResourceSession) GetSubscriptions() []string {
 }
 
 // Helper functions
-
 
 // expandURITemplate expands a URI template with the given parameters
 func expandURITemplate(template string, params map[string]string) string {

@@ -116,7 +116,7 @@ func TestListResources(t *testing.T) {
 			if resource.Name != "All Feeds" {
 				t.Errorf("Expected feed list name 'All Feeds', got '%s'", resource.Name)
 			}
-			if resource.MIMEType != "application/json" {
+			if resource.MIMEType != JSONMIMEType {
 				t.Errorf("Expected MIME type 'application/json', got '%s'", resource.MIMEType)
 			}
 			break
@@ -145,7 +145,7 @@ func TestReadFeedListResource(t *testing.T) {
 		t.Errorf("Expected URI %s, got %s", FeedListURI, content.URI)
 	}
 
-	if content.MIMEType != "application/json" {
+	if content.MIMEType != JSONMIMEType {
 		t.Errorf("Expected MIME type 'application/json', got %s", content.MIMEType)
 	}
 
