@@ -26,17 +26,6 @@ func main() {
 		},
 	}
 
-	kongCtx := kong.Parse(&cli,
-		kong.Name("feed-mcp"),
-		kong.Description("A MCP server for RSS and Atom feeds"),
-		kong.UsageOnError(),
-		kong.ConfigureHelp(kong.HelpOptions{
-			Compact: true,
-		}),
-		kong.Vars{
-			"version": versionStr,
-		})
-
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -50,7 +39,20 @@ func main() {
 		cancel() // Cancel context on signal
 	}()
 
+	kongCtx := kong.Parse(&cli,
+		kong.Name("feed-mcp"),
+		kong.Description("A MCP server for RSS and Atom feeds"),
+		kong.UsageOnError(),
+		kong.ConfigureHelp(kong.HelpOptions{
+			Compact: true,
+		}),
+		kong.Vars{
+			"version": versionStr,
+		},
+		kong.BindTo(ctx, (*context.Context)(nil))) // Bind the context with explicit type
+
 	// Pass the context to the command
+	// Kong will automatically inject both parameters to the Run method
 	err := kongCtx.Run(&cli.Globals, ctx)
 	kongCtx.FatalIfErrorf(err)
 }
