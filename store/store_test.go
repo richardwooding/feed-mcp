@@ -32,7 +32,7 @@ func mockFeedServer(t *testing.T, title string) *httptest.Server {
 }
 
 func TestNewStore_NoFeeds(t *testing.T) {
-	_, err := NewStore(Config{Feeds: []string{}})
+	_, err := NewStore(&Config{Feeds: []string{}})
 	if err == nil {
 		t.Fatal("expected error when no feeds are provided")
 	}
@@ -42,7 +42,7 @@ func TestNewStore_AndGetAllFeeds(t *testing.T) {
 	srv := mockFeedServer(t, "FeedTitle")
 	defer srv.Close()
 
-	store, err := NewStore(Config{Feeds: []string{srv.URL}})
+	store, err := NewStore(&Config{Feeds: []string{srv.URL}})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestGetFeedAndItems_Success(t *testing.T) {
 	srv := mockFeedServer(t, "FeedTitle2")
 	defer srv.Close()
 
-	store, err := NewStore(Config{Feeds: []string{srv.URL}})
+	store, err := NewStore(&Config{Feeds: []string{srv.URL}})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestGetFeedAndItems_NotFound(t *testing.T) {
 	srv := mockFeedServer(t, "FeedTitle3")
 	defer srv.Close()
 
-	store, err := NewStore(Config{Feeds: []string{srv.URL}})
+	store, err := NewStore(&Config{Feeds: []string{srv.URL}})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestGetFeedAndItems_NotFound(t *testing.T) {
 func TestGetAllFeeds_FetchError(t *testing.T) {
 	// Use an invalid URL to simulate fetch error
 	badURL := "http://127.0.0.1:0/doesnotexist"
-	store, err := NewStore(Config{Feeds: []string{badURL}})
+	store, err := NewStore(&Config{Feeds: []string{badURL}})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestGetAllFeeds_FetchError(t *testing.T) {
 
 func TestGetFeedAndItems_FetchError(t *testing.T) {
 	badURL := "http://127.0.0.1:0/doesnotexist"
-	store, err := NewStore(Config{Feeds: []string{badURL}})
+	store, err := NewStore(&Config{Feeds: []string{badURL}})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestStore_DefaultRateLimiting(t *testing.T) {
 	defer srv.Close()
 
 	// Create store without custom HTTP client - should use default rate limiting
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds: []string{srv.URL},
 		// Don't set RequestsPerSecond or BurstCapacity - should use defaults
 	})
@@ -262,7 +262,7 @@ func TestStore_CustomRateLimiting(t *testing.T) {
 	defer srv.Close()
 
 	// Create store with custom rate limiting settings
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:             []string{srv.URL},
 		RequestsPerSecond: 0.5, // Very slow: 1 request every 2 seconds
 		BurstCapacity:     1,   // No burst
@@ -295,7 +295,7 @@ func TestStore_CustomHTTPClientPreserved(t *testing.T) {
 	customClient := &http.Client{Timeout: 5 * time.Second}
 
 	// Create store with custom HTTP client - rate limiting should be skipped
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:             []string{srv.URL},
 		HTTPClient:        customClient,
 		RequestsPerSecond: 10.0, // These should be ignored since HTTPClient is provided
@@ -327,7 +327,7 @@ func TestStore_CircuitBreakerDisabled(t *testing.T) {
 
 	// Create store with circuit breaker explicitly disabled
 	disabled := false
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
 		CircuitBreakerEnabled: &disabled,
 	})
@@ -361,7 +361,7 @@ func TestStore_CircuitBreakerEnabledByDefault(t *testing.T) {
 	defer srv.Close()
 
 	// Create store without specifying circuit breaker setting - should be enabled by default
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
 		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for testing
 	})
@@ -402,7 +402,7 @@ func TestStore_CircuitBreakerExplicitlyEnabled(t *testing.T) {
 
 	// Create store with circuit breaker explicitly enabled
 	enabled := true
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for testing
@@ -447,7 +447,7 @@ func TestStore_CircuitBreakerFailures(t *testing.T) {
 
 	// Create store with circuit breaker enabled and aggressive settings
 	enabled := true
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                 []string{failingServer.URL},
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second,
@@ -526,7 +526,7 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 
 	// Create store with circuit breaker enabled and retries limited to 1 attempt for predictable circuit breaker testing
 	enabled := true
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                 []string{recoveringServer.URL},
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second,      // Short timeout for quick recovery
@@ -585,7 +585,7 @@ func TestStore_CircuitBreakerCustomSettings(t *testing.T) {
 
 	// Create store with custom circuit breaker settings
 	enabled := true
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                          []string{srv.URL},
 		CircuitBreakerEnabled:          &enabled,
 		CircuitBreakerMaxRequests:      5,
@@ -627,7 +627,7 @@ func TestStore_CircuitBreakerCustomFailureThreshold(t *testing.T) {
 
 	// Create store with custom failure threshold of 2 failures
 	enabled := true
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                          []string{failingServer.URL},
 		CircuitBreakerEnabled:          &enabled,
 		CircuitBreakerTimeout:          1 * time.Second,
@@ -682,7 +682,7 @@ func TestGetFeedAndItems_CircuitBreakerState(t *testing.T) {
 
 	// Create store with circuit breaker enabled (should be default, but let's be explicit for this test)
 	enabled := true
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
 		CircuitBreakerEnabled: &enabled,
 	})
@@ -721,7 +721,7 @@ func TestStore_ConnectionPooling(t *testing.T) {
 	defer srv.Close()
 
 	// Test with custom connection pool settings
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:               []string{srv.URL},
 		ExpireAfter:         1 * time.Hour,
 		MaxIdleConns:        50,
@@ -763,7 +763,7 @@ func TestHTTPPoolConfig_DefaultValues(t *testing.T) {
 	defer srv.Close()
 
 	// Test with default values (should be set automatically)
-	store, err := NewStore(Config{
+	store, err := NewStore(&Config{
 		Feeds:       []string{srv.URL},
 		ExpireAfter: 1 * time.Hour,
 	})
@@ -851,7 +851,7 @@ func TestRetryMechanism_SuccessfulFetch(t *testing.T) {
 		RetryJitter:      false, // Disable jitter for predictable testing
 	}
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +910,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -981,7 +981,7 @@ func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
 	// Reset counter before NewStore call since it will trigger initial fetch
 	atomic.StoreInt64(&requestCount, 0)
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1042,7 +1042,7 @@ func TestRetryMechanism_NonRetryableError(t *testing.T) {
 	// Reset counter before NewStore call since it will trigger initial fetch
 	atomic.StoreInt64(&requestCount, 0)
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1106,7 +1106,7 @@ func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
 	atomic.StoreInt64(&requestCount, 0)
 	timestamps = nil
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1176,7 +1176,7 @@ func TestRetryMechanism_MaxDelayRespected(t *testing.T) {
 		RetryJitter:      false,
 	}
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1312,7 +1312,7 @@ func TestRetryMechanism_DefaultConfiguration(t *testing.T) {
 	// Reset counter
 	atomic.StoreInt64(&requestCount, 0)
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1357,7 +1357,7 @@ func TestRetryMetrics_SuccessfulFeeds(t *testing.T) {
 		RetryJitter:      false,
 	}
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1451,7 +1451,7 @@ func TestRetryMetrics_WithRetries(t *testing.T) {
 	// Reset counter
 	atomic.StoreInt64(&requestCount, 0)
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1503,7 +1503,7 @@ func TestRetryMetrics_FailedFeeds(t *testing.T) {
 	// Reset counter
 	atomic.StoreInt64(&requestCount, 0)
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1552,7 +1552,7 @@ func TestRetryMetrics_MixedResults(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	store, err := NewStore(config)
+	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -58,8 +58,9 @@ func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, err
 		// Create a config with an empty feed list
 		tempConfig := *config
 		tempConfig.Feeds = []string{}
+		tempConfig.AllowEmptyFeeds = true
 
-		baseStore, err := NewStoreWithEmptyFeeds(&tempConfig, true)
+		baseStore, err := NewStore(&tempConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -76,7 +77,7 @@ func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, err
 	}
 
 	// Normal path with initial feeds
-	baseStore, err := NewStoreWithEmptyFeeds(config, false)
+	baseStore, err := NewStore(config)
 	if err != nil {
 		return nil, err
 	}

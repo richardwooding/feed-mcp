@@ -102,7 +102,7 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		serverConfig.DynamicFeedManager = dynamicStore
 	} else {
 		// Use regular Store
-		feedStore, err := store.NewStore(storeConfig)
+		feedStore, err := store.NewStore(&storeConfig)
 		if err != nil {
 			return err
 		}
