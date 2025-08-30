@@ -330,9 +330,20 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 	return nil, model.CreateRetryError(lastErr, url, attemptCount, maxAttempts)
 }
 
+// NewStoreWithEmptyFeeds creates a new feed store allowing empty feed lists for dynamic management
+func NewStoreWithEmptyFeeds(config *Config, allowEmpty bool) (*Store, error) {
+	if len(config.Feeds) == 0 && !allowEmpty {
+		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "at least one feed must be specified").
+			WithOperation("create_store").
+			WithComponent("store_manager")
+	}
+
+	return newStoreInternal(*config)
+}
+
 // NewStore creates a new feed store with the given configuration
 //
-//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
+//nolint:gocritic // Maintaining backward compatibility, use NewStoreWithEmptyFeeds for new code
 func NewStore(config Config) (*Store, error) {
 	if len(config.Feeds) == 0 {
 		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "at least one feed must be specified").
@@ -340,6 +351,13 @@ func NewStore(config Config) (*Store, error) {
 			WithComponent("store_manager")
 	}
 
+	return newStoreInternal(config)
+}
+
+// newStoreInternal contains the core store initialization logic
+//
+//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
+func newStoreInternal(config Config) (*Store, error) {
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
 	}

@@ -19,6 +19,16 @@ const (
 	statusError  = "error"
 )
 
+// feedCacheInfo holds the result of a feed cache check
+type feedCacheInfo struct {
+	ItemCount   int
+	Title       string
+	Status      string
+	LastError   string
+	LastFetched time.Time
+	Found       bool
+}
+
 // DynamicFeedMetadata holds metadata for dynamically managed feeds
 type DynamicFeedMetadata struct {
 	Title       string               `json:"title,omitempty"`
@@ -45,17 +55,14 @@ type DynamicStore struct {
 func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, error) {
 	// If runtime feeds are allowed and no initial feeds are provided, create an empty config
 	if allowRuntimeFeeds && len(config.Feeds) == 0 {
-		// Create a minimal config with a dummy feed that will be removed immediately
+		// Create a config with an empty feed list
 		tempConfig := *config
-		tempConfig.Feeds = []string{"https://example.com/dummy.xml"}
+		tempConfig.Feeds = []string{}
 
-		baseStore, err := NewStore(tempConfig)
+		baseStore, err := NewStoreWithEmptyFeeds(&tempConfig, true)
 		if err != nil {
 			return nil, err
 		}
-
-		// Clear the dummy feed immediately
-		baseStore.feeds = make(map[string]string)
 
 		ds := &DynamicStore{
 			Store:             baseStore,
@@ -69,7 +76,7 @@ func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, err
 	}
 
 	// Normal path with initial feeds
-	baseStore, err := NewStore(*config)
+	baseStore, err := NewStoreWithEmptyFeeds(config, false)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +93,32 @@ func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, err
 	ds.initializeStartupFeedMetadata()
 
 	return ds, nil
+}
+
+// checkFeedCache retrieves feed information from cache and returns status information
+func (ds *DynamicStore) checkFeedCache(ctx context.Context, url string) feedCacheInfo {
+	info := feedCacheInfo{
+		Status:      statusActive,
+		LastFetched: time.Now(),
+		Found:       true,
+	}
+
+	feed, err := ds.feedCacheManager.Get(ctx, url)
+	if err == nil && feed != nil {
+		info.ItemCount = len(feed.Items)
+		info.Title = feed.Title
+		info.LastFetched = time.Now()
+	} else {
+		info.Status = statusError
+		info.Found = false
+		if err != nil {
+			info.LastError = err.Error()
+		} else {
+			info.LastError = "failed to fetch feed: unknown error"
+		}
+	}
+
+	return info
 }
 
 // initializeStartupFeedMetadata creates metadata entries for feeds loaded at startup
@@ -107,9 +140,10 @@ func (ds *DynamicStore) initializeStartupFeedMetadata() {
 		}
 
 		// Try to get feed title from cache
-		if feed, err := ds.feedCacheManager.Get(context.Background(), url); err == nil && feed != nil {
-			ds.feedMetadata[feedID].Title = feed.Title
-			ds.feedMetadata[feedID].LastFetched = time.Now()
+		cacheInfo := ds.checkFeedCache(context.Background(), url)
+		if cacheInfo.Found {
+			ds.feedMetadata[feedID].Title = cacheInfo.Title
+			ds.feedMetadata[feedID].LastFetched = cacheInfo.LastFetched
 		}
 	}
 }
@@ -130,15 +164,8 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	ds.dynamicMutex.Lock()
 	defer ds.dynamicMutex.Unlock()
 
-	// Check if feed already exists
+	// Check if feed already exists (ds.feeds contains all feeds including dynamic ones)
 	for _, url := range ds.feeds {
-		if url == config.URL {
-			return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with URL %s already exists", config.URL)).
-				WithOperation("add_feed").
-				WithComponent("dynamic_store")
-		}
-	}
-	for _, url := range ds.dynamicFeeds {
 		if url == config.URL {
 			return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with URL %s already exists", config.URL)).
 				WithOperation("add_feed").
@@ -178,16 +205,16 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	}
 
 	// Try to fetch feed initially to get title and validate
-	itemCount := 0
-	if feed, err := ds.feedCacheManager.Get(ctx, config.URL); err == nil && feed != nil {
-		itemCount = len(feed.Items)
-		metadata.LastFetched = time.Now()
+	cacheInfo := ds.checkFeedCache(ctx, config.URL)
+	itemCount := cacheInfo.ItemCount
+	if cacheInfo.Found {
+		metadata.LastFetched = cacheInfo.LastFetched
 		if metadata.Title == "" {
-			metadata.Title = feed.Title
+			metadata.Title = cacheInfo.Title
 		}
 	} else {
-		metadata.LastError = err.Error()
-		metadata.Status = statusError
+		metadata.LastError = cacheInfo.LastError
+		metadata.Status = cacheInfo.Status
 	}
 
 	ds.feedMetadata[feedID] = metadata
@@ -306,19 +333,20 @@ func (ds *DynamicStore) ListManagedFeeds(ctx context.Context) ([]mcpserver.Manag
 		}
 
 		// Get current item count and update status
-		itemCount := 0
-		status := metadata.Status
-		lastError := metadata.LastError
-		lastFetched := metadata.LastFetched
+		cacheInfo := ds.checkFeedCache(ctx, url)
+		itemCount := cacheInfo.ItemCount
+		var status string
+		var lastError string
+		var lastFetched time.Time
 
-		if feed, err := ds.feedCacheManager.Get(ctx, url); err == nil && feed != nil {
-			itemCount = len(feed.Items)
-			status = statusActive
+		if cacheInfo.Found {
+			status = cacheInfo.Status
 			lastError = ""
-			lastFetched = time.Now()
-		} else if err != nil {
-			status = statusError
-			lastError = err.Error()
+			lastFetched = cacheInfo.LastFetched
+		} else {
+			status = cacheInfo.Status
+			lastError = cacheInfo.LastError
+			lastFetched = metadata.LastFetched // Keep original if cache fetch failed
 		}
 
 		feeds = append(feeds, mcpserver.ManagedFeedInfo{
