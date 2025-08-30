@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <head>
+        <title>Example Tech Feeds</title>
+        <dateCreated>Fri, 30 Aug 2024 00:00:00 GMT</dateCreated>
+        <ownerName>feed-mcp</ownerName>
+    </head>
+    <body>
+        <outline text="Technology">
+            <outline text="TechCrunch" title="TechCrunch" xmlUrl="https://techcrunch.com/feed/" htmlUrl="https://techcrunch.com/" />
+            <outline text="The Verge" title="The Verge" xmlUrl="https://www.theverge.com/rss/index.xml" htmlUrl="https://www.theverge.com/" />
+        </outline>
+        <outline text="Security">
+            <outline text="Krebs on Security" title="Krebs on Security" xmlUrl="https://krebsonsecurity.com/feed/" htmlUrl="https://krebsonsecurity.com/" />
+            <outline text="Bruce Schneier" title="Schneier on Security" xmlUrl="https://www.schneier.com/blog/atom.xml" htmlUrl="https://www.schneier.com/" />
+        </outline>
+        <outline text="Development">
+            <outline text="Hacker News" title="Hacker News" xmlUrl="https://hnrss.org/frontpage" htmlUrl="https://news.ycombinator.com/" />
+        </outline>
+    </body>
+</opml>

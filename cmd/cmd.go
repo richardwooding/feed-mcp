@@ -13,7 +13,8 @@ import (
 // RunCmd holds the command line arguments and flags for the run command
 type RunCmd struct {
 	Transport       string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
-	Feeds           []string      `arg:"" name:"feeds" help:"Feeds to list."`
+	Feeds           []string      `arg:"" name:"feeds" optional:"" help:"Feeds to list (cannot be used with --opml)."`
+	OPML            string        `name:"opml" help:"OPML file path or URL to load feed URLs from (cannot be used with feeds)."`
 	ExpireAfter     time.Duration `name:"expire-after" default:"1h" help:"Expire feeds after this duration."`
 	Timeout         time.Duration `name:"timeout" default:"30s" help:"Timeout for fetching feed."`
 	ShutdownTimeout time.Duration `name:"shutdown-timeout" default:"30s" help:"Timeout for graceful shutdown."`
@@ -37,17 +38,38 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(c.Feeds) == 0 {
-		return model.NewFeedError(model.ErrorTypeConfiguration, "no feeds specified").
+
+	// Determine the feed URLs to use
+	var feedURLs []string
+
+	// Check for mutually exclusive options
+	if c.OPML != "" && len(c.Feeds) > 0 {
+		return model.NewFeedError(model.ErrorTypeConfiguration, "cannot specify both --opml and feed URLs").
 			WithOperation("run_command").
 			WithComponent("cli")
 	}
+
+	if c.OPML != "" {
+		// Load feed URLs from OPML
+		feedURLs, err = model.LoadFeedURLsFromOPML(c.OPML)
+		if err != nil {
+			return err
+		}
+	} else if len(c.Feeds) > 0 {
+		// Use directly specified feeds
+		feedURLs = c.Feeds
+	} else {
+		return model.NewFeedError(model.ErrorTypeConfiguration, "no feeds specified - use either feed URLs or --opml").
+			WithOperation("run_command").
+			WithComponent("cli")
+	}
+
 	// Validate feed URLs for security
-	if err := model.SanitizeFeedURLs(c.Feeds, c.AllowPrivateIPs); err != nil {
+	if err := model.SanitizeFeedURLs(feedURLs, c.AllowPrivateIPs); err != nil {
 		return err
 	}
 	feedStore, err := store.NewStore(store.Config{
-		Feeds:               c.Feeds,
+		Feeds:               feedURLs,
 		Timeout:             c.Timeout,
 		ExpireAfter:         c.ExpireAfter,
 		MaxIdleConns:        c.MaxIdleConns,
