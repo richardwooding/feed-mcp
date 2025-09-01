@@ -127,3 +127,57 @@ func TestDynamicStore_ListManagedFeeds(t *testing.T) {
 		t.Errorf("Expected source 'startup', got %s", feed.Source)
 	}
 }
+
+// TestDynamicStore_RefreshFeed tests refreshing a specific feed
+func TestDynamicStore_RefreshFeed(t *testing.T) {
+	config := Config{
+		Feeds:       []string{},
+		Timeout:     30 * time.Second,
+		ExpireAfter: 1 * time.Hour,
+	}
+
+	ds, err := NewDynamicStore(&config, true)
+	if err != nil {
+		t.Fatalf("Failed to create dynamic store: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// First add a feed
+	feedConfig := mcpserver.FeedConfig{
+		URL:         "https://example.com/test-feed.xml",
+		Title:       "Test Feed",
+		Category:    "test",
+		Description: "Test feed for refresh",
+	}
+
+	feedInfo, err := ds.AddFeed(ctx, feedConfig)
+	if err != nil {
+		t.Fatalf("Failed to add feed: %v", err)
+	}
+
+	// Now test refreshing it
+	refreshInfo, err := ds.RefreshFeed(ctx, feedInfo.FeedID)
+	if err != nil {
+		t.Fatalf("Failed to refresh feed: %v", err)
+	}
+
+	if refreshInfo.FeedID != feedInfo.FeedID {
+		t.Errorf("Expected feed ID %s, got %s", feedInfo.FeedID, refreshInfo.FeedID)
+	}
+
+	// Status should be either "refreshed" or "error" (since we're not using a real feed)
+	if refreshInfo.Status != "refreshed" && refreshInfo.Status != "error" {
+		t.Errorf("Expected status 'refreshed' or 'error', got %s", refreshInfo.Status)
+	}
+
+	// Test refreshing non-existent feed
+	nonExistentRefresh, err := ds.RefreshFeed(ctx, "non-existent-feed-id")
+	if err != nil {
+		t.Fatalf("Expected no error for non-existent feed, got: %v", err)
+	}
+
+	if nonExistentRefresh.Status != "not_found" {
+		t.Errorf("Expected status 'not_found' for non-existent feed, got %s", nonExistentRefresh.Status)
+	}
+}
