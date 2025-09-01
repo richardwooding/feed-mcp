@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -227,7 +228,7 @@ func TestPromptParameterValidation(t *testing.T) {
 		}
 
 		message := result.Messages[0].Content.(*mcp.TextContent).Text
-		if !contains(message, "Keywords parameter is required") {
+		if !strings.Contains(message, "Keywords parameter is required") {
 			t.Errorf("Expected error about missing keywords parameter, got: %s", message)
 		}
 	})
@@ -252,7 +253,7 @@ func TestPromptParameterValidation(t *testing.T) {
 		}
 
 		message := result.Messages[0].Content.(*mcp.TextContent).Text
-		if !contains(message, "Topic parameter is required") {
+		if !strings.Contains(message, "Topic parameter is required") {
 			t.Errorf("Expected error about missing topic parameter, got: %s", message)
 		}
 	})
@@ -277,7 +278,7 @@ func TestPromptParameterValidation(t *testing.T) {
 		}
 
 		message := result.Messages[0].Content.(*mcp.TextContent).Text
-		if !contains(message, "Invalid timeframe") {
+		if !strings.Contains(message, "Invalid timeframe") {
 			t.Errorf("Expected error about invalid timeframe, got: %s", message)
 		}
 	})
@@ -353,16 +354,3 @@ func TestPromptHelperFunctions(t *testing.T) {
 	})
 }
 
-// Helper function to check if string contains substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || (len(s) > len(substr) && containsHelper(s, substr)))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
