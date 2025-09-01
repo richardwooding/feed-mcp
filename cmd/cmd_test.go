@@ -32,6 +32,26 @@ func TestRunCmd_Run_NoFeeds(t *testing.T) {
 	}
 }
 
+func TestRunCmd_Run_NoFeedsWithRuntimeFeedsAllowed(t *testing.T) {
+	cmd := &RunCmd{
+		Transport:         "stdio",
+		Feeds:             []string{},
+		AllowRuntimeFeeds: true,
+	}
+	ctx := context.Background()
+
+	// This test validates that we can start with no feeds when AllowRuntimeFeeds is enabled
+	// We expect this to not return an error from validation, but it may fail later during
+	// server startup due to stdio transport setup in test environment
+	err := cmd.Run(&model.Globals{}, ctx)
+
+	// We accept that the server may fail to start in test environment due to stdio,
+	// but we should not get the "no feeds specified" configuration error
+	if err != nil && err.Error() == "no feeds specified - use either feed URLs or --opml" {
+		t.Error("should not require feeds when AllowRuntimeFeeds is enabled")
+	}
+}
+
 func TestRunCmd_Run_Valid(t *testing.T) {
 	// This test just validates that NewStore succeeds with valid configuration.
 	// We can't easily test the full server.Run() without setting up stdio properly.

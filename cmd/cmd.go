@@ -60,15 +60,21 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	} else if len(c.Feeds) > 0 {
 		// Use directly specified feeds
 		feedURLs = c.Feeds
-	} else {
+	} else if !c.AllowRuntimeFeeds {
+		// Only require feeds if runtime feed management is disabled
 		return model.NewFeedError(model.ErrorTypeConfiguration, "no feeds specified - use either feed URLs or --opml").
 			WithOperation("run_command").
 			WithComponent("cli")
+	} else {
+		// Allow starting with no feeds when runtime feed management is enabled
+		feedURLs = []string{}
 	}
 
-	// Validate feed URLs for security
-	if err := model.SanitizeFeedURLs(feedURLs, c.AllowPrivateIPs); err != nil {
-		return err
+	// Validate feed URLs for security (skip validation if no URLs and runtime feeds are allowed)
+	if len(feedURLs) > 0 {
+		if err := model.SanitizeFeedURLs(feedURLs, c.AllowPrivateIPs); err != nil {
+			return err
+		}
 	}
 
 	storeConfig := store.Config{
