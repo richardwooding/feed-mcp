@@ -2,11 +2,13 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/richardwooding/feed-mcp/model"
 )
@@ -102,28 +104,108 @@ func TestListResources(t *testing.T) {
 		t.Fatalf("ListResources failed: %v", err)
 	}
 
-	// Should have 1 feed list resource + 3 resources per feed * 2 feeds = 7 total
-	expectedCount := 1 + (3 * 2)
+	validateResourceCount(t, resources)
+	validateCoreResources(t, resources)
+}
+
+// validateResourceCount validates the expected number of resources
+func validateResourceCount(t *testing.T, resources []*mcp.Resource) {
+	// Should have 1 feed list resource + 1 parameter docs resource + 3 resources per feed * 2 feeds = 8 total
+	expectedCount := 2 + (3 * 2)
 	if len(resources) != expectedCount {
 		t.Errorf("Expected %d resources, got %d", expectedCount, len(resources))
 	}
+}
 
-	// Check feed list resource
+// validateCoreResources validates the presence and properties of core resources
+func validateCoreResources(t *testing.T, resources []*mcp.Resource) {
 	foundFeedList := false
+	foundParameterDocs := false
+
 	for _, resource := range resources {
 		if resource.URI == FeedListURI {
 			foundFeedList = true
-			if resource.Name != "All Feeds" {
-				t.Errorf("Expected feed list name 'All Feeds', got '%s'", resource.Name)
-			}
-			if resource.MIMEType != JSONMIMEType {
-				t.Errorf("Expected MIME type 'application/json', got '%s'", resource.MIMEType)
-			}
-			break
+			validateFeedListResource(t, resource)
+		}
+		if resource.URI == ParameterDocsURI {
+			foundParameterDocs = true
+			validateParameterDocsResource(t, resource)
 		}
 	}
+
 	if !foundFeedList {
 		t.Error("Feed list resource not found")
+	}
+	if !foundParameterDocs {
+		t.Error("Parameter documentation resource not found")
+	}
+}
+
+// validateFeedListResource validates the feed list resource properties
+func validateFeedListResource(t *testing.T, resource *mcp.Resource) {
+	if resource.Name != "All Feeds" {
+		t.Errorf("Expected feed list name 'All Feeds', got '%s'", resource.Name)
+	}
+	if resource.MIMEType != JSONMIMEType {
+		t.Errorf("Expected MIME type 'application/json', got '%s'", resource.MIMEType)
+	}
+}
+
+// validateParameterDocsResource validates the parameter docs resource properties
+func validateParameterDocsResource(t *testing.T, resource *mcp.Resource) {
+	if resource.Name != "URI Parameter Documentation" {
+		t.Errorf("Expected parameter docs name 'URI Parameter Documentation', got '%s'", resource.Name)
+	}
+	if resource.MIMEType != JSONMIMEType {
+		t.Errorf("Expected MIME type 'application/json', got '%s'", resource.MIMEType)
+	}
+}
+
+// TestReadParameterDocsResource tests reading the parameter documentation resource
+func TestReadParameterDocsResource(t *testing.T) {
+	rm := createTestResourceManager()
+	ctx := context.Background()
+	result, err := rm.ReadResource(ctx, ParameterDocsURI)
+	if err != nil {
+		t.Fatalf("ReadResource failed: %v", err)
+	}
+
+	if len(result.Contents) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(result.Contents))
+	}
+
+	content := result.Contents[0]
+	if content.URI != ParameterDocsURI {
+		t.Errorf("Expected URI '%s', got '%s'", ParameterDocsURI, content.URI)
+	}
+	if content.MIMEType != JSONMIMEType {
+		t.Errorf("Expected MIME type '%s', got '%s'", JSONMIMEType, content.MIMEType)
+	}
+
+	// Verify it's valid JSON and contains expected structure
+	if content.Text == "" {
+		t.Error("Expected non-empty content text")
+	}
+
+	// Parse JSON to verify structure
+	var paramDocs map[string]interface{}
+	if err := json.Unmarshal([]byte(content.Text), &paramDocs); err != nil {
+		t.Errorf("Content is not valid JSON: %v", err)
+	}
+
+	// Check for expected top-level structure
+	if uriParams, ok := paramDocs["uri_parameters"]; !ok {
+		t.Error("Expected 'uri_parameters' key in parameter docs")
+	} else if uriParamsMap, ok := uriParams.(map[string]interface{}); !ok {
+		t.Error("Expected 'uri_parameters' to be an object")
+	} else {
+		// Check for expected sections
+		expectedSections := []string{"description", "base_parameters", "enhanced_parameters", "usage_examples", "combination_notes"}
+		for _, section := range expectedSections {
+			if _, exists := uriParamsMap[section]; !exists {
+				t.Errorf("Expected section '%s' not found in parameter docs", section)
+			}
+		}
 	}
 }
 
