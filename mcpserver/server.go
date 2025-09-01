@@ -103,6 +103,11 @@ type RemoveFeedParams struct {
 	URL    string `json:"url,omitempty"`
 }
 
+// RefreshFeedParams contains parameters for the refresh_feed tool.
+type RefreshFeedParams struct {
+	FeedID string `json:"feedId"`
+}
+
 // MergeFeedsParams contains parameters for the merge_feeds tool.
 type MergeFeedsParams struct {
 	FeedIDs     []string `json:"feedIds"`
@@ -373,7 +378,14 @@ func (s *Server) addDynamicFeedTools(srv *mcp.Server) {
 		return
 	}
 
-	// Add add_feed tool
+	s.addAddFeedTool(srv)
+	s.addRemoveFeedTool(srv)
+	s.addListManagedFeedsTool(srv)
+	s.addRefreshFeedTool(srv)
+}
+
+// addAddFeedTool adds the add_feed tool to the server
+func (s *Server) addAddFeedTool(srv *mcp.Server) {
 	addFeedTool := &mcp.Tool{
 		Name:        "add_feed",
 		Description: "Add a new RSS/Atom/JSON feed at runtime",
@@ -417,8 +429,10 @@ func (s *Server) addDynamicFeedTools(srv *mcp.Server) {
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 		}, nil, nil
 	})
+}
 
-	// Add remove_feed tool
+// addRemoveFeedTool adds the remove_feed tool to the server
+func (s *Server) addRemoveFeedTool(srv *mcp.Server) {
 	removeFeedTool := &mcp.Tool{
 		Name:        "remove_feed",
 		Description: "Remove a feed by ID or URL",
@@ -467,8 +481,10 @@ func (s *Server) addDynamicFeedTools(srv *mcp.Server) {
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 		}, nil, nil
 	})
+}
 
-	// Add list_managed_feeds tool
+// addListManagedFeedsTool adds the list_managed_feeds tool to the server
+func (s *Server) addListManagedFeedsTool(srv *mcp.Server) {
 	listManagedFeedsTool := &mcp.Tool{
 		Name:        "list_managed_feeds",
 		Description: "List all managed feeds with metadata and status",
@@ -481,6 +497,39 @@ func (s *Server) addDynamicFeedTools(srv *mcp.Server) {
 		}
 
 		data, err := json.Marshal(feeds)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	})
+}
+
+// addRefreshFeedTool adds the refresh_feed tool to the server
+func (s *Server) addRefreshFeedTool(srv *mcp.Server) {
+	refreshFeedTool := &mcp.Tool{
+		Name:        "refresh_feed",
+		Description: "Force refresh a specific feed to get latest content",
+		InputSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"feedId"},
+			Properties: map[string]*jsonschema.Schema{
+				"feedId": {
+					Type:        "string",
+					Description: "Feed ID to refresh",
+				},
+			},
+		},
+	}
+	mcp.AddTool(srv, refreshFeedTool, func(ctx context.Context, req *mcp.CallToolRequest, args RefreshFeedParams) (*mcp.CallToolResult, any, error) {
+		refreshInfo, err := s.dynamicFeedManager.RefreshFeed(ctx, args.FeedID)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		data, err := json.Marshal(refreshInfo)
 		if err != nil {
 			return nil, nil, err
 		}
