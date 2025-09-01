@@ -53,6 +53,9 @@ type Config struct {
 	CircuitBreakerMaxRequests      uint32
 	CircuitBreakerFailureThreshold uint32
 	RetryJitter                    bool
+	OPML                           string // OPML file path for metadata source detection
+	AllowPrivateIPs                bool   // Allow private IP addresses in URLs
+	AllowEmptyFeeds                bool   // Allow creating store with no initial feeds (used by DynamicStore)
 }
 
 // RetryMetrics holds metrics for retry operations
@@ -328,16 +331,22 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 	return nil, model.CreateRetryError(lastErr, url, attemptCount, maxAttempts)
 }
 
-// NewStore creates a new feed store with the given configuration
-//
-//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
-func NewStore(config Config) (*Store, error) {
-	if len(config.Feeds) == 0 {
+// NewStore creates a new feed store with the given configuration.
+// Uses pointer to avoid copying large Config struct (192 bytes).
+func NewStore(config *Config) (*Store, error) {
+	if len(config.Feeds) == 0 && !config.AllowEmptyFeeds {
 		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "at least one feed must be specified").
 			WithOperation("create_store").
 			WithComponent("store_manager")
 	}
 
+	return newStoreInternal(*config)
+}
+
+// newStoreInternal contains the core store initialization logic
+//
+//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
+func newStoreInternal(config Config) (*Store, error) {
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
 	}
