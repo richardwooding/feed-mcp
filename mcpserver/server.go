@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -897,48 +898,36 @@ func deduplicateItems(items []*gofeed.Item) []*gofeed.Item {
 
 // sortItemsByDate sorts items by published date (newest first)
 func sortItemsByDate(items []*gofeed.Item) {
-	// Implementation will use sort.Slice
-	for i := 0; i < len(items)-1; i++ {
-		for j := i + 1; j < len(items); j++ {
-			if items[i].PublishedParsed != nil && items[j].PublishedParsed != nil {
-				if items[i].PublishedParsed.Before(*items[j].PublishedParsed) {
-					items[i], items[j] = items[j], items[i]
-				}
-			}
+	sort.Slice(items, func(i, j int) bool {
+		// Handle nil PublishedParsed dates
+		if items[i].PublishedParsed == nil || items[j].PublishedParsed == nil {
+			return items[i].PublishedParsed != nil
 		}
-	}
+		// Sort newest first (i > j means i is newer)
+		return items[i].PublishedParsed.After(*items[j].PublishedParsed)
+	})
 }
 
 // sortItemsByTitle sorts items alphabetically by title
 func sortItemsByTitle(items []*gofeed.Item) {
-	for i := 0; i < len(items)-1; i++ {
-		for j := i + 1; j < len(items); j++ {
-			if items[i].Title > items[j].Title {
-				items[i], items[j] = items[j], items[i]
-			}
-		}
-	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Title < items[j].Title
+	})
 }
 
 // sortItemsBySource sorts items by source feed title
 func sortItemsBySource(items []*gofeed.Item) {
-	for i := 0; i < len(items)-1; i++ {
-		for j := i + 1; j < len(items); j++ {
-			// gofeed.Item doesn't have a Source field, so we'll skip this for now
-			// or we could use the Custom map if available
-			sourceI := ""
-			sourceJ := ""
-			if items[i].Custom != nil && items[i].Custom["source"] != "" {
-				sourceI = items[i].Custom["source"]
-			}
-			if items[j].Custom != nil && items[j].Custom["source"] != "" {
-				sourceJ = items[j].Custom["source"]
-			}
-			if sourceI > sourceJ {
-				items[i], items[j] = items[j], items[i]
-			}
-		}
+	sort.Slice(items, func(i, j int) bool {
+		return getItemSource(items[i]) < getItemSource(items[j])
+	})
+}
+
+// getItemSource extracts source information from a feed item
+func getItemSource(item *gofeed.Item) string {
+	if item.Custom != nil && item.Custom["source"] != "" {
+		return item.Custom["source"]
 	}
+	return ""
 }
 
 // filterFeedResultsByDate filters feed result items by publication date range
