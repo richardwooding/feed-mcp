@@ -295,9 +295,176 @@ Upcoming features in development:
 - No persistent configuration storage
 - Limited to basic metadata (title, category, description)
 
+## MCP Prompts Support (Phase 2)
+
+feed-mcp includes comprehensive MCP Prompts support that enables AI assistants to analyze feed data with intelligent, contextual prompts. These prompts provide deep insights into content trends, patterns, and feed performance.
+
+### Available Intelligence Prompts
+
+#### `analyze_feed_trends` - Content Trend Analysis
+Analyze patterns and trends across multiple feeds over time:
+
+**Parameters:**
+- `timeframe` (optional): Time period to analyze (e.g., '24h', '7d', '30d') - defaults to '24h'
+- `categories` (optional): Comma-separated list of categories to filter by
+
+**Example Usage:**
+```
+Analyze feed trends for the past week focusing on technology categories
+```
+
+**Insights Generated:**
+- Publication frequency patterns and peak activity times
+- Topic distribution and content themes
+- Source activity levels and error rates
+- Content pattern analysis and recommendations
+
+#### `summarize_feeds` - Comprehensive Feed Summaries
+Generate detailed summaries of feed content with key insights:
+
+**Parameters:**
+- `feed_ids` (optional): Comma-separated list of specific feed IDs - defaults to all feeds
+- `summary_type` (optional): Type of summary ('brief', 'detailed', 'executive') - defaults to 'brief'
+
+**Example Usage:**
+```
+Generate a detailed summary of all technology feeds
+```
+
+**Summary Types:**
+- **Brief**: Quick overview with key metrics and status
+- **Detailed**: Complete breakdown by feed with individual analysis
+- **Executive**: Strategic overview with recommendations and key insights
+
+#### `monitor_keywords` - Intelligent Keyword Tracking
+Track specific keywords or topics across all feeds with alerts:
+
+**Parameters:**
+- `keywords` (required): Comma-separated list of keywords or phrases to monitor
+- `timeframe` (optional): Time period to monitor - defaults to '24h'
+- `alert_threshold` (optional): Minimum mentions to trigger alert - defaults to 1
+
+**Example Usage:**
+```
+Monitor keywords "artificial intelligence, machine learning, AI" for alerts
+```
+
+**Features:**
+- Cross-feed keyword tracking with source breakdown
+- Smart alert system with configurable thresholds
+- Trend analysis and mention frequency tracking
+- Contextual recommendations for keyword monitoring
+
+#### `compare_sources` - Multi-Source Analysis
+Compare coverage and perspectives across different feed sources:
+
+**Parameters:**
+- `topic` (required): Topic or keyword to compare across sources
+- `feed_ids` (optional): Specific feeds to compare - defaults to all feeds
+
+**Example Usage:**
+```
+Compare how different sources cover "climate change"
+```
+
+**Analysis Includes:**
+- Coverage depth comparison across sources
+- Unique perspectives and angles from each source
+- Content gap analysis and recommendations
+- Source reliability and consistency metrics
+
+#### `generate_feed_report` - Detailed Performance Reports
+Generate comprehensive reports on feed performance and analytics:
+
+**Parameters:**
+- `report_type` (optional): Report type ('performance', 'content', 'engagement', 'comprehensive') - defaults to 'comprehensive'
+- `timeframe` (optional): Report time period (e.g., '7d', '30d', '90d') - defaults to '7d'
+
+**Example Usage:**
+```
+Generate a comprehensive feed performance report for the past month
+```
+
+**Report Types:**
+- **Performance**: System health, uptime, error rates, response times
+- **Content**: Volume metrics, quality analysis, topic coverage
+- **Engagement**: Usage patterns, popular content, access analytics
+- **Comprehensive**: Complete overview with all metrics and strategic recommendations
+
+### Technical Implementation
+
+The MCP Prompts system is built with:
+
+- **Intelligent Analysis**: Uses advanced algorithms for trend detection and pattern recognition
+- **Flexible Timeframes**: Supports human-friendly time formats ('24h', '7d', '1m', etc.)
+- **Smart Validation**: Comprehensive parameter validation with helpful error messages
+- **Consistent Results**: Uses non-cryptographic hash functions (hash/fnv) for reproducible demo data
+- **Performance Optimized**: Efficient data processing with minimal resource usage
+- **Extensible Design**: Easy to add new prompts and analysis capabilities
+
+### Integration with Claude Desktop
+
+All prompts are automatically available in Claude Desktop when you configure feed-mcp:
+
+```json
+{
+  "mcpServers": {
+    "feed-intelligence": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://techcrunch.com/feed/",
+        "https://www.theverge.com/rss/index.xml",
+        "https://feeds.arstechnica.com/arstechnica/index"
+      ]
+    }
+  }
+}
+```
+
+Once configured, you can use natural language to invoke any prompt:
+- "Analyze trends in my tech feeds for the past week"
+- "Generate an executive summary of all feeds"  
+- "Monitor mentions of 'artificial intelligence' with alerts"
+- "Compare how different sources cover 'quantum computing'"
+- "Create a comprehensive performance report"
+
+### Advanced Use Cases
+
+#### Content Strategy Planning
+```
+Generate a comprehensive report focusing on content analysis for the past month,
+then analyze trends to identify emerging topics for content planning
+```
+
+#### Competitive Intelligence
+```
+Compare sources covering "electric vehicles" and monitor keywords 
+"Tesla, Ford, GM" with alerts for trending mentions
+```
+
+#### Editorial Analytics
+```
+Analyze feed trends for technology category, then generate a detailed 
+summary of top-performing content types and publication patterns
+```
+
+### Future Enhancements (Phase 3)
+
+Planned intelligent features:
+- **Custom Prompt Templates**: Create reusable prompt configurations
+- **Automated Insights**: Scheduled analysis with proactive alerts
+- **Machine Learning Integration**: Advanced pattern recognition and prediction
+- **Cross-Feed Correlation**: Identify relationships between different feed sources
+- **Sentiment Analysis**: Track emotional tone and sentiment trends
+- **Export Capabilities**: Generate reports in various formats (PDF, CSV, JSON)
+
 ## Features
 
 - Serves RSS, Atom, and JSON feeds via the MCP protocol
+- **MCP Prompts Support (Phase 2)** for intelligent feed analysis and content insights
 - **Dynamic Feed Management (Phase 1)** for runtime feed addition, removal, and management
 - **OPML support** for importing feed subscriptions from RSS readers (Feedly, Inoreader, etc.)
 - **MCP Resources support** with dynamic feed discovery and real-time subscriptions

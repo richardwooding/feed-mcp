@@ -205,6 +205,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	// Add resource handlers for MCP Resources support
 	s.addResourceHandlers(srv)
 
+	// Add MCP prompts for feed intelligence features
+	s.addPrompts(srv)
+
 	switch s.transport {
 	case model.StdioTransport:
 		err = srv.Run(ctx, &mcp.StdioTransport{})
@@ -461,4 +464,113 @@ func (s *Server) CheckForResourceChanges(ctx context.Context, interval time.Dura
 			}
 		}
 	}
+}
+
+// addPrompts adds MCP prompts for feed intelligence features
+func (s *Server) addPrompts(srv *mcp.Server) {
+	// Feed Analysis Prompts
+	srv.AddPrompt(
+		&mcp.Prompt{
+			Name:        "analyze_feed_trends",
+			Description: "Analyze trends and patterns across multiple feeds over time",
+			Arguments: []*mcp.PromptArgument{
+				{
+					Name:        "timeframe",
+					Description: "Time period to analyze (e.g., '24h', '7d', '30d')",
+					Required:    false,
+				},
+				{
+					Name:        "categories",
+					Description: "Comma-separated list of categories to filter by",
+					Required:    false,
+				},
+			},
+		},
+		s.handleAnalyzeFeedTrends,
+	)
+
+	srv.AddPrompt(
+		&mcp.Prompt{
+			Name:        "summarize_feeds",
+			Description: "Generate comprehensive summaries of feed content with key insights",
+			Arguments: []*mcp.PromptArgument{
+				{
+					Name:        "feed_ids",
+					Description: "Comma-separated list of specific feed IDs to summarize (optional - defaults to all feeds)",
+					Required:    false,
+				},
+				{
+					Name:        "summary_type",
+					Description: "Type of summary: 'brief', 'detailed', or 'executive' (default: 'brief')",
+					Required:    false,
+				},
+			},
+		},
+		s.handleSummarizeFeeds,
+	)
+
+	srv.AddPrompt(
+		&mcp.Prompt{
+			Name:        "monitor_keywords",
+			Description: "Track specific keywords or topics across all feeds with alerts and insights",
+			Arguments: []*mcp.PromptArgument{
+				{
+					Name:        "keywords",
+					Description: "Comma-separated list of keywords or phrases to monitor",
+					Required:    true,
+				},
+				{
+					Name:        "timeframe",
+					Description: "Time period to monitor (e.g., '24h', '7d') - defaults to '24h'",
+					Required:    false,
+				},
+				{
+					Name:        "alert_threshold",
+					Description: "Minimum number of mentions to trigger alert (default: 1)",
+					Required:    false,
+				},
+			},
+		},
+		s.handleMonitorKeywords,
+	)
+
+	srv.AddPrompt(
+		&mcp.Prompt{
+			Name:        "compare_sources",
+			Description: "Compare coverage and perspectives across different feed sources",
+			Arguments: []*mcp.PromptArgument{
+				{
+					Name:        "topic",
+					Description: "Topic or keyword to compare across sources",
+					Required:    true,
+				},
+				{
+					Name:        "feed_ids",
+					Description: "Specific feed IDs to compare (optional - defaults to all feeds)",
+					Required:    false,
+				},
+			},
+		},
+		s.handleCompareSources,
+	)
+
+	srv.AddPrompt(
+		&mcp.Prompt{
+			Name:        "generate_feed_report",
+			Description: "Generate detailed reports on feed performance, content quality, and engagement metrics",
+			Arguments: []*mcp.PromptArgument{
+				{
+					Name:        "report_type",
+					Description: "Type of report: 'performance', 'content', 'engagement', or 'comprehensive'",
+					Required:    false,
+				},
+				{
+					Name:        "timeframe",
+					Description: "Time period for the report (e.g., '7d', '30d', '90d')",
+					Required:    false,
+				},
+			},
+		},
+		s.handleGenerateFeedReport,
+	)
 }
