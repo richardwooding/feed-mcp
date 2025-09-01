@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -23,12 +24,57 @@ type PromptResult struct {
 	Generated time.Time              `json:"generated"`
 }
 
+// titleCase converts the first character to uppercase, replacing deprecated strings.Title
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+// getFeedsForPrompt gets feeds either by ID list or all feeds
+func (s *Server) getFeedsForPrompt(ctx context.Context, feedIDs string) ([]*model.FeedResult, error) {
+	var feeds []*model.FeedResult
+
+	if feedIDs != "" {
+		// Get specific feeds
+		idList := strings.Split(feedIDs, ",")
+		for _, id := range idList {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, id)
+			if err != nil {
+				continue // Skip failed feeds
+			}
+			// Convert to FeedResult
+			feeds = append(feeds, &model.FeedResult{
+				ID:        feedResult.ID,
+				Title:     feedResult.Title,
+				PublicURL: feedResult.PublicURL,
+			})
+		}
+	} else {
+		// Get all feeds
+		var err error
+		feeds, err = s.allFeedsGetter.GetAllFeeds(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get feeds: %w", err)
+		}
+	}
+
+	return feeds, nil
+}
+
 // handleAnalyzeFeedTrends analyzes trends and patterns across multiple feeds
 func (s *Server) handleAnalyzeFeedTrends(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	// Parse arguments
 	timeframe := getStringArg(req.Params.Arguments, "timeframe", "24h")
 	categories := getStringArg(req.Params.Arguments, "categories", "")
-	
+
 	// Parse timeframe
 	duration, err := parseDuration(timeframe)
 	if err != nil {
@@ -113,32 +159,9 @@ func (s *Server) handleSummarizeFeeds(ctx context.Context, req *mcp.GetPromptReq
 
 	// Get feeds to summarize
 	var feedsToSummarize []*model.FeedResult
-	if feedIDs != "" {
-		// Get specific feeds
-		idList := strings.Split(feedIDs, ",")
-		for _, id := range idList {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, id)
-			if err != nil {
-				continue // Skip failed feeds
-			}
-			// Convert to FeedResult (simplified for summary)
-			feedsToSummarize = append(feedsToSummarize, &model.FeedResult{
-				ID:        feedResult.ID,
-				Title:     feedResult.Title,
-				PublicURL: feedResult.PublicURL,
-			})
-		}
-	} else {
-		// Get all feeds
-		var err error
-		feedsToSummarize, err = s.allFeedsGetter.GetAllFeeds(ctx)
-		if err != nil {
-			return createErrorPromptResult(fmt.Sprintf("Failed to get feeds: %v", err)), nil
-		}
+	feedsToSummarize, err := s.getFeedsForPrompt(ctx, feedIDs)
+	if err != nil {
+		return createErrorPromptResult(err.Error()), nil
 	}
 
 	// Generate summary based on type
@@ -155,7 +178,7 @@ func (s *Server) handleSummarizeFeeds(ctx context.Context, req *mcp.GetPromptReq
 ---
 
 *This summary provides an overview of your syndicated feed content. Use it to quickly understand what's happening across your information sources.*`,
-		strings.Title(summaryType),
+		titleCase(summaryType),
 		time.Now().Format("2006-01-02 15:04:05 UTC"),
 		len(feedsToSummarize),
 		summary,
@@ -180,7 +203,7 @@ func (s *Server) handleMonitorKeywords(ctx context.Context, req *mcp.GetPromptRe
 	if keywords == "" {
 		return createErrorPromptResult("Keywords parameter is required"), nil
 	}
-	
+
 	timeframe := getStringArg(req.Params.Arguments, "timeframe", "24h")
 	alertThreshold := getIntArg(req.Params.Arguments, "alert_threshold", 1)
 
@@ -255,37 +278,14 @@ func (s *Server) handleCompareSources(ctx context.Context, req *mcp.GetPromptReq
 	if topic == "" {
 		return createErrorPromptResult("Topic parameter is required"), nil
 	}
-	
+
 	feedIDs := getStringArg(req.Params.Arguments, "feed_ids", "")
 
 	// Get feeds to compare
 	var feedsToCompare []*model.FeedResult
-	if feedIDs != "" {
-		// Get specific feeds
-		idList := strings.Split(feedIDs, ",")
-		for _, id := range idList {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, id)
-			if err != nil {
-				continue // Skip failed feeds
-			}
-			// Convert to FeedResult for comparison
-			feedsToCompare = append(feedsToCompare, &model.FeedResult{
-				ID:        feedResult.ID,
-				Title:     feedResult.Title,
-				PublicURL: feedResult.PublicURL,
-			})
-		}
-	} else {
-		// Get all feeds
-		var err error
-		feedsToCompare, err = s.allFeedsGetter.GetAllFeeds(ctx)
-		if err != nil {
-			return createErrorPromptResult(fmt.Sprintf("Failed to get feeds: %v", err)), nil
-		}
+	feedsToCompare, err := s.getFeedsForPrompt(ctx, feedIDs)
+	if err != nil {
+		return createErrorPromptResult(err.Error()), nil
 	}
 
 	// Compare sources
@@ -365,7 +365,7 @@ func (s *Server) handleGenerateFeedReport(ctx context.Context, req *mcp.GetPromp
 ---
 
 *This report provides detailed insights into your feed ecosystem performance, helping optimize content consumption and source management.*`,
-		strings.Title(reportType),
+		titleCase(reportType),
 		timeframe,
 		time.Now().Format("2006-01-02 15:04:05 UTC"),
 		len(feedResults),
@@ -493,7 +493,7 @@ func formatTrendsSummary(trends *trendAnalysis) string {
 ### Content Patterns
 - Publication frequency shows consistent patterns across sources
 - Most active time periods identified
-- Topic clustering reveals content themes`, 
+- Topic clustering reveals content themes`,
 		trends.totalItems, trends.activeFeeds, trends.errorRate)
 }
 
@@ -609,10 +609,10 @@ func generateExecutiveSummary(feeds []*model.FeedResult) string {
 }
 
 type keywordMonitoring struct {
-	keywords     []string
-	mentions     map[string]int
+	keywords        []string
+	mentions        map[string]int
 	sourceBreakdown map[string]map[string]int
-	alerts       []string
+	alerts          []string
 }
 
 func monitorKeywords(feeds []*model.FeedResult, keywords []string, duration time.Duration, threshold int) *keywordMonitoring {
@@ -627,19 +627,21 @@ func monitorKeywords(feeds []*model.FeedResult, keywords []string, duration time
 	for _, keyword := range keywords {
 		// Generate realistic mention counts using hash for consistency
 		h := fnv.New32a()
-		h.Write([]byte(keyword))
+		_, _ = h.Write([]byte(keyword)) // Hash.Write never returns an error
 		mentions := int(h.Sum32() % 20) // 0-19 mentions
-		
+
 		monitoring.mentions[keyword] = mentions
 		if mentions >= threshold {
-			monitoring.alerts = append(monitoring.alerts, 
+			monitoring.alerts = append(monitoring.alerts,
 				fmt.Sprintf("Keyword '%s' has %d mentions (threshold: %d)", keyword, mentions, threshold))
 		}
-		
+
 		// Create source breakdown
 		monitoring.sourceBreakdown[keyword] = make(map[string]int)
 		for j, feed := range feeds {
-			if j > 5 { break } // Limit to first 5 feeds for demo
+			if j > 5 {
+				break
+			} // Limit to first 5 feeds for demo
 			if feed.FetchError == "" {
 				sourceCount := (mentions + j) % 5 // Distribute mentions across sources
 				if sourceCount > 0 {
@@ -653,11 +655,11 @@ func monitorKeywords(feeds []*model.FeedResult, keywords []string, duration time
 }
 
 func formatMonitoringResults(monitoring *keywordMonitoring) string {
-	var results []string
-	
+	results := make([]string, 0, len(monitoring.mentions)*3) // Pre-allocate for efficiency
+
 	for keyword, count := range monitoring.mentions {
 		results = append(results, fmt.Sprintf("**%s**: %d mentions", keyword, count))
-		
+
 		// Add source breakdown
 		if sources, exists := monitoring.sourceBreakdown[keyword]; exists && len(sources) > 0 {
 			var sourceList []string
@@ -669,11 +671,11 @@ func formatMonitoringResults(monitoring *keywordMonitoring) string {
 			}
 		}
 	}
-	
+
 	if len(results) == 0 {
 		return "*No keyword mentions found in the specified timeframe*"
 	}
-	
+
 	return strings.Join(results, "\n")
 }
 
@@ -681,12 +683,12 @@ func formatMonitoringAlerts(monitoring *keywordMonitoring, threshold int) string
 	if len(monitoring.alerts) == 0 {
 		return fmt.Sprintf("*No alerts triggered (threshold: %d mentions)*", threshold)
 	}
-	
-	var alertList []string
+
+	alertList := make([]string, 0, len(monitoring.alerts)) // Pre-allocate for efficiency
 	for _, alert := range monitoring.alerts {
 		alertList = append(alertList, fmt.Sprintf("🚨 %s", alert))
 	}
-	
+
 	return strings.Join(alertList, "\n")
 }
 
@@ -705,11 +707,11 @@ func generateMonitoringRecommendations(monitoring *keywordMonitoring) string {
 }
 
 type sourceComparison struct {
-	topic         string
-	sources       []string
-	coverage      map[string]int
-	uniqueAngles  map[string][]string
-	commonThemes  []string
+	topic        string
+	sources      []string
+	coverage     map[string]int
+	uniqueAngles map[string][]string
+	commonThemes []string
 }
 
 func compareSources(feeds []*model.FeedResult, topic string) *sourceComparison {
@@ -723,22 +725,22 @@ func compareSources(feeds []*model.FeedResult, topic string) *sourceComparison {
 
 	// Simulate source comparison (in real implementation, would analyze actual content)
 	h := fnv.New32a()
-	h.Write([]byte(topic))
+	_, _ = h.Write([]byte(topic)) // Hash.Write never returns an error
 	baseScore := h.Sum32()
 
 	for i, feed := range feeds {
 		if feed.FetchError != "" {
 			continue
 		}
-		
+
 		comparison.sources = append(comparison.sources, feed.Title)
-		
+
 		// Generate coverage score based on feed and topic
 		h.Reset()
-		h.Write([]byte(feed.Title + topic))
+		_, _ = h.Write([]byte(feed.Title + topic))    // Hash.Write never returns an error
 		coverage := int((h.Sum32() + baseScore) % 10) // 0-9 coverage score
 		comparison.coverage[feed.Title] = coverage
-		
+
 		// Generate unique angles
 		angles := []string{
 			fmt.Sprintf("%s perspective", strings.ToLower(feed.Title)),
@@ -752,23 +754,23 @@ func compareSources(feeds []*model.FeedResult, topic string) *sourceComparison {
 }
 
 func formatCoverageAnalysis(comparison *sourceComparison) string {
-	var coverage []string
-	
+	coverage := make([]string, 0, len(comparison.coverage)*3) // Pre-allocate for efficiency
+
 	// Sort sources by coverage for better presentation
 	type sourceCoverage struct {
 		name     string
 		coverage int
 	}
-	
-	var sorted []sourceCoverage
+
+	sorted := make([]sourceCoverage, 0, len(comparison.coverage)) // Pre-allocate for efficiency
 	for source, cov := range comparison.coverage {
 		sorted = append(sorted, sourceCoverage{source, cov})
 	}
-	
+
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].coverage > sorted[j].coverage
 	})
-	
+
 	for _, sc := range sorted {
 		coverageLevel := "Low"
 		if sc.coverage > 6 {
@@ -776,16 +778,16 @@ func formatCoverageAnalysis(comparison *sourceComparison) string {
 		} else if sc.coverage > 3 {
 			coverageLevel = "Medium"
 		}
-		
-		coverage = append(coverage, fmt.Sprintf("**%s**: %s coverage (%d/10)", 
+
+		coverage = append(coverage, fmt.Sprintf("**%s**: %s coverage (%d/10)",
 			sc.name, coverageLevel, sc.coverage))
-		
+
 		if angles, exists := comparison.uniqueAngles[sc.name]; exists {
-			coverage = append(coverage, fmt.Sprintf("  - Unique angles: %s", 
+			coverage = append(coverage, fmt.Sprintf("  - Unique angles: %s",
 				strings.Join(angles, ", ")))
 		}
 	}
-	
+
 	return strings.Join(coverage, "\n")
 }
 
@@ -794,11 +796,11 @@ func formatComparisonInsights(comparison *sourceComparison) string {
 	if totalSources == 0 {
 		return "*No sources available for comparison*"
 	}
-	
+
 	avgCoverage := 0
 	maxCoverage := 0
 	minCoverage := 10
-	
+
 	for _, cov := range comparison.coverage {
 		avgCoverage += cov
 		if cov > maxCoverage {
@@ -809,7 +811,7 @@ func formatComparisonInsights(comparison *sourceComparison) string {
 		}
 	}
 	avgCoverage /= totalSources
-	
+
 	return fmt.Sprintf(`- **Coverage Range**: %d-%d out of 10 across all sources
 - **Average Coverage**: %d/10
 - **Source Diversity**: %d different perspectives identified
@@ -827,7 +829,7 @@ func generateComparisonRecommendations(comparison *sourceComparison) string {
 	if len(comparison.sources) < 3 {
 		return "Consider adding more sources to get diverse perspectives on this topic."
 	}
-	
+
 	return `1. **Diversify Sources**: Add sources with different viewpoints for comprehensive coverage
 2. **Monitor Gaps**: Identify topics where coverage is consistently low across sources  
 3. **Quality Focus**: Prioritize sources with unique insights and high-quality analysis
@@ -850,7 +852,7 @@ func generateFeedReport(feeds []*model.FeedResult, reportType string, duration t
 func generatePerformanceReport(feeds []*model.FeedResult, duration time.Duration) string {
 	activeCount := 0
 	errorCount := 0
-	
+
 	for _, feed := range feeds {
 		if feed.FetchError != "" {
 			errorCount++
@@ -858,9 +860,9 @@ func generatePerformanceReport(feeds []*model.FeedResult, duration time.Duration
 			activeCount++
 		}
 	}
-	
+
 	uptime := getUptimePercentage(activeCount, errorCount)
-	
+
 	return fmt.Sprintf(`## Performance Metrics
 
 ### System Health
@@ -953,7 +955,7 @@ func generateComprehensiveReport(feeds []*model.FeedResult, duration time.Durati
 	activeCount := getActiveCount(feeds)
 	errorCount := len(feeds) - activeCount
 	uptime := getUptimePercentage(activeCount, errorCount)
-	
+
 	return fmt.Sprintf(`## Executive Summary
 - **System Status**: %s
 - **Feed Health**: %.1f%% uptime across %d sources
@@ -1072,7 +1074,7 @@ func getTechnicalHealthStatus(active, errors int) string {
 func generateErrorAnalysis(feeds []*model.FeedResult) string {
 	errorTypes := make(map[string]int)
 	var errorFeeds []string
-	
+
 	for _, feed := range feeds {
 		if feed.FetchError != "" {
 			errorFeeds = append(errorFeeds, fmt.Sprintf("- %s: %s", feed.Title, feed.FetchError))
@@ -1086,18 +1088,18 @@ func generateErrorAnalysis(feeds []*model.FeedResult) string {
 			}
 		}
 	}
-	
+
 	if len(errorFeeds) == 0 {
 		return "*No errors detected*"
 	}
-	
+
 	analysis := "**Error Breakdown:**\n"
 	for errorType, count := range errorTypes {
 		analysis += fmt.Sprintf("- %s: %d occurrences\n", errorType, count)
 	}
-	
+
 	analysis += "\n**Failed Feeds:**\n" + strings.Join(errorFeeds, "\n")
-	
+
 	return analysis
 }
 
@@ -1165,7 +1167,7 @@ func getOperationalStatus(active, errors int) string {
 func generatePerformanceMetrics(feeds []*model.FeedResult) string {
 	active := getActiveCount(feeds)
 	errors := len(feeds) - active
-	
+
 	return fmt.Sprintf(`- **Response Time**: < 2 seconds average
 - **Success Rate**: %.1f%%
 - **Error Rate**: %.1f%%
@@ -1186,7 +1188,7 @@ func generateContentMetrics(feeds []*model.FeedResult) string {
 
 func generateTechnicalHealth(feeds []*model.FeedResult) string {
 	active := getActiveCount(feeds)
-	
+
 	return fmt.Sprintf(`- **System Uptime**: High availability
 - **Active Connections**: %d/%d feeds
 - **Data Processing**: Real-time

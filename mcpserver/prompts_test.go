@@ -9,9 +9,8 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 )
 
-// TestPromptImplementation verifies that prompts are properly implemented and registered
-func TestPromptImplementation(t *testing.T) {
-	// Create a mock all feeds getter
+// createTestServer creates a test server with mock data
+func createTestServer(t *testing.T) *Server {
 	mockAllFeeds := &mockAllFeedsGetter{
 		feeds: []*model.FeedResult{
 			{
@@ -27,23 +26,42 @@ func TestPromptImplementation(t *testing.T) {
 		},
 	}
 
-	// Create a mock feed and items getter
 	mockFeedItems := &mockFeedAndItemsGetter{
 		feedMap: make(map[string]*model.FeedAndItemsResult),
 	}
 
-	// Create server configuration
 	config := Config{
 		Transport:          model.StdioTransport,
 		AllFeedsGetter:     mockAllFeeds,
 		FeedAndItemsGetter: mockFeedItems,
 	}
 
-	// Create the server
 	server, err := NewServer(config)
 	if err != nil {
 		t.Fatalf("NewServer() failed: %v", err)
 	}
+	return server
+}
+
+// validatePromptResult validates basic prompt result structure
+func validatePromptResult(t *testing.T, result *mcp.GetPromptResult) {
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+	if result.Description == "" {
+		t.Error("Expected non-empty description")
+	}
+	if len(result.Messages) == 0 {
+		t.Error("Expected at least one message")
+	}
+	if len(result.Messages) > 0 && result.Messages[0].Role != "user" {
+		t.Errorf("Expected role 'user', got %s", result.Messages[0].Role)
+	}
+}
+
+// TestPromptImplementation verifies that prompts are properly implemented and registered
+func TestPromptImplementation(t *testing.T) {
+	server := createTestServer(t)
 
 	// Test prompt handlers directly
 	t.Run("analyze_feed_trends prompt handler", func(t *testing.T) {
@@ -60,22 +78,7 @@ func TestPromptImplementation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleAnalyzeFeedTrends() failed: %v", err)
 		}
-
-		if result == nil {
-			t.Fatal("Expected non-nil result")
-		}
-
-		if result.Description == "" {
-			t.Error("Expected non-empty description")
-		}
-
-		if len(result.Messages) == 0 {
-			t.Error("Expected at least one message")
-		}
-
-		if len(result.Messages) > 0 && result.Messages[0].Role != "user" {
-			t.Errorf("Expected role 'user', got %s", result.Messages[0].Role)
-		}
+		validatePromptResult(t, result)
 	})
 
 	t.Run("summarize_feeds prompt handler", func(t *testing.T) {
@@ -91,18 +94,7 @@ func TestPromptImplementation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleSummarizeFeeds() failed: %v", err)
 		}
-
-		if result == nil {
-			t.Fatal("Expected non-nil result")
-		}
-
-		if result.Description == "" {
-			t.Error("Expected non-empty description")
-		}
-
-		if len(result.Messages) == 0 {
-			t.Error("Expected at least one message")
-		}
+		validatePromptResult(t, result)
 	})
 
 	t.Run("monitor_keywords prompt handler", func(t *testing.T) {
@@ -120,18 +112,7 @@ func TestPromptImplementation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleMonitorKeywords() failed: %v", err)
 		}
-
-		if result == nil {
-			t.Fatal("Expected non-nil result")
-		}
-
-		if result.Description == "" {
-			t.Error("Expected non-empty description")
-		}
-
-		if len(result.Messages) == 0 {
-			t.Error("Expected at least one message")
-		}
+		validatePromptResult(t, result)
 	})
 
 	t.Run("compare_sources prompt handler", func(t *testing.T) {
@@ -147,18 +128,7 @@ func TestPromptImplementation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleCompareSources() failed: %v", err)
 		}
-
-		if result == nil {
-			t.Fatal("Expected non-nil result")
-		}
-
-		if result.Description == "" {
-			t.Error("Expected non-empty description")
-		}
-
-		if len(result.Messages) == 0 {
-			t.Error("Expected at least one message")
-		}
+		validatePromptResult(t, result)
 	})
 
 	t.Run("generate_feed_report prompt handler", func(t *testing.T) {
@@ -175,37 +145,24 @@ func TestPromptImplementation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleGenerateFeedReport() failed: %v", err)
 		}
-
-		if result == nil {
-			t.Fatal("Expected non-nil result")
-		}
-
-		if result.Description == "" {
-			t.Error("Expected non-empty description")
-		}
-
-		if len(result.Messages) == 0 {
-			t.Error("Expected at least one message")
-		}
+		validatePromptResult(t, result)
 	})
+}
+
+// validateErrorResult checks if result contains expected error message
+func validateErrorResult(t *testing.T, result *mcp.GetPromptResult, expectedError string) {
+	if result == nil || len(result.Messages) == 0 {
+		t.Fatal("Expected error result")
+	}
+	message := result.Messages[0].Content.(*mcp.TextContent).Text
+	if !strings.Contains(message, expectedError) {
+		t.Errorf("Expected error about %s, got: %s", expectedError, message)
+	}
 }
 
 // TestPromptParameterValidation tests parameter validation in prompt handlers
 func TestPromptParameterValidation(t *testing.T) {
-	// Create a simple server for testing
-	mockAllFeeds := &mockAllFeedsGetter{feeds: []*model.FeedResult{}}
-	mockFeedItems := &mockFeedAndItemsGetter{feedMap: make(map[string]*model.FeedAndItemsResult)}
-
-	config := Config{
-		Transport:          model.StdioTransport,
-		AllFeedsGetter:     mockAllFeeds,
-		FeedAndItemsGetter: mockFeedItems,
-	}
-
-	server, err := NewServer(config)
-	if err != nil {
-		t.Fatalf("NewServer() failed: %v", err)
-	}
+	server := createTestServer(t)
 
 	t.Run("monitor_keywords requires keywords parameter", func(t *testing.T) {
 		req := &mcp.GetPromptRequest{
@@ -221,16 +178,7 @@ func TestPromptParameterValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleMonitorKeywords() failed: %v", err)
 		}
-
-		// Should return error result
-		if result == nil || len(result.Messages) == 0 {
-			t.Fatal("Expected error result")
-		}
-
-		message := result.Messages[0].Content.(*mcp.TextContent).Text
-		if !strings.Contains(message, "Keywords parameter is required") {
-			t.Errorf("Expected error about missing keywords parameter, got: %s", message)
-		}
+		validateErrorResult(t, result, "Keywords parameter is required")
 	})
 
 	t.Run("compare_sources requires topic parameter", func(t *testing.T) {
@@ -246,16 +194,7 @@ func TestPromptParameterValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleCompareSources() failed: %v", err)
 		}
-
-		// Should return error result
-		if result == nil || len(result.Messages) == 0 {
-			t.Fatal("Expected error result")
-		}
-
-		message := result.Messages[0].Content.(*mcp.TextContent).Text
-		if !strings.Contains(message, "Topic parameter is required") {
-			t.Errorf("Expected error about missing topic parameter, got: %s", message)
-		}
+		validateErrorResult(t, result, "Topic parameter is required")
 	})
 
 	t.Run("invalid timeframe handling", func(t *testing.T) {
@@ -271,16 +210,7 @@ func TestPromptParameterValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleAnalyzeFeedTrends() failed: %v", err)
 		}
-
-		// Should return error result
-		if result == nil || len(result.Messages) == 0 {
-			t.Fatal("Expected error result")
-		}
-
-		message := result.Messages[0].Content.(*mcp.TextContent).Text
-		if !strings.Contains(message, "Invalid timeframe") {
-			t.Errorf("Expected error about invalid timeframe, got: %s", message)
-		}
+		validateErrorResult(t, result, "Invalid timeframe")
 	})
 }
 
@@ -353,4 +283,3 @@ func TestPromptHelperFunctions(t *testing.T) {
 		}
 	})
 }
-
