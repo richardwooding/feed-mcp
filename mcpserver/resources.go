@@ -36,6 +36,9 @@ const (
 	JSONMIMEType = "application/json"
 )
 
+// ParameterDocsSummary is the concise parameter documentation string used in resource descriptions
+const ParameterDocsSummary = "URI parameters: since/until (ISO 8601 date), limit (0-1000), offset (0+), category/author/search (text), language (en/es/fr/etc), min_length/max_length (chars), has_media (true/false), sentiment (positive/negative/neutral), duplicates (true/false), sort_by (date/relevance/popularity), format (json/xml/html/markdown)"
+
 // ResourceManager handles MCP resource operations for feeds
 type ResourceManager struct {
 	store                AllFeedsGetter
@@ -228,13 +231,13 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Feed: %s", feed.Title),
-				Description: fmt.Sprintf("Complete feed data for %s. URI parameters: since/until (ISO 8601 date), limit (0-1000), offset (0+), category/author/search (text), language (en/es/fr/etc), min_length/max_length (chars), has_media (true/false), sentiment (positive/negative/neutral), duplicates (true/false), sort_by (date/relevance/popularity), format (json/xml/html/markdown)", feed.Title),
+				Description: fmt.Sprintf("Complete feed data for %s. %s", feed.Title, ParameterDocsSummary),
 				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Items: %s", feed.Title),
-				Description: fmt.Sprintf("Feed items only for %s. URI parameters: since/until (ISO 8601 date), limit (0-1000), offset (0+), category/author/search (text), language (en/es/fr/etc), min_length/max_length (chars), has_media (true/false), sentiment (positive/negative/neutral), duplicates (true/false), sort_by (date/relevance/popularity), format (json/xml/html/markdown)", feed.Title),
+				Description: fmt.Sprintf("Feed items only for %s. %s", feed.Title, ParameterDocsSummary),
 				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
