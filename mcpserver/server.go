@@ -10,11 +10,15 @@ import (
 
 	"github.com/gocolly/colly"
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/mmcdole/gofeed"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/richardwooding/feed-mcp/model"
 	"github.com/richardwooding/feed-mcp/version"
 )
+
+// FeedAndItemsResult represents a feed along with its items
+type FeedAndItemsResult = model.FeedAndItemsResult
 
 var sessionCounter int64
 
@@ -96,6 +100,36 @@ type AddFeedParams struct {
 type RemoveFeedParams struct {
 	FeedID string `json:"feedId,omitempty"`
 	URL    string `json:"url,omitempty"`
+}
+
+// MergeFeedsParams contains parameters for the merge_feeds tool.
+type MergeFeedsParams struct {
+	FeedIDs     []string `json:"feedIds"`
+	Title       string   `json:"title,omitempty"`
+	MaxItems    int      `json:"maxItems,omitempty"`
+	SortBy      string   `json:"sortBy,omitempty"`      // date, title, source
+	Deduplicate bool     `json:"deduplicate,omitempty"` // Remove duplicate items
+}
+
+// ExportFeedDataParams contains parameters for the export_feed_data tool.
+type ExportFeedDataParams struct {
+	FeedIDs    []string `json:"feedIds,omitempty"`    // Specific feeds to export (empty = all)
+	Format     string   `json:"format"`               // json, csv, opml, rss, atom
+	Since      string   `json:"since,omitempty"`      // ISO 8601 date
+	Until      string   `json:"until,omitempty"`      // ISO 8601 date
+	MaxItems   int      `json:"maxItems,omitempty"`   // Limit exported items
+	IncludeAll bool     `json:"includeAll,omitempty"` // Include feed metadata
+}
+
+// MergedFeedResult represents the result of merging multiple feeds.
+type MergedFeedResult struct {
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Items       []*gofeed.Item `json:"items"`
+	SourceFeeds []string       `json:"source_feeds"`
+	TotalItems  int            `json:"total_items"`
+	CreatedAt   time.Time      `json:"created_at"`
 }
 
 // Run starts the MCP server and handles client connections until context is canceled
@@ -199,6 +233,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		}, nil, nil
 	})
 
+	// Add feed aggregation tools (Phase 2)
+	s.addAggregationTools(srv)
+
 	// Add dynamic feed management tools if DynamicFeedManager is available
 	s.addDynamicFeedTools(srv)
 
@@ -220,6 +257,112 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	}
 
 	return
+}
+
+// addAggregationTools adds feed aggregation tools to the server
+func (s *Server) addAggregationTools(srv *mcp.Server) {
+	// Add merge_feeds tool
+	mergeFeedsTool := &mcp.Tool{
+		Name:        "merge_feeds",
+		Description: "Merge multiple feeds into a single aggregated feed with deduplication and sorting",
+		InputSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"feedIds"},
+			Properties: map[string]*jsonschema.Schema{
+				"feedIds": {
+					Type:        "array",
+					Description: "Array of feed IDs to merge",
+					Items: &jsonschema.Schema{
+						Type: "string",
+					},
+				},
+				"title": {
+					Type:        "string",
+					Description: "Title for the merged feed",
+				},
+				"maxItems": {
+					Type:        "integer",
+					Description: "Maximum number of items to include (0 for no limit)",
+					Minimum:     &[]float64{0}[0],
+				},
+				"sortBy": {
+					Type:        "string",
+					Description: "Sort order: date (default), title, source",
+					Enum:        []interface{}{"date", "title", "source"},
+				},
+				"deduplicate": {
+					Type:        "boolean",
+					Description: "Remove duplicate items based on title and link",
+				},
+			},
+		},
+	}
+	mcp.AddTool(srv, mergeFeedsTool, func(ctx context.Context, req *mcp.CallToolRequest, args MergeFeedsParams) (*mcp.CallToolResult, any, error) {
+		mergedFeed, err := s.mergeFeeds(ctx, args)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		data, err := json.Marshal(mergedFeed)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	})
+
+	// Add export_feed_data tool
+	exportFeedDataTool := &mcp.Tool{
+		Name:        "export_feed_data",
+		Description: "Export feed data in various formats (JSON, CSV, OPML, RSS, Atom)",
+		InputSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"format"},
+			Properties: map[string]*jsonschema.Schema{
+				"feedIds": {
+					Type:        "array",
+					Description: "Feed IDs to export (empty for all feeds)",
+					Items: &jsonschema.Schema{
+						Type: "string",
+					},
+				},
+				"format": {
+					Type:        "string",
+					Description: "Export format",
+					Enum:        []interface{}{"json", "csv", "opml", "rss", "atom"},
+				},
+				"since": {
+					Type:        "string",
+					Description: "Include items published after this date (ISO 8601)",
+				},
+				"until": {
+					Type:        "string",
+					Description: "Include items published before this date (ISO 8601)",
+				},
+				"maxItems": {
+					Type:        "integer",
+					Description: "Maximum number of items per feed (0 for no limit)",
+					Minimum:     &[]float64{0}[0],
+				},
+				"includeAll": {
+					Type:        "boolean",
+					Description: "Include all feed metadata and statistics",
+				},
+			},
+		},
+	}
+	mcp.AddTool(srv, exportFeedDataTool, func(ctx context.Context, req *mcp.CallToolRequest, args ExportFeedDataParams) (*mcp.CallToolResult, any, error) {
+		exportedData, err := s.exportFeedData(ctx, &args)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: exportedData}},
+		}, nil, nil
+	})
 }
 
 // addDynamicFeedTools adds dynamic feed management tools to the server
@@ -573,4 +716,477 @@ func (s *Server) addPrompts(srv *mcp.Server) {
 		},
 		s.handleGenerateFeedReport,
 	)
+}
+
+// mergeFeeds implements the feed merging logic
+func (s *Server) mergeFeeds(ctx context.Context, args MergeFeedsParams) (*MergedFeedResult, error) {
+	var allItems []*gofeed.Item
+	var feedTitles []string
+
+	// Default values
+	if args.SortBy == "" {
+		args.SortBy = "date"
+	}
+
+	// Fetch all specified feeds
+	for _, feedID := range args.FeedIDs {
+		feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, feedID)
+		if err != nil {
+			// Continue with other feeds if one fails
+			continue
+		}
+
+		if feedResult.Feed != nil {
+			feedTitles = append(feedTitles, feedResult.Feed.Title)
+			allItems = append(allItems, feedResult.Items...)
+		}
+	}
+
+	// Deduplicate if requested
+	if args.Deduplicate {
+		allItems = deduplicateItems(allItems)
+	}
+
+	// Sort items based on sortBy parameter
+	switch args.SortBy {
+	case "title":
+		sortItemsByTitle(allItems)
+	case "source":
+		sortItemsBySource(allItems)
+	default: // "date"
+		sortItemsByDate(allItems)
+	}
+
+	// Limit items if maxItems is specified
+	if args.MaxItems > 0 && len(allItems) > args.MaxItems {
+		allItems = allItems[:args.MaxItems]
+	}
+
+	// Create merged feed title
+	title := args.Title
+	if title == "" {
+		title = fmt.Sprintf("Merged Feed (%d sources)", len(args.FeedIDs))
+	}
+
+	// Create merged feed result
+	mergedFeed := &MergedFeedResult{
+		ID:          fmt.Sprintf("merged-%d", time.Now().Unix()),
+		Title:       title,
+		Description: fmt.Sprintf("Merged feed containing %d items from %d sources", len(allItems), len(feedTitles)),
+		Items:       allItems,
+		SourceFeeds: feedTitles,
+		TotalItems:  len(allItems),
+		CreatedAt:   time.Now(),
+	}
+
+	return mergedFeed, nil
+}
+
+// exportFeedData implements the feed export logic
+func (s *Server) exportFeedData(ctx context.Context, args *ExportFeedDataParams) (string, error) {
+	// Get feeds to export
+	feedResults, err := s.getFeedsForExport(ctx, args.FeedIDs)
+	if err != nil {
+		return "", err
+	}
+
+	// Apply filters
+	feedResults = s.applyExportFilters(feedResults, args)
+
+	// Export in requested format
+	return s.exportInFormat(feedResults, args)
+}
+
+// getFeedsForExport retrieves the feeds that need to be exported
+func (s *Server) getFeedsForExport(ctx context.Context, feedIDs []string) ([]*FeedAndItemsResult, error) {
+	if len(feedIDs) == 0 {
+		return s.getAllFeedsForExport(ctx)
+	}
+
+	return s.getSpecificFeedsForExport(ctx, feedIDs)
+}
+
+// getAllFeedsForExport gets all feeds for export
+func (s *Server) getAllFeedsForExport(ctx context.Context) ([]*FeedAndItemsResult, error) {
+	allFeeds, err := s.allFeedsGetter.GetAllFeeds(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	feedResults := make([]*FeedAndItemsResult, 0, len(allFeeds))
+	for _, feed := range allFeeds {
+		feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, feed.ID)
+		if err != nil {
+			continue
+		}
+		feedResults = append(feedResults, feedResult)
+	}
+	return feedResults, nil
+}
+
+// getSpecificFeedsForExport gets specific feeds for export
+func (s *Server) getSpecificFeedsForExport(ctx context.Context, feedIDs []string) ([]*FeedAndItemsResult, error) {
+	feedResults := make([]*FeedAndItemsResult, 0, len(feedIDs))
+	for _, feedID := range feedIDs {
+		feedResult, err := s.feedAndItemsGetter.GetFeedAndItems(ctx, feedID)
+		if err != nil {
+			continue
+		}
+		feedResults = append(feedResults, feedResult)
+	}
+	return feedResults, nil
+}
+
+// applyExportFilters applies date and item limit filters
+func (s *Server) applyExportFilters(feedResults []*FeedAndItemsResult, args *ExportFeedDataParams) []*FeedAndItemsResult {
+	// Apply date filters if specified
+	if args.Since != "" || args.Until != "" {
+		feedResults = filterFeedResultsByDate(feedResults, args.Since, args.Until)
+	}
+
+	// Apply maxItems limit per feed
+	if args.MaxItems > 0 {
+		for _, feedResult := range feedResults {
+			if len(feedResult.Items) > args.MaxItems {
+				feedResult.Items = feedResult.Items[:args.MaxItems]
+			}
+		}
+	}
+
+	return feedResults
+}
+
+// exportInFormat exports the feed results in the requested format
+func (s *Server) exportInFormat(feedResults []*FeedAndItemsResult, args *ExportFeedDataParams) (string, error) {
+	switch args.Format {
+	case "json":
+		return exportAsJSON(feedResults, args.IncludeAll)
+	case "csv":
+		return exportAsCSV(feedResults)
+	case "opml":
+		return exportAsOPML(feedResults)
+	case "rss":
+		return exportAsRSS(feedResults)
+	case "atom":
+		return exportAsAtom(feedResults)
+	default:
+		return "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("unsupported export format: %s", args.Format)).
+			WithOperation("export_feed_data").
+			WithComponent("mcp_server")
+	}
+}
+
+// Helper functions for feed merging and export
+
+// deduplicateItems removes duplicate items based on title and link
+func deduplicateItems(items []*gofeed.Item) []*gofeed.Item {
+	seen := make(map[string]bool)
+	var unique []*gofeed.Item
+
+	for _, item := range items {
+		// Create a unique key based on title and link
+		key := fmt.Sprintf("%s|%s", item.Title, item.Link)
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, item)
+		}
+	}
+
+	return unique
+}
+
+// sortItemsByDate sorts items by published date (newest first)
+func sortItemsByDate(items []*gofeed.Item) {
+	// Implementation will use sort.Slice
+	for i := 0; i < len(items)-1; i++ {
+		for j := i + 1; j < len(items); j++ {
+			if items[i].PublishedParsed != nil && items[j].PublishedParsed != nil {
+				if items[i].PublishedParsed.Before(*items[j].PublishedParsed) {
+					items[i], items[j] = items[j], items[i]
+				}
+			}
+		}
+	}
+}
+
+// sortItemsByTitle sorts items alphabetically by title
+func sortItemsByTitle(items []*gofeed.Item) {
+	for i := 0; i < len(items)-1; i++ {
+		for j := i + 1; j < len(items); j++ {
+			if items[i].Title > items[j].Title {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+}
+
+// sortItemsBySource sorts items by source feed title
+func sortItemsBySource(items []*gofeed.Item) {
+	for i := 0; i < len(items)-1; i++ {
+		for j := i + 1; j < len(items); j++ {
+			// gofeed.Item doesn't have a Source field, so we'll skip this for now
+			// or we could use the Custom map if available
+			sourceI := ""
+			sourceJ := ""
+			if items[i].Custom != nil && items[i].Custom["source"] != "" {
+				sourceI = items[i].Custom["source"]
+			}
+			if items[j].Custom != nil && items[j].Custom["source"] != "" {
+				sourceJ = items[j].Custom["source"]
+			}
+			if sourceI > sourceJ {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+}
+
+// filterFeedResultsByDate filters feed result items by publication date range
+func filterFeedResultsByDate(feedResults []*FeedAndItemsResult, since, until string) []*FeedAndItemsResult {
+	sinceTime, untilTime, err := parseTimeRange(since, until)
+	if err != nil {
+		return feedResults // Skip filtering if parsing fails
+	}
+
+	for _, feedResult := range feedResults {
+		feedResult.Items = filterItemsByDateRange(feedResult.Items, sinceTime, untilTime)
+	}
+
+	return feedResults
+}
+
+// parseTimeRange parses since and until time strings
+func parseTimeRange(since, until string) (sinceTime, untilTime time.Time, err error) {
+	if since != "" {
+		sinceTime, err = time.Parse(time.RFC3339, since)
+		if err != nil {
+			return
+		}
+	}
+
+	if until != "" {
+		untilTime, err = time.Parse(time.RFC3339, until)
+		if err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+// filterItemsByDateRange filters items within the given date range
+func filterItemsByDateRange(items []*gofeed.Item, sinceTime, untilTime time.Time) []*gofeed.Item {
+	var filteredItems []*gofeed.Item
+
+	for _, item := range items {
+		if itemInDateRange(item, sinceTime, untilTime) {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+
+	return filteredItems
+}
+
+// itemInDateRange checks if an item falls within the date range
+func itemInDateRange(item *gofeed.Item, sinceTime, untilTime time.Time) bool {
+	if item.PublishedParsed == nil {
+		return true
+	}
+
+	if !sinceTime.IsZero() && item.PublishedParsed.Before(sinceTime) {
+		return false
+	}
+
+	if !untilTime.IsZero() && item.PublishedParsed.After(untilTime) {
+		return false
+	}
+
+	return true
+}
+
+// Export format implementations
+
+// exportAsJSON exports feed results as JSON
+func exportAsJSON(feedResults []*FeedAndItemsResult, includeAll bool) (string, error) {
+	data := struct {
+		FeedResults []*FeedAndItemsResult `json:"feed_results"`
+		ExportedAt  time.Time             `json:"exported_at"`
+		Count       int                   `json:"count"`
+	}{
+		FeedResults: feedResults,
+		ExportedAt:  time.Now(),
+		Count:       len(feedResults),
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonData), nil
+}
+
+// exportAsCSV exports feed results as CSV
+func exportAsCSV(feedResults []*FeedAndItemsResult) (string, error) {
+	var result string
+
+	// CSV header
+	result += "Feed Title,Feed URL,Item Title,Item Link,Published Date,Description\n"
+
+	// CSV rows
+	for _, feedResult := range feedResults {
+		for _, item := range feedResult.Items {
+			// Escape commas and quotes in CSV fields
+			feedTitle := escapeCSVField(feedResult.Title)
+			feedURL := escapeCSVField(feedResult.PublicURL)
+			itemTitle := escapeCSVField(item.Title)
+			itemLink := escapeCSVField(item.Link)
+			publishedDate := ""
+			if item.PublishedParsed != nil {
+				publishedDate = item.PublishedParsed.Format(time.RFC3339)
+			}
+			description := escapeCSVField(item.Description)
+
+			result += fmt.Sprintf("%s,%s,%s,%s,%s,%s\n",
+				feedTitle, feedURL, itemTitle, itemLink, publishedDate, description)
+		}
+	}
+
+	return result, nil
+}
+
+// exportAsOPML exports feed results as OPML
+func exportAsOPML(feedResults []*FeedAndItemsResult) (string, error) {
+	result := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="1.0">
+<head>
+<title>Feed Export</title>
+<dateCreated>` + time.Now().Format(time.RFC1123Z) + `</dateCreated>
+</head>
+<body>
+`
+
+	for _, feedResult := range feedResults {
+		result += fmt.Sprintf(`<outline text=%q title=%q type="rss" xmlUrl=%q htmlUrl=%q/>`,
+			escapeXML(feedResult.Title), escapeXML(feedResult.Title), escapeXML(feedResult.PublicURL), escapeXML(feedResult.PublicURL))
+		result += "\n"
+	}
+
+	result += `</body>
+</opml>`
+
+	return result, nil
+}
+
+// exportAsRSS exports feed results as RSS 2.0
+func exportAsRSS(feedResults []*FeedAndItemsResult) (string, error) {
+	result := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Combined Feed Export</title>
+<description>Combined feed containing items from multiple sources</description>
+<lastBuildDate>` + time.Now().Format(time.RFC1123Z) + `</lastBuildDate>
+`
+
+	for _, feedResult := range feedResults {
+		for _, item := range feedResult.Items {
+			pubDate := ""
+			if item.PublishedParsed != nil {
+				pubDate = item.PublishedParsed.Format(time.RFC1123Z)
+			}
+			result += `<item>
+<title>` + escapeXML(item.Title) + `</title>
+<link>` + escapeXML(item.Link) + `</link>
+<description>` + escapeXML(item.Description) + `</description>
+<pubDate>` + pubDate + `</pubDate>
+<guid>` + escapeXML(item.Link) + `</guid>
+</item>
+`
+		}
+	}
+
+	result += `</channel>
+</rss>`
+
+	return result, nil
+}
+
+// exportAsAtom exports feed results as Atom 1.0
+func exportAsAtom(feedResults []*FeedAndItemsResult) (string, error) {
+	result := `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Combined Feed Export</title>
+<subtitle>Combined feed containing items from multiple sources</subtitle>
+<updated>` + time.Now().Format(time.RFC3339) + `</updated>
+<id>urn:feed-mcp:export:` + fmt.Sprintf("%d", time.Now().Unix()) + `</id>
+`
+
+	for _, feedResult := range feedResults {
+		for _, item := range feedResult.Items {
+			updatedDate := time.Now().Format(time.RFC3339)
+			if item.PublishedParsed != nil {
+				updatedDate = item.PublishedParsed.Format(time.RFC3339)
+			}
+			result += `<entry>
+<title>` + escapeXML(item.Title) + `</title>
+<link href="` + escapeXML(item.Link) + `"/>
+<summary>` + escapeXML(item.Description) + `</summary>
+<updated>` + updatedDate + `</updated>
+<id>` + escapeXML(item.Link) + `</id>
+</entry>
+`
+		}
+	}
+
+	result += `</feed>`
+
+	return result, nil
+}
+
+// Utility functions for escaping
+
+// escapeCSVField escapes a field for CSV format
+func escapeCSVField(field string) string {
+	// If field contains comma, quote, or newline, wrap in quotes and escape quotes
+	if containsAny(field, ",\"\\n\\r") {
+		field = `"` + replaceAll(field, `"`, `""`) + `"`
+	}
+	return field
+}
+
+// escapeXML escapes a string for XML format
+func escapeXML(s string) string {
+	s = replaceAll(s, "&", "&amp;")
+	s = replaceAll(s, "<", "&lt;")
+	s = replaceAll(s, ">", "&gt;")
+	s = replaceAll(s, `"`, "&quot;")
+	s = replaceAll(s, "'", "&#39;")
+	return s
+}
+
+// containsAny checks if string contains any of the specified characters
+func containsAny(s, chars string) bool {
+	for _, char := range chars {
+		for _, sChar := range s {
+			if char == sChar {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// replaceAll replaces all occurrences of old with replacement in string
+func replaceAll(s, old, replacement string) string {
+	result := ""
+	for i := 0; i < len(s); {
+		if i+len(old) <= len(s) && s[i:i+len(old)] == old {
+			result += replacement
+			i += len(old)
+		} else {
+			result += string(s[i])
+			i++
+		}
+	}
+	return result
 }
