@@ -24,10 +24,11 @@ import (
 
 // URI template constants for different resource types
 const (
-	FeedListURI  = "feeds://all"
-	FeedURI      = "feeds://feed/{feedId}"
-	FeedItemsURI = "feeds://feed/{feedId}/items"
-	FeedMetaURI  = "feeds://feed/{feedId}/meta"
+	FeedListURI      = "feeds://all"
+	FeedURI          = "feeds://feed/{feedId}"
+	FeedItemsURI     = "feeds://feed/{feedId}/items"
+	FeedMetaURI      = "feeds://feed/{feedId}/meta"
+	ParameterDocsURI = "feeds://parameters"
 )
 
 // MIME type constants
@@ -194,13 +195,21 @@ func (rm *ResourceManager) GetSession(sessionID string) (*ResourceSession, bool)
 func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, error) {
 	resources := []*mcp.Resource{}
 
-	// Add the feed list resource
-	resources = append(resources, &mcp.Resource{
-		URI:         FeedListURI,
-		Name:        "All Feeds",
-		Description: "List of all available syndication feeds",
-		MIMEType:    JSONMIMEType,
-	})
+	// Add the feed list resource and parameter documentation resource
+	resources = append(resources,
+		&mcp.Resource{
+			URI:         FeedListURI,
+			Name:        "All Feeds",
+			Description: "List of all available syndication feeds",
+			MIMEType:    JSONMIMEType,
+		},
+		&mcp.Resource{
+			URI:         ParameterDocsURI,
+			Name:        "URI Parameter Documentation",
+			Description: "Complete documentation of all available URI parameters for feed resources",
+			MIMEType:    JSONMIMEType,
+		},
+	)
 
 	// Get all feeds to create individual feed resources
 	feedResults, err := rm.store.GetAllFeeds(ctx)
@@ -219,13 +228,13 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Feed: %s", feed.Title),
-				Description: fmt.Sprintf("Complete feed data for %s", feed.Title),
+				Description: fmt.Sprintf("Complete feed data for %s. URI parameters: since/until (ISO 8601 date), limit (0-1000), offset (0+), category/author/search (text), language (en/es/fr/etc), min_length/max_length (chars), has_media (true/false), sentiment (positive/negative/neutral), duplicates (true/false), sort_by (date/relevance/popularity), format (json/xml/html/markdown)", feed.Title),
 				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
 				URI:         expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID}),
 				Name:        fmt.Sprintf("Items: %s", feed.Title),
-				Description: fmt.Sprintf("Feed items only for %s", feed.Title),
+				Description: fmt.Sprintf("Feed items only for %s. URI parameters: since/until (ISO 8601 date), limit (0-1000), offset (0+), category/author/search (text), language (en/es/fr/etc), min_length/max_length (chars), has_media (true/false), sentiment (positive/negative/neutral), duplicates (true/false), sort_by (date/relevance/popularity), format (json/xml/html/markdown)", feed.Title),
 				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
@@ -245,6 +254,8 @@ func (rm *ResourceManager) ReadResource(ctx context.Context, uri string) (*mcp.R
 	switch {
 	case uri == FeedListURI:
 		return rm.readFeedList(ctx)
+	case uri == ParameterDocsURI:
+		return rm.readParameterDocs(ctx)
 	case matchesTemplate(uri, FeedURI):
 		return rm.readFeed(ctx, uri)
 	case matchesTemplate(uri, FeedItemsURI):
@@ -315,6 +326,159 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 		Contents: []*mcp.ResourceContents{
 			{
 				URI:      FeedListURI,
+				MIMEType: JSONMIMEType,
+				Text:     contentJSON,
+			},
+		},
+	}, nil
+}
+
+// readParameterDocs reads the parameter documentation resource
+func (rm *ResourceManager) readParameterDocs(ctx context.Context) (*mcp.ReadResourceResult, error) {
+	// Create comprehensive parameter documentation
+	parameterDocs := map[string]interface{}{
+		"uri_parameters": map[string]interface{}{
+			"description": "Complete documentation for URI parameters supported by feed resources",
+			"base_parameters": map[string]interface{}{
+				"since": map[string]interface{}{
+					"description": "Filter items published after this date",
+					"format":      "ISO 8601 datetime (e.g., 2023-01-01T00:00:00Z)",
+					"required":    false,
+					"example":     "since=2023-01-01T00:00:00Z",
+				},
+				"until": map[string]interface{}{
+					"description": "Filter items published before this date",
+					"format":      "ISO 8601 datetime (e.g., 2023-12-31T23:59:59Z)",
+					"required":    false,
+					"example":     "until=2023-12-31T23:59:59Z",
+				},
+				"limit": map[string]interface{}{
+					"description": "Maximum number of items to return",
+					"format":      "Integer",
+					"range":       "0-1000 (0 means no limit, values >1000 are capped)",
+					"required":    false,
+					"example":     "limit=10",
+				},
+				"offset": map[string]interface{}{
+					"description": "Number of items to skip (for pagination)",
+					"format":      "Integer",
+					"range":       "0 or positive integers",
+					"required":    false,
+					"example":     "offset=20",
+				},
+				"category": map[string]interface{}{
+					"description": "Filter items by category or tag (case-insensitive)",
+					"format":      "Text string",
+					"required":    false,
+					"example":     "category=technology",
+				},
+				"author": map[string]interface{}{
+					"description": "Filter items by author name (case-insensitive)",
+					"format":      "Text string",
+					"required":    false,
+					"example":     "author=john%20smith",
+				},
+				"search": map[string]interface{}{
+					"description": "Full-text search across title, description, and content (case-insensitive)",
+					"format":      "Text string",
+					"required":    false,
+					"example":     "search=golang%20programming",
+				},
+			},
+			"enhanced_parameters": map[string]interface{}{
+				"language": map[string]interface{}{
+					"description": "Filter items by language",
+					"format":      "ISO 639-1 language code",
+					"examples":    []string{"en", "es", "fr", "de", "ja", "zh"},
+					"required":    false,
+					"example":     "language=en",
+				},
+				"min_length": map[string]interface{}{
+					"description": "Minimum content length in characters",
+					"format":      "Integer",
+					"range":       "0 or positive integers",
+					"required":    false,
+					"example":     "min_length=100",
+				},
+				"max_length": map[string]interface{}{
+					"description": "Maximum content length in characters",
+					"format":      "Integer",
+					"range":       "0 or positive integers",
+					"required":    false,
+					"example":     "max_length=5000",
+				},
+				"has_media": map[string]interface{}{
+					"description": "Filter items that contain media (images, videos)",
+					"format":      "Boolean",
+					"values":      []string{"true", "false"},
+					"required":    false,
+					"example":     "has_media=true",
+				},
+				"sentiment": map[string]interface{}{
+					"description": "Filter items by sentiment analysis result",
+					"format":      "String",
+					"values":      []string{"positive", "negative", "neutral"},
+					"required":    false,
+					"example":     "sentiment=positive",
+				},
+				"duplicates": map[string]interface{}{
+					"description": "Include or exclude duplicate content",
+					"format":      "Boolean",
+					"values":      []string{"true", "false"},
+					"default":     "true (include duplicates)",
+					"required":    false,
+					"example":     "duplicates=false",
+				},
+				"sort_by": map[string]interface{}{
+					"description": "Sort order for results",
+					"format":      "String",
+					"values":      []string{"date", "relevance", "popularity"},
+					"default":     "date (newest first)",
+					"required":    false,
+					"example":     "sort_by=relevance",
+				},
+				"format": map[string]interface{}{
+					"description": "Output format preference",
+					"format":      "String",
+					"values":      []string{"json", "xml", "html", "markdown"},
+					"default":     "json",
+					"required":    false,
+					"example":     "format=markdown",
+				},
+			},
+			"usage_examples": []map[string]interface{}{
+				{
+					"description": "Get recent tech articles with media",
+					"uri":         "feeds://feed/{feedId}/items?since=2023-01-01T00:00:00Z&category=technology&has_media=true&limit=10",
+				},
+				{
+					"description": "Search for specific content in a date range",
+					"uri":         "feeds://feed/{feedId}/items?search=golang&since=2023-01-01T00:00:00Z&until=2023-12-31T23:59:59Z",
+				},
+				{
+					"description": "Get paginated results without duplicates",
+					"uri":         "feeds://feed/{feedId}/items?limit=20&offset=40&duplicates=false",
+				},
+			},
+			"combination_notes": []string{
+				"Multiple parameters can be combined using & separator",
+				"Date parameters accept ISO 8601 format with timezone",
+				"Text searches are case-insensitive and support URL encoding",
+				"Boolean parameters accept 'true' or 'false' (case-insensitive)",
+				"Invalid parameter values will return error responses with details",
+			},
+		},
+	}
+
+	contentJSON, err := marshalJSONContent(parameterDocs, ParameterDocsURI)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mcp.ReadResourceResult{
+		Contents: []*mcp.ResourceContents{
+			{
+				URI:      ParameterDocsURI,
 				MIMEType: JSONMIMEType,
 				Text:     contentJSON,
 			},
