@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/ristretto"
+	"github.com/dgraph-io/ristretto/v2"
 	"github.com/eko/gocache/lib/v4/cache"
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
 	"github.com/mmcdole/gofeed"
@@ -82,7 +82,7 @@ func (m *MockErrorStore) GetFeedAndItems(ctx context.Context, feedID string) (*m
 // createTestResourceManagerForErrors creates a ResourceManager with proper cache initialization for error testing
 func createTestResourceManagerForErrors(store *MockErrorStore) *ResourceManager {
 	// Create a simple in-memory cache for testing
-	ristrettoCache, _ := ristretto.NewCache(&ristretto.Config{
+	ristrettoCache, _ := ristretto.NewCache[string, string](&ristretto.Config[string, string]{
 		NumCounters: 100,
 		MaxCost:     1000,
 		BufferItems: 64,
