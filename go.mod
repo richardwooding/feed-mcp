@@ -1,12 +1,12 @@
 module github.com/richardwooding/feed-mcp
 
-go 1.24.3
+go 1.25
 
 require (
 	github.com/alecthomas/kong v1.12.1
 	github.com/cucumber/godog v0.15.1
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/eko/gocache/lib/v4 v4.2.0
+	github.com/eko/gocache/lib/v4 v4.2.1
 	github.com/eko/gocache/store/ristretto/v4 v4.2.2
 	github.com/gocolly/colly v1.2.0
 	github.com/google/jsonschema-go v0.2.1-0.20250825175020-748c325cec76
