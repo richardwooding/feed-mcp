@@ -415,7 +415,7 @@ func newStoreInternal(config Config) (*Store, error) {
 		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig)
 	}
 
-	ristrettoCache, err := ristretto.NewCache[string, *model.FeedResult](&ristretto.Config[string, *model.FeedResult]{
+	ristrettoCache, err := ristretto.NewCache[string, *gofeed.Feed](&ristretto.Config[string, *gofeed.Feed]{
 		NumCounters: 1000,
 		MaxCost:     100,
 		BufferItems: 64,
