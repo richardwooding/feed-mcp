@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/ristretto"
+	"github.com/dgraph-io/ristretto/v2"
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/eko/gocache/lib/v4/store"
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
@@ -124,7 +124,7 @@ func NewResourceManagerWithConfig(feedStore AllFeedsGetter, feedAndItemsGetter F
 	}
 
 	// Create Ristretto cache for resource content
-	ristrettoCache, _ := ristretto.NewCache(&ristretto.Config{
+	ristrettoCache, _ := ristretto.NewCache[string, string](&ristretto.Config[string, string]{
 		NumCounters: config.NumCounters,
 		MaxCost:     config.MaxCost,
 		BufferItems: config.BufferItems,
