@@ -9,7 +9,7 @@ require (
 	github.com/eko/gocache/lib/v4 v4.2.1
 	github.com/eko/gocache/store/ristretto/v4 v4.2.2
 	github.com/gocolly/colly v1.2.0
-	github.com/google/jsonschema-go v0.2.1-0.20250825175020-748c325cec76
+	github.com/google/jsonschema-go v0.2.3
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/modelcontextprotocol/go-sdk v0.4.0
