@@ -37,6 +37,7 @@ jobs:
         uses: SPANDigital/mcp-server-dump@main
         with:
           server-command: 'go run main.go run'
+          transport: 'command'
           format: 'html'
           output-file: 'mcp-release-docs/index.html'
           scan-tools: 'true'
@@ -47,6 +48,7 @@ jobs:
         uses: SPANDigital/mcp-server-dump@main
         with:
           server-command: 'go run main.go run'
+          transport: 'command'
           format: 'json'
           output-file: 'mcp-release-docs/mcp-schema.json'
           scan-tools: 'true'
@@ -57,6 +59,7 @@ jobs:
         uses: SPANDigital/mcp-server-dump@main
         with:
           server-command: 'go run main.go run'
+          transport: 'command'
           format: 'markdown'
           output-file: 'mcp-release-docs/README.md'
           scan-tools: 'true'
