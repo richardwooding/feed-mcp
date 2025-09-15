@@ -44,3 +44,51 @@ jobs:
       if: |
         github.event_name == 'push'
       continue-on-error: true
+
+    - name: Generate MCP Documentation
+      run: |
+        # Install mcp-server-dump
+        go install github.com/SPANDigital/mcp-server-dump@latest
+
+        # Create output directory
+        mkdir -p mcp-docs
+
+        # Generate HTML documentation
+        mcp-server-dump --format html --output mcp-docs/index.html ./main.go run
+
+        # Also generate JSON and Markdown for completeness
+        mcp-server-dump --format json --output mcp-docs/mcp-schema.json ./main.go run
+        mcp-server-dump --format markdown --output mcp-docs/README.md ./main.go run
+
+        echo "MCP documentation generated successfully"
+        ls -la mcp-docs/
+
+    - name: Upload MCP Documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: mcp-documentation
+        path: mcp-docs/
+        retention-days: 30
+
+    - name: Deploy MCP Docs to GitHub Pages
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+        # Create or checkout gh-pages branch
+        git fetch origin gh-pages:gh-pages || git checkout --orphan gh-pages
+        git checkout gh-pages
+
+        # Clean existing content
+        git rm -rf . || true
+
+        # Copy generated docs
+        cp -r mcp-docs/* .
+
+        # Add and commit
+        git add .
+        git commit -m "Update MCP documentation from ${{ github.sha }}" || echo "No changes to commit"
+
+        # Push to gh-pages
+        git push origin gh-pages || echo "No changes to push"
