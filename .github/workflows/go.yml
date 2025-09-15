@@ -48,7 +48,7 @@ jobs:
     - name: Generate MCP HTML Documentation
       uses: SPANDigital/mcp-server-dump@main
       with:
-        server-command: 'go run main.go run'
+        server-command: 'go run main.go run --transport stdio'
         format: 'html'
         output-file: 'mcp-docs/index.html'
         scan-tools: 'true'
@@ -58,7 +58,7 @@ jobs:
     - name: Generate MCP JSON Documentation
       uses: SPANDigital/mcp-server-dump@main
       with:
-        server-command: 'go run main.go run'
+        server-command: 'go run main.go run --transport stdio'
         format: 'json'
         output-file: 'mcp-docs/mcp-schema.json'
         scan-tools: 'true'
@@ -68,7 +68,7 @@ jobs:
     - name: Generate MCP Markdown Documentation
       uses: SPANDigital/mcp-server-dump@main
       with:
-        server-command: 'go run main.go run'
+        server-command: 'go run main.go run --transport stdio'
         format: 'markdown'
         output-file: 'mcp-docs/README.md'
         scan-tools: 'true'
