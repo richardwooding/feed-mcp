@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/ristretto"
+	"github.com/dgraph-io/ristretto/v2"
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/eko/gocache/lib/v4/store"
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
@@ -415,7 +415,7 @@ func newStoreInternal(config Config) (*Store, error) {
 		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig)
 	}
 
-	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
+	ristrettoCache, err := ristretto.NewCache[string, *gofeed.Feed](&ristretto.Config[string, *gofeed.Feed]{
 		NumCounters: 1000,
 		MaxCost:     100,
 		BufferItems: 64,
