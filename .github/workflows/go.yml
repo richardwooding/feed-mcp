@@ -76,6 +76,9 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+        # Copy docs to temporary location before git operations
+        cp -r mcp-docs /tmp/mcp-docs-temp
+
         # Create or checkout gh-pages branch
         git fetch origin gh-pages:gh-pages || git checkout --orphan gh-pages
         git checkout gh-pages
@@ -83,8 +86,8 @@ jobs:
         # Clean existing content
         git rm -rf . || true
 
-        # Copy generated docs
-        cp -r mcp-docs/* .
+        # Copy generated docs from temporary location
+        cp -r /tmp/mcp-docs-temp/* .
 
         # Add and commit
         git add .
