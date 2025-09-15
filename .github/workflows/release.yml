@@ -32,3 +32,31 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate MCP Documentation for Release
+        run: |
+          # Install mcp-server-dump
+          go install github.com/SPANDigital/mcp-server-dump@latest
+
+          # Create output directory
+          mkdir -p mcp-release-docs
+
+          # Generate HTML documentation
+          mcp-server-dump --format html --output mcp-release-docs/index.html ./main.go run
+
+          # Also generate JSON and Markdown
+          mcp-server-dump --format json --output mcp-release-docs/mcp-schema.json ./main.go run
+          mcp-server-dump --format markdown --output mcp-release-docs/README.md ./main.go run
+
+          echo "MCP documentation generated for release ${{ github.ref_name }}"
+          ls -la mcp-release-docs/
+
+      - name: Upload MCP Documentation as Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            mcp-release-docs/index.html
+            mcp-release-docs/mcp-schema.json
+            mcp-release-docs/README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
