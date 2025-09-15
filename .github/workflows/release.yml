@@ -34,12 +34,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build feed-mcp binary for documentation
-        run: go build -o feed-mcp-bin main.go
+        run: go build -o feed-mcp main.go
 
       - name: Generate MCP HTML Documentation for Release
         uses: SPANDigital/mcp-server-dump@main
         with:
-          server-command: './feed-mcp-bin run'
+          server-command: './feed-mcp run'
           transport: 'command'
           format: 'html'
           output-file: 'mcp-release-docs/index.html'
@@ -50,7 +50,7 @@ jobs:
       - name: Generate MCP JSON Documentation for Release
         uses: SPANDigital/mcp-server-dump@main
         with:
-          server-command: './feed-mcp-bin run'
+          server-command: './feed-mcp run'
           transport: 'command'
           format: 'json'
           output-file: 'mcp-release-docs/mcp-schema.json'
@@ -61,7 +61,7 @@ jobs:
       - name: Generate MCP Markdown Documentation for Release
         uses: SPANDigital/mcp-server-dump@main
         with:
-          server-command: './feed-mcp-bin run'
+          server-command: './feed-mcp run'
           transport: 'command'
           format: 'markdown'
           output-file: 'mcp-release-docs/README.md'

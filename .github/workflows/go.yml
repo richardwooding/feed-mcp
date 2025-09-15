@@ -46,12 +46,12 @@ jobs:
       continue-on-error: true
 
     - name: Build feed-mcp binary for documentation
-      run: go build -o feed-mcp-bin main.go
+      run: go build -o feed-mcp main.go
 
     - name: Generate MCP HTML Documentation
       uses: SPANDigital/mcp-server-dump@main
       with:
-        server-command: './feed-mcp-bin run'
+        server-command: './feed-mcp run'
         transport: 'command'
         format: 'html'
         output-file: 'mcp-docs/index.html'
@@ -62,7 +62,7 @@ jobs:
     - name: Generate MCP JSON Documentation
       uses: SPANDigital/mcp-server-dump@main
       with:
-        server-command: './feed-mcp-bin run'
+        server-command: './feed-mcp run'
         transport: 'command'
         format: 'json'
         output-file: 'mcp-docs/mcp-schema.json'
@@ -73,7 +73,7 @@ jobs:
     - name: Generate MCP Markdown Documentation
       uses: SPANDigital/mcp-server-dump@main
       with:
-        server-command: './feed-mcp-bin run'
+        server-command: './feed-mcp run'
         transport: 'command'
         format: 'markdown'
         output-file: 'mcp-docs/README.md'
