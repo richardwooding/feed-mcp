@@ -33,23 +33,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate MCP Documentation for Release
-        run: |
-          # Install mcp-server-dump
-          go install github.com/SPANDigital/mcp-server-dump@latest
+      - name: Generate MCP HTML Documentation for Release
+        uses: SPANDigital/mcp-server-dump@main
+        with:
+          server-command: 'go run main.go run'
+          format: 'html'
+          output-file: 'mcp-release-docs/index.html'
+          scan-tools: 'true'
+          scan-resources: 'true'
+          scan-prompts: 'true'
 
-          # Create output directory
-          mkdir -p mcp-release-docs
+      - name: Generate MCP JSON Documentation for Release
+        uses: SPANDigital/mcp-server-dump@main
+        with:
+          server-command: 'go run main.go run'
+          format: 'json'
+          output-file: 'mcp-release-docs/mcp-schema.json'
+          scan-tools: 'true'
+          scan-resources: 'true'
+          scan-prompts: 'true'
 
-          # Generate HTML documentation
-          mcp-server-dump --format html --output mcp-release-docs/index.html ./main.go run
-
-          # Also generate JSON and Markdown
-          mcp-server-dump --format json --output mcp-release-docs/mcp-schema.json ./main.go run
-          mcp-server-dump --format markdown --output mcp-release-docs/README.md ./main.go run
-
-          echo "MCP documentation generated for release ${{ github.ref_name }}"
-          ls -la mcp-release-docs/
+      - name: Generate MCP Markdown Documentation for Release
+        uses: SPANDigital/mcp-server-dump@main
+        with:
+          server-command: 'go run main.go run'
+          format: 'markdown'
+          output-file: 'mcp-release-docs/README.md'
+          scan-tools: 'true'
+          scan-resources: 'true'
+          scan-prompts: 'true'
 
       - name: Upload MCP Documentation as Release Asset
         uses: softprops/action-gh-release@v1

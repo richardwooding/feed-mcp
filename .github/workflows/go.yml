@@ -45,23 +45,35 @@ jobs:
         github.event_name == 'push'
       continue-on-error: true
 
-    - name: Generate MCP Documentation
-      run: |
-        # Install mcp-server-dump
-        go install github.com/SPANDigital/mcp-server-dump@latest
+    - name: Generate MCP HTML Documentation
+      uses: SPANDigital/mcp-server-dump@main
+      with:
+        server-command: 'go run main.go run'
+        format: 'html'
+        output-file: 'mcp-docs/index.html'
+        scan-tools: 'true'
+        scan-resources: 'true'
+        scan-prompts: 'true'
 
-        # Create output directory
-        mkdir -p mcp-docs
+    - name: Generate MCP JSON Documentation
+      uses: SPANDigital/mcp-server-dump@main
+      with:
+        server-command: 'go run main.go run'
+        format: 'json'
+        output-file: 'mcp-docs/mcp-schema.json'
+        scan-tools: 'true'
+        scan-resources: 'true'
+        scan-prompts: 'true'
 
-        # Generate HTML documentation
-        mcp-server-dump --format html --output mcp-docs/index.html ./main.go run
-
-        # Also generate JSON and Markdown for completeness
-        mcp-server-dump --format json --output mcp-docs/mcp-schema.json ./main.go run
-        mcp-server-dump --format markdown --output mcp-docs/README.md ./main.go run
-
-        echo "MCP documentation generated successfully"
-        ls -la mcp-docs/
+    - name: Generate MCP Markdown Documentation
+      uses: SPANDigital/mcp-server-dump@main
+      with:
+        server-command: 'go run main.go run'
+        format: 'markdown'
+        output-file: 'mcp-docs/README.md'
+        scan-tools: 'true'
+        scan-resources: 'true'
+        scan-prompts: 'true'
 
     - name: Upload MCP Documentation
       uses: actions/upload-artifact@v4
