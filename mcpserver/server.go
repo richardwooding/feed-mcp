@@ -201,12 +201,17 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := json.Marshal(feedResults)
-		if err != nil {
-			return nil, nil, err
+		// Create a separate Content for each FeedResult
+		content := make([]mcp.Content, 0, len(feedResults))
+		for _, feedResult := range feedResults {
+			data, err := json.Marshal(feedResult)
+			if err != nil {
+				return nil, nil, err
+			}
+			content = append(content, &mcp.TextContent{Text: string(data)})
 		}
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+			Content: content,
 		}, nil, nil
 	})
 
@@ -230,12 +235,44 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := json.Marshal(feedResult)
+
+		// Create content slice with capacity for feed metadata + all items
+		content := make([]mcp.Content, 0, 1+len(feedResult.Items))
+
+		// First, marshal the feed metadata (without items)
+		feedMetadata := struct {
+			ID                 string      `json:"id"`
+			PublicURL          string      `json:"public_url"`
+			Title              string      `json:"title,omitempty"`
+			FetchError         string      `json:"fetch_error,omitempty"`
+			Feed               *model.Feed `json:"feed_result,omitempty"`
+			CircuitBreakerOpen bool        `json:"circuit_breaker_open,omitempty"`
+		}{
+			ID:                 feedResult.ID,
+			PublicURL:          feedResult.PublicURL,
+			Title:              feedResult.Title,
+			FetchError:         feedResult.FetchError,
+			Feed:               feedResult.Feed,
+			CircuitBreakerOpen: feedResult.CircuitBreakerOpen,
+		}
+
+		data, err := json.Marshal(feedMetadata)
 		if err != nil {
 			return nil, nil, err
 		}
+		content = append(content, &mcp.TextContent{Text: string(data)})
+
+		// Then, add each item as separate content
+		for _, item := range feedResult.Items {
+			itemData, err := json.Marshal(item)
+			if err != nil {
+				return nil, nil, err
+			}
+			content = append(content, &mcp.TextContent{Text: string(itemData)})
+		}
+
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+			Content: content,
 		}, nil, nil
 	})
 
