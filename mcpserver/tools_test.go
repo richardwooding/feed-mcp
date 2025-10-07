@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -186,41 +187,53 @@ func TestToolLogic(t *testing.T) {
 			t.Fatalf("GetAllFeeds() failed: %v", err)
 		}
 
-		// Test JSON marshaling (which happens in the tool)
-		data, err := json.Marshal(feedResults)
-		if err != nil {
-			t.Fatalf("Failed to marshal feeds: %v", err)
+		// Verify we have the expected number of feeds
+		if len(feedResults) != 2 {
+			t.Fatalf("Expected 2 feeds, got %d", len(feedResults))
 		}
 
-		// Verify the marshaled data contains expected content
-		dataStr := string(data)
-		if !strings.Contains(dataStr, feed1ID) {
-			t.Error("Marshaled data should contain 'feed1'")
-		}
-		if !strings.Contains(dataStr, "Test Feed 1") {
-			t.Error("Marshaled data should contain 'Test Feed 1'")
-		}
-		if !strings.Contains(dataStr, "Failed to fetch") {
-			t.Error("Marshaled data should contain error message")
-		}
+		// Test JSON marshaling for each feed (which happens in the tool)
+		var unmarshaledFeeds []*model.FeedResult
+		for i, feedResult := range feedResults {
+			data, err := json.Marshal(feedResult)
+			if err != nil {
+				t.Fatalf("Failed to marshal feed %d: %v", i, err)
+			}
 
-		// Test that we can unmarshal it back
-		var unmarshaled []*model.FeedResult
-		err = json.Unmarshal(data, &unmarshaled)
-		if err != nil {
-			t.Fatalf("Failed to unmarshal feeds: %v", err)
-		}
+			// Verify each marshaled feed contains expected content
+			dataStr := string(data)
+			switch i {
+			case 0:
+				if !strings.Contains(dataStr, feed1ID) {
+					t.Error("First feed should contain 'feed1'")
+				}
+				if !strings.Contains(dataStr, "Test Feed 1") {
+					t.Error("First feed should contain 'Test Feed 1'")
+				}
+			case 1:
+				if !strings.Contains(dataStr, "feed2") {
+					t.Error("Second feed should contain 'feed2'")
+				}
+				if !strings.Contains(dataStr, "Failed to fetch") {
+					t.Error("Second feed should contain error message")
+				}
+			}
 
-		if len(unmarshaled) != 2 {
-			t.Errorf("Expected 2 feeds, got %d", len(unmarshaled))
+			// Test that we can unmarshal each feed back
+			var unmarshaled model.FeedResult
+			err = json.Unmarshal(data, &unmarshaled)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal feed %d: %v", i, err)
+			}
+			unmarshaledFeeds = append(unmarshaledFeeds, &unmarshaled)
 		}
 
 		// Check that the data is preserved
-		if unmarshaled[0].ID != feed1ID {
-			t.Errorf("Expected first feed ID 'feed1', got %s", unmarshaled[0].ID)
+		if unmarshaledFeeds[0].ID != feed1ID {
+			t.Errorf("Expected first feed ID 'feed1', got %s", unmarshaledFeeds[0].ID)
 		}
-		if unmarshaled[1].FetchError != "Failed to fetch" {
-			t.Errorf("Expected fetch error, got %s", unmarshaled[1].FetchError)
+		if unmarshaledFeeds[1].FetchError != "Failed to fetch" {
+			t.Errorf("Expected fetch error, got %s", unmarshaledFeeds[1].FetchError)
 		}
 	})
 
@@ -232,41 +245,71 @@ func TestToolLogic(t *testing.T) {
 			t.Fatalf("GetFeedAndItems() failed: %v", err)
 		}
 
-		// Test JSON marshaling (which happens in the tool)
-		data, err := json.Marshal(feedResult)
+		// Verify we have the expected structure: 1 feed metadata + 2 items = 3 content items
+		expectedContentCount := 1 + len(feedResult.Items)
+		if expectedContentCount != 3 {
+			t.Fatalf("Expected 3 content items (1 metadata + 2 items), got %d", expectedContentCount)
+		}
+
+		// Test first content: feed metadata (without items)
+		feedMetadata := feedResult.ToMetadata()
+
+		metadataData, err := json.Marshal(feedMetadata)
 		if err != nil {
-			t.Fatalf("Failed to marshal feed and items: %v", err)
+			t.Fatalf("Failed to marshal feed metadata: %v", err)
 		}
 
-		// Verify the marshaled data contains expected content
-		dataStr := string(data)
-		if !strings.Contains(dataStr, feed1ID) {
-			t.Error("Marshaled data should contain 'feed1'")
+		// Verify metadata contains expected content
+		metadataStr := string(metadataData)
+		if !strings.Contains(metadataStr, feed1ID) {
+			t.Error("Feed metadata should contain 'feed1'")
 		}
-		if !strings.Contains(dataStr, "Item 1") {
-			t.Error("Marshaled data should contain 'Item 1'")
+		if !strings.Contains(metadataStr, "Test Feed 1") {
+			t.Error("Feed metadata should contain 'Test Feed 1'")
 		}
-		if !strings.Contains(dataStr, "Item 2") {
-			t.Error("Marshaled data should contain 'Item 2'")
+		// Verify that items are NOT in the metadata
+		if strings.Contains(metadataStr, "Item 1") {
+			t.Error("Feed metadata should NOT contain item data")
 		}
 
-		// Test that we can unmarshal it back
-		var unmarshaled model.FeedAndItemsResult
-		err = json.Unmarshal(data, &unmarshaled)
+		// Test that we can unmarshal the metadata
+		var unmarshaledMetadata model.FeedMetadata
+		err = json.Unmarshal(metadataData, &unmarshaledMetadata)
 		if err != nil {
-			t.Fatalf("Failed to unmarshal feed and items: %v", err)
+			t.Fatalf("Failed to unmarshal feed metadata: %v", err)
 		}
 
-		if unmarshaled.ID != feed1ID {
-			t.Errorf("Expected feed ID 'feed1', got %s", unmarshaled.ID)
+		if unmarshaledMetadata.ID != feed1ID {
+			t.Errorf("Expected feed ID 'feed1', got %s", unmarshaledMetadata.ID)
+		}
+		if unmarshaledMetadata.Title != "Test Feed 1" {
+			t.Errorf("Expected feed title 'Test Feed 1', got %s", unmarshaledMetadata.Title)
 		}
 
-		if len(unmarshaled.Items) != 2 {
-			t.Errorf("Expected 2 items, got %d", len(unmarshaled.Items))
-		}
+		// Test remaining content: individual items
+		for i, item := range feedResult.Items {
+			itemData, err := json.Marshal(item)
+			if err != nil {
+				t.Fatalf("Failed to marshal item %d: %v", i, err)
+			}
 
-		if unmarshaled.Items[0].Title != "Item 1" {
-			t.Errorf("Expected first item title 'Item 1', got %s", unmarshaled.Items[0].Title)
+			// Verify item contains expected content
+			itemStr := string(itemData)
+			expectedTitle := fmt.Sprintf("Item %d", i+1)
+			if !strings.Contains(itemStr, expectedTitle) {
+				t.Errorf("Item %d should contain '%s'", i, expectedTitle)
+			}
+
+			// Test that we can unmarshal the item
+			var unmarshaledItem gofeed.Item
+			err = json.Unmarshal(itemData, &unmarshaledItem)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal item %d: %v", i, err)
+			}
+
+			if unmarshaledItem.Title != expectedTitle {
+				t.Errorf("Expected item %d title '%s', got %s", i, expectedTitle, unmarshaledItem.Title)
+			}
 		}
 	})
 

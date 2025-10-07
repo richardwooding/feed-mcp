@@ -201,12 +201,17 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := json.Marshal(feedResults)
-		if err != nil {
-			return nil, nil, err
+		// Create a separate Content for each FeedResult
+		content := make([]mcp.Content, 0, len(feedResults))
+		for _, feedResult := range feedResults {
+			data, err := json.Marshal(feedResult)
+			if err != nil {
+				return nil, nil, err
+			}
+			content = append(content, &mcp.TextContent{Text: string(data)})
 		}
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+			Content: content,
 		}, nil, nil
 	})
 
@@ -230,12 +235,30 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := json.Marshal(feedResult)
+
+		// Create content slice with capacity for feed metadata + all items
+		content := make([]mcp.Content, 0, 1+len(feedResult.Items))
+
+		// First, marshal the feed metadata (without items)
+		feedMetadata := feedResult.ToMetadata()
+
+		data, err := json.Marshal(feedMetadata)
 		if err != nil {
 			return nil, nil, err
 		}
+		content = append(content, &mcp.TextContent{Text: string(data)})
+
+		// Then, add each item as separate content
+		for _, item := range feedResult.Items {
+			itemData, err := json.Marshal(item)
+			if err != nil {
+				return nil, nil, err
+			}
+			content = append(content, &mcp.TextContent{Text: string(itemData)})
+		}
+
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+			Content: content,
 		}, nil, nil
 	})
 
@@ -262,7 +285,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			WithComponent("mcp_server")
 	}
 
-	return
+	return err
 }
 
 // addAggregationTools adds feed aggregation tools to the server
@@ -998,18 +1021,18 @@ func parseTimeRange(since, until string) (sinceTime, untilTime time.Time, err er
 	if since != "" {
 		sinceTime, err = time.Parse(time.RFC3339, since)
 		if err != nil {
-			return
+			return sinceTime, untilTime, err
 		}
 	}
 
 	if until != "" {
 		untilTime, err = time.Parse(time.RFC3339, until)
 		if err != nil {
-			return
+			return sinceTime, untilTime, err
 		}
 	}
 
-	return
+	return sinceTime, untilTime, err
 }
 
 // filterItemsByDateRange filters items within the given date range
