@@ -347,8 +347,13 @@ func TestMCPServerCreation(t *testing.T) {
 			t.Errorf("Expected tool name 'all_syndication_feeds', got %s", allFeedsTool.Name)
 		}
 
-		if allFeedsTool.InputSchema.Type != objectType {
-			t.Errorf("Expected schema type 'object', got %s", allFeedsTool.InputSchema.Type)
+		// Type assert to access InputSchema fields since it's now type any
+		if schema, ok := allFeedsTool.InputSchema.(*jsonschema.Schema); ok {
+			if schema.Type != objectType {
+				t.Errorf("Expected schema type 'object', got %s", schema.Type)
+			}
+		} else {
+			t.Errorf("Expected InputSchema to be *jsonschema.Schema, got %T", allFeedsTool.InputSchema)
 		}
 
 		// Test get_syndication_feed_items tool structure
@@ -371,8 +376,13 @@ func TestMCPServerCreation(t *testing.T) {
 			t.Errorf("Expected tool name 'get_syndication_feed_items', got %s", getSyndicationFeedTool.Name)
 		}
 
-		if len(getSyndicationFeedTool.InputSchema.Required) != 1 {
-			t.Errorf("Expected 1 required field, got %d", len(getSyndicationFeedTool.InputSchema.Required))
+		// Type assert to access InputSchema fields
+		if schema, ok := getSyndicationFeedTool.InputSchema.(*jsonschema.Schema); ok {
+			if len(schema.Required) != 1 {
+				t.Errorf("Expected 1 required field, got %d", len(schema.Required))
+			}
+		} else {
+			t.Errorf("Expected InputSchema to be *jsonschema.Schema, got %T", getSyndicationFeedTool.InputSchema)
 		}
 	})
 }
