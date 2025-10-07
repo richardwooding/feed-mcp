@@ -21,6 +21,16 @@ const (
 	feed1ID    = "feed1"
 )
 
+// assertInputSchema is a helper function to type assert InputSchema and handle errors
+func assertInputSchema(t *testing.T, inputSchema any) *jsonschema.Schema {
+	t.Helper()
+	schema, ok := inputSchema.(*jsonschema.Schema)
+	if !ok {
+		t.Fatalf("Expected InputSchema to be *jsonschema.Schema, got %T", inputSchema)
+	}
+	return schema
+}
+
 // Test the schema definitions used in the tools
 //
 //nolint:gocognit // Test function complexity is acceptable for comprehensive schema validation
@@ -347,8 +357,9 @@ func TestMCPServerCreation(t *testing.T) {
 			t.Errorf("Expected tool name 'all_syndication_feeds', got %s", allFeedsTool.Name)
 		}
 
-		if allFeedsTool.InputSchema.Type != objectType {
-			t.Errorf("Expected schema type 'object', got %s", allFeedsTool.InputSchema.Type)
+		schema := assertInputSchema(t, allFeedsTool.InputSchema)
+		if schema.Type != objectType {
+			t.Errorf("Expected schema type 'object', got %s", schema.Type)
 		}
 
 		// Test get_syndication_feed_items tool structure
@@ -371,8 +382,9 @@ func TestMCPServerCreation(t *testing.T) {
 			t.Errorf("Expected tool name 'get_syndication_feed_items', got %s", getSyndicationFeedTool.Name)
 		}
 
-		if len(getSyndicationFeedTool.InputSchema.Required) != 1 {
-			t.Errorf("Expected 1 required field, got %d", len(getSyndicationFeedTool.InputSchema.Required))
+		schema = assertInputSchema(t, getSyndicationFeedTool.InputSchema)
+		if len(schema.Required) != 1 {
+			t.Errorf("Expected 1 required field, got %d", len(schema.Required))
 		}
 	})
 }
