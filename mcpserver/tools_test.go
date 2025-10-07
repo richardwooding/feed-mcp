@@ -202,14 +202,15 @@ func TestToolLogic(t *testing.T) {
 
 			// Verify each marshaled feed contains expected content
 			dataStr := string(data)
-			if i == 0 {
+			switch i {
+			case 0:
 				if !strings.Contains(dataStr, feed1ID) {
 					t.Error("First feed should contain 'feed1'")
 				}
 				if !strings.Contains(dataStr, "Test Feed 1") {
 					t.Error("First feed should contain 'Test Feed 1'")
 				}
-			} else if i == 1 {
+			case 1:
 				if !strings.Contains(dataStr, "feed2") {
 					t.Error("Second feed should contain 'feed2'")
 				}
@@ -251,21 +252,7 @@ func TestToolLogic(t *testing.T) {
 		}
 
 		// Test first content: feed metadata (without items)
-		feedMetadata := struct {
-			ID                 string       `json:"id"`
-			PublicURL          string       `json:"public_url"`
-			Title              string       `json:"title,omitempty"`
-			FetchError         string       `json:"fetch_error,omitempty"`
-			Feed               *model.Feed  `json:"feed_result,omitempty"`
-			CircuitBreakerOpen bool         `json:"circuit_breaker_open,omitempty"`
-		}{
-			ID:                 feedResult.ID,
-			PublicURL:          feedResult.PublicURL,
-			Title:              feedResult.Title,
-			FetchError:         feedResult.FetchError,
-			Feed:               feedResult.Feed,
-			CircuitBreakerOpen: feedResult.CircuitBreakerOpen,
-		}
+		feedMetadata := feedResult.ToMetadata()
 
 		metadataData, err := json.Marshal(feedMetadata)
 		if err != nil {
@@ -286,14 +273,7 @@ func TestToolLogic(t *testing.T) {
 		}
 
 		// Test that we can unmarshal the metadata
-		var unmarshaledMetadata struct {
-			ID                 string       `json:"id"`
-			PublicURL          string       `json:"public_url"`
-			Title              string       `json:"title,omitempty"`
-			FetchError         string       `json:"fetch_error,omitempty"`
-			Feed               *model.Feed  `json:"feed_result,omitempty"`
-			CircuitBreakerOpen bool         `json:"circuit_breaker_open,omitempty"`
-		}
+		var unmarshaledMetadata model.FeedMetadata
 		err = json.Unmarshal(metadataData, &unmarshaledMetadata)
 		if err != nil {
 			t.Fatalf("Failed to unmarshal feed metadata: %v", err)

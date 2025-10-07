@@ -240,21 +240,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		content := make([]mcp.Content, 0, 1+len(feedResult.Items))
 
 		// First, marshal the feed metadata (without items)
-		feedMetadata := struct {
-			ID                 string      `json:"id"`
-			PublicURL          string      `json:"public_url"`
-			Title              string      `json:"title,omitempty"`
-			FetchError         string      `json:"fetch_error,omitempty"`
-			Feed               *model.Feed `json:"feed_result,omitempty"`
-			CircuitBreakerOpen bool        `json:"circuit_breaker_open,omitempty"`
-		}{
-			ID:                 feedResult.ID,
-			PublicURL:          feedResult.PublicURL,
-			Title:              feedResult.Title,
-			FetchError:         feedResult.FetchError,
-			Feed:               feedResult.Feed,
-			CircuitBreakerOpen: feedResult.CircuitBreakerOpen,
-		}
+		feedMetadata := feedResult.ToMetadata()
 
 		data, err := json.Marshal(feedMetadata)
 		if err != nil {
@@ -299,7 +285,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			WithComponent("mcp_server")
 	}
 
-	return
+	return err
 }
 
 // addAggregationTools adds feed aggregation tools to the server
@@ -1035,18 +1021,18 @@ func parseTimeRange(since, until string) (sinceTime, untilTime time.Time, err er
 	if since != "" {
 		sinceTime, err = time.Parse(time.RFC3339, since)
 		if err != nil {
-			return
+			return sinceTime, untilTime, err
 		}
 	}
 
 	if until != "" {
 		untilTime, err = time.Parse(time.RFC3339, until)
 		if err != nil {
-			return
+			return sinceTime, untilTime, err
 		}
 	}
 
-	return
+	return sinceTime, untilTime, err
 }
 
 // filterItemsByDateRange filters items within the given date range
