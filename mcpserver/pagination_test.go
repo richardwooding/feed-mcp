@@ -6,6 +6,45 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+// applyPaginationParams applies the same pagination logic as server.go
+func applyPaginationParams(totalItems int, limit *int, offset *int) (returnedItems int, hasMore bool) {
+	// Apply limit
+	effectiveLimit := DefaultItemLimit
+	if limit != nil {
+		effectiveLimit = *limit
+		if effectiveLimit > MaxItemLimit {
+			effectiveLimit = MaxItemLimit
+		}
+		if effectiveLimit < 0 {
+			effectiveLimit = 0
+		}
+	}
+
+	// Apply offset
+	effectiveOffset := 0
+	if offset != nil {
+		effectiveOffset = *offset
+		if effectiveOffset < 0 {
+			effectiveOffset = 0
+		}
+	}
+
+	// Calculate pagination
+	startIdx := effectiveOffset
+	if startIdx > totalItems {
+		startIdx = totalItems
+	}
+
+	endIdx := startIdx + effectiveLimit
+	if endIdx > totalItems {
+		endIdx = totalItems
+	}
+
+	returnedItems = endIdx - startIdx
+	hasMore = endIdx < totalItems
+	return returnedItems, hasMore
+}
+
 func TestPaginationLogic(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -15,98 +54,18 @@ func TestPaginationLogic(t *testing.T) {
 		expectedReturned int
 		expectedHasMore  bool
 	}{
-		{
-			name:             "default pagination (50 items from 150)",
-			totalItems:       150,
-			limit:            nil,
-			offset:           nil,
-			expectedReturned: 50,
-			expectedHasMore:  true,
-		},
-		{
-			name:             "limit 10 items",
-			totalItems:       150,
-			limit:            ptrInt(10),
-			offset:           nil,
-			expectedReturned: 10,
-			expectedHasMore:  true,
-		},
-		{
-			name:             "offset 50, limit 50",
-			totalItems:       150,
-			limit:            ptrInt(50),
-			offset:           ptrInt(50),
-			expectedReturned: 50,
-			expectedHasMore:  true,
-		},
-		{
-			name:             "offset 140, limit 50 (partial page)",
-			totalItems:       150,
-			limit:            ptrInt(50),
-			offset:           ptrInt(140),
-			expectedReturned: 10,
-			expectedHasMore:  false,
-		},
-		{
-			name:             "limit exceeds max (should cap at 100)",
-			totalItems:       150,
-			limit:            ptrInt(200),
-			offset:           nil,
-			expectedReturned: 100,
-			expectedHasMore:  true,
-		},
-		{
-			name:             "offset beyond total items",
-			totalItems:       150,
-			limit:            nil,
-			offset:           ptrInt(200),
-			expectedReturned: 0,
-			expectedHasMore:  false,
-		},
-		{
-			name:             "small feed (20 items, default limit)",
-			totalItems:       20,
-			limit:            nil,
-			offset:           nil,
-			expectedReturned: 20,
-			expectedHasMore:  false,
-		},
+		{"default pagination (50 items from 150)", 150, nil, nil, 50, true},
+		{"limit 10 items", 150, ptrInt(10), nil, 10, true},
+		{"offset 50, limit 50", 150, ptrInt(50), ptrInt(50), 50, true},
+		{"offset 140, limit 50 (partial page)", 150, ptrInt(50), ptrInt(140), 10, false},
+		{"limit exceeds max (should cap at 100)", 150, ptrInt(200), nil, 100, true},
+		{"offset beyond total items", 150, nil, ptrInt(200), 0, false},
+		{"small feed (20 items, default limit)", 20, nil, nil, 20, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Apply pagination logic (same as in server.go)
-			limit := DefaultItemLimit
-			if tt.limit != nil {
-				limit = *tt.limit
-				if limit > MaxItemLimit {
-					limit = MaxItemLimit
-				}
-				if limit < 0 {
-					limit = 0
-				}
-			}
-
-			offset := 0
-			if tt.offset != nil {
-				offset = *tt.offset
-				if offset < 0 {
-					offset = 0
-				}
-			}
-
-			startIdx := offset
-			if startIdx > tt.totalItems {
-				startIdx = tt.totalItems
-			}
-
-			endIdx := startIdx + limit
-			if endIdx > tt.totalItems {
-				endIdx = tt.totalItems
-			}
-
-			returnedItems := endIdx - startIdx
-			hasMore := endIdx < tt.totalItems
+			returnedItems, hasMore := applyPaginationParams(tt.totalItems, tt.limit, tt.offset)
 
 			if returnedItems != tt.expectedReturned {
 				t.Errorf("Expected %d returned items, got %d", tt.expectedReturned, returnedItems)
@@ -127,61 +86,54 @@ func TestProcessItemForOutput(t *testing.T) {
 		Link:        "https://example.com/item",
 	}
 
-	tests := []struct {
-		name             string
-		includeContent   bool
-		maxContentLength int
-		expectContent    bool
-		expectTruncation bool
-	}{
-		{
-			name:           "include full content",
-			includeContent: true,
-			expectContent:  true,
-		},
-		{
-			name:           "exclude content",
-			includeContent: false,
-			expectContent:  false,
-		},
-		{
-			name:             "truncate content at 20 chars",
-			includeContent:   true,
-			maxContentLength: 20,
-			expectContent:    true,
-			expectTruncation: true,
-		},
+	t.Run("include full content", func(t *testing.T) {
+		result := processItemForOutput(testItem, true, 0)
+		verifyContentIncluded(t, result, testItem)
+		verifyMetadataPreserved(t, result, testItem)
+	})
+
+	t.Run("exclude content", func(t *testing.T) {
+		result := processItemForOutput(testItem, false, 0)
+		verifyContentExcluded(t, result)
+		verifyMetadataPreserved(t, result, testItem)
+	})
+
+	t.Run("truncate content at 20 chars", func(t *testing.T) {
+		result := processItemForOutput(testItem, true, 20)
+		verifyContentTruncated(t, result, 20)
+		verifyMetadataPreserved(t, result, testItem)
+	})
+}
+
+func verifyContentIncluded(t *testing.T, result, original *gofeed.Item) {
+	t.Helper()
+	if result.Content == "" && result.Description == "" {
+		t.Error("Expected content fields to be populated")
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := processItemForOutput(testItem, tt.includeContent, tt.maxContentLength)
+func verifyContentExcluded(t *testing.T, result *gofeed.Item) {
+	t.Helper()
+	if result.Content != "" || result.Description != "" {
+		t.Error("Expected content fields to be empty")
+	}
+}
 
-			if tt.expectContent {
-				if result.Content == "" && result.Description == "" {
-					t.Error("Expected content fields to be populated")
-				}
-				if tt.expectTruncation {
-					// TruncationMarker is "... [truncated]" which is 16 characters
-					maxExpectedLen := tt.maxContentLength + len(TruncationMarker)
-					if len(result.Content) > maxExpectedLen {
-						t.Errorf("Content not truncated: length=%d, max=%d", len(result.Content), maxExpectedLen)
-					}
-				}
-			} else {
-				if result.Content != "" || result.Description != "" {
-					t.Error("Expected content fields to be empty")
-				}
-			}
+func verifyContentTruncated(t *testing.T, result *gofeed.Item, maxLen int) {
+	t.Helper()
+	maxExpectedLen := maxLen + len(TruncationMarker)
+	if len(result.Content) > maxExpectedLen {
+		t.Errorf("Content not truncated: length=%d, max=%d", len(result.Content), maxExpectedLen)
+	}
+}
 
-			// Verify title and link are never stripped
-			if result.Title != testItem.Title {
-				t.Error("Title should never be modified")
-			}
-			if result.Link != testItem.Link {
-				t.Error("Link should never be modified")
-			}
-		})
+func verifyMetadataPreserved(t *testing.T, result, original *gofeed.Item) {
+	t.Helper()
+	if result.Title != original.Title {
+		t.Error("Title should never be modified")
+	}
+	if result.Link != original.Link {
+		t.Error("Link should never be modified")
 	}
 }
 
