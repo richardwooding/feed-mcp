@@ -154,21 +154,40 @@ type MergedFeedResult struct {
 
 // Run starts the MCP server and handles client connections until context is canceled
 func (s *Server) Run(ctx context.Context) (err error) {
-	// Create a new MCP server with resource subscription support
-	srv := mcp.NewServer(
+	srv := s.createMCPServer()
+	s.registerCoreTools(srv)
+	s.addAggregationTools(srv)
+	s.addDynamicFeedTools(srv)
+	s.addResourceHandlers(srv)
+	s.addPrompts(srv)
+
+	return s.runTransport(ctx, srv)
+}
+
+// createMCPServer creates and configures the MCP server instance
+func (s *Server) createMCPServer() *mcp.Server {
+	return mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "RSS, Atom, and JSON Feed Server",
 			Version: version.GetVersion(),
 		},
 		&mcp.ServerOptions{
-			// Enable resource subscription support
 			SubscribeHandler:   s.handleSubscribeResource,
 			UnsubscribeHandler: s.handleUnsubscribeResource,
-			HasResources:       true, // Advertise resource capabilities
+			HasResources:       true,
 		},
 	)
+}
 
-	// Add fetch_link tool
+// registerCoreTools registers the core feed-related tools
+func (s *Server) registerCoreTools(srv *mcp.Server) {
+	s.addFetchLinkTool(srv)
+	s.addAllFeedsTool(srv)
+	s.addGetFeedItemsTool(srv)
+}
+
+// addFetchLinkTool adds the fetch_link tool
+func (s *Server) addFetchLinkTool(srv *mcp.Server) {
 	fetchLinkTool := &mcp.Tool{
 		Name:        "fetch_link",
 		Description: "Fetch link URL",
@@ -183,19 +202,13 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			},
 		},
 	}
-	// The MCP SDK v0.3.0 AddTool function signature includes three return values:
-	// (*mcp.CallToolResult, any, error) where the middle 'any' value is for
-	// additional metadata that can be returned to the client.
 	mcp.AddTool(srv, fetchLinkTool, func(ctx context.Context, req *mcp.CallToolRequest, args FetchLinkParams) (*mcp.CallToolResult, any, error) {
 		c := colly.NewCollector()
-
 		var data []byte
-
 		c.OnResponse(func(response *colly.Response) {
 			data = response.Body
 		})
-
-		err = c.Visit(args.URL)
+		err := c.Visit(args.URL)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -203,19 +216,20 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 		}, nil, nil
 	})
+}
 
-	// Add all_syndication_feeds tool
+// addAllFeedsTool adds the all_syndication_feeds tool
+func (s *Server) addAllFeedsTool(srv *mcp.Server) {
 	allFeedsTool := &mcp.Tool{
 		Name:        "all_syndication_feeds",
 		Description: "list available feedItem resources",
-		InputSchema: &jsonschema.Schema{Type: "object"}, // No parameters needed
+		InputSchema: &jsonschema.Schema{Type: "object"},
 	}
 	mcp.AddTool(srv, allFeedsTool, func(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
 		feedResults, err := s.allFeedsGetter.GetAllFeeds(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
-		// Create a separate Content for each FeedResult
 		content := make([]mcp.Content, 0, len(feedResults))
 		for _, feedResult := range feedResults {
 			data, err := json.Marshal(feedResult)
@@ -228,8 +242,10 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			Content: content,
 		}, nil, nil
 	})
+}
 
-	// Add get_syndication_feed_items tool
+// addGetFeedItemsTool adds the get_syndication_feed_items tool to the server
+func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 	getSyndicationFeedTool := &mcp.Tool{
 		Name:        "get_syndication_feed_items",
 		Description: "get syndication feed and items by id with pagination and content control",
@@ -270,123 +286,131 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			return nil, nil, err
 		}
 
-		// Apply defaults for pagination parameters
-		limit := DefaultItemLimit
-		if args.Limit != nil {
-			limit = *args.Limit
-			if limit > MaxItemLimit {
-				limit = MaxItemLimit // Cap at max
-			}
-			if limit < 0 {
-				limit = 0
-			}
-		}
-
-		offset := 0
-		if args.Offset != nil {
-			offset = *args.Offset
-			if offset < 0 {
-				offset = 0
-			}
-		}
-
-		includeContent := true
-		if args.IncludeContent != nil {
-			includeContent = *args.IncludeContent
-		}
-
-		var maxContentLength int
-		if args.MaxContentLength != nil {
-			maxContentLength = *args.MaxContentLength
-			if maxContentLength < 0 {
-				maxContentLength = 0
-			}
-		}
-
-		// Calculate pagination
-		totalItems := len(feedResult.Items)
-		startIdx := offset
-		if startIdx > totalItems {
-			startIdx = totalItems
-		}
-
-		endIdx := startIdx + limit
-		if endIdx > totalItems {
-			endIdx = totalItems
-		}
-
-		// Slice items based on pagination
-		paginatedItems := feedResult.Items[startIdx:endIdx]
-
-		// Create content slice with capacity for feed metadata + paginated items
-		content := make([]mcp.Content, 0, 1+len(paginatedItems))
-
-		// First, marshal the feed metadata with pagination info
-		type FeedMetadataWithPagination struct {
-			*model.FeedMetadata
-			TotalItems    int  `json:"total_items"`
-			ReturnedItems int  `json:"returned_items"`
-			Offset        int  `json:"offset"`
-			Limit         int  `json:"limit"`
-			HasMore       bool `json:"has_more"`
-		}
-
-		feedMetadataWithPagination := &FeedMetadataWithPagination{
-			FeedMetadata:  feedResult.ToMetadata(),
-			TotalItems:    totalItems,
-			ReturnedItems: len(paginatedItems),
-			Offset:        offset,
-			Limit:         limit,
-			HasMore:       endIdx < totalItems,
-		}
-
-		data, err := json.Marshal(feedMetadataWithPagination)
-		if err != nil {
-			return nil, nil, err
-		}
-		content = append(content, &mcp.TextContent{Text: string(data)})
-
-		// Then, add each paginated item as separate content
-		for _, item := range paginatedItems {
-			// Process item based on content parameters
-			processedItem := processItemForOutput(item, includeContent, maxContentLength)
-
-			itemData, err := json.Marshal(processedItem)
-			if err != nil {
-				return nil, nil, err
-			}
-			content = append(content, &mcp.TextContent{Text: string(itemData)})
-		}
+		limit, offset, includeContent, maxContentLength := s.parsePaginationParams(args)
+		paginatedItems, paginationInfo := s.applyPagination(feedResult.Items, limit, offset)
+		content := s.buildFeedContent(feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength)
 
 		return &mcp.CallToolResult{
 			Content: content,
 		}, nil, nil
 	})
+}
 
-	// Add feed aggregation tools (Phase 2)
-	s.addAggregationTools(srv)
+// parsePaginationParams extracts and validates pagination parameters
+func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int) {
+	limit = DefaultItemLimit
+	if args.Limit != nil {
+		limit = *args.Limit
+		if limit > MaxItemLimit {
+			limit = MaxItemLimit
+		}
+		if limit < 0 {
+			limit = 0
+		}
+	}
 
-	// Add dynamic feed management tools if DynamicFeedManager is available
-	s.addDynamicFeedTools(srv)
+	offset = 0
+	if args.Offset != nil {
+		offset = *args.Offset
+		if offset < 0 {
+			offset = 0
+		}
+	}
 
-	// Add resource handlers for MCP Resources support
-	s.addResourceHandlers(srv)
+	includeContent = true
+	if args.IncludeContent != nil {
+		includeContent = *args.IncludeContent
+	}
 
-	// Add MCP prompts for feed intelligence features
-	s.addPrompts(srv)
+	if args.MaxContentLength != nil {
+		maxContentLength = *args.MaxContentLength
+		if maxContentLength < 0 {
+			maxContentLength = 0
+		}
+	}
 
+	return limit, offset, includeContent, maxContentLength
+}
+
+// PaginationInfo contains pagination metadata
+type PaginationInfo struct {
+	TotalItems    int
+	ReturnedItems int
+	Offset        int
+	Limit         int
+	HasMore       bool
+}
+
+// applyPagination slices items based on limit and offset
+func (s *Server) applyPagination(items []*gofeed.Item, limit, offset int) ([]*gofeed.Item, PaginationInfo) {
+	totalItems := len(items)
+	startIdx := offset
+	if startIdx > totalItems {
+		startIdx = totalItems
+	}
+
+	endIdx := startIdx + limit
+	if endIdx > totalItems {
+		endIdx = totalItems
+	}
+
+	paginatedItems := items[startIdx:endIdx]
+
+	return paginatedItems, PaginationInfo{
+		TotalItems:    totalItems,
+		ReturnedItems: len(paginatedItems),
+		Offset:        offset,
+		Limit:         limit,
+		HasMore:       endIdx < totalItems,
+	}
+}
+
+// buildFeedContent creates the MCP content response with feed metadata and items
+func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []*gofeed.Item, info PaginationInfo, includeContent bool, maxContentLength int) []mcp.Content {
+	content := make([]mcp.Content, 0, 1+len(items))
+
+	type FeedMetadataWithPagination struct {
+		*model.FeedMetadata
+		TotalItems    int  `json:"total_items"`
+		ReturnedItems int  `json:"returned_items"`
+		Offset        int  `json:"offset"`
+		Limit         int  `json:"limit"`
+		HasMore       bool `json:"has_more"`
+	}
+
+	feedMetadataWithPagination := &FeedMetadataWithPagination{
+		FeedMetadata:  feedResult.ToMetadata(),
+		TotalItems:    info.TotalItems,
+		ReturnedItems: info.ReturnedItems,
+		Offset:        info.Offset,
+		Limit:         info.Limit,
+		HasMore:       info.HasMore,
+	}
+
+	data, _ := json.Marshal(feedMetadataWithPagination)
+	content = append(content, &mcp.TextContent{Text: string(data)})
+
+	for _, item := range items {
+		processedItem := processItemForOutput(item, includeContent, maxContentLength)
+		itemData, _ := json.Marshal(processedItem)
+		content = append(content, &mcp.TextContent{Text: string(itemData)})
+	}
+
+	return content
+}
+
+// runTransport starts the MCP server with the configured transport
+func (s *Server) runTransport(ctx context.Context, srv *mcp.Server) error {
 	switch s.transport {
 	case model.StdioTransport:
-		err = srv.Run(ctx, &mcp.StdioTransport{})
+		return srv.Run(ctx, &mcp.StdioTransport{})
 	case model.HTTPWithSSETransport:
-		err = srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
+		return srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
 	default:
 		return model.NewFeedError(model.ErrorTypeTransport, "unsupported transport").
 			WithOperation("run_server").
 			WithComponent("mcp_server")
 	}
-
-	return err
 }
 
 // addAggregationTools adds feed aggregation tools to the server
