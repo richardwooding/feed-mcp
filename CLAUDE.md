@@ -640,8 +640,72 @@ The server exposes MCP tools that Claude can use:
 
 **Core Feed Tools:**
 1. `all_syndication_feeds` - Returns a list of all configured feeds
-2. `get_syndication_feed_items` - Returns items from a specific feed
+2. `get_syndication_feed_items` - Returns items from a specific feed with pagination and content control
 3. `fetch_link` - Fetches and returns content from any URL
+
+#### Handling Large Feeds and the 1MB Limit
+
+MCP has a 1MB limit on tool result sizes. For feeds with many items or large content, `get_syndication_feed_items` supports pagination and content filtering to stay under this limit:
+
+**Pagination Parameters:**
+- `limit` (integer, 0-100): Maximum items to return (default: 50, max: 100)
+- `offset` (integer, ≥0): Number of items to skip (default: 0)
+- `includeContent` (boolean): Whether to include full content/description (default: true)
+- `maxContentLength` (integer, ≥0): Max characters for content fields (default: unlimited)
+
+**Response Metadata:**
+Every response includes pagination metadata:
+```json
+{
+  "total_items": 150,
+  "returned_items": 50,
+  "offset": 0,
+  "limit": 50,
+  "has_more": true
+}
+```
+
+**Usage Examples:**
+
+```json
+// Get first 10 items
+{
+  "ID": "feed-id",
+  "limit": 10
+}
+
+// Get next page (items 50-100)
+{
+  "ID": "feed-id",
+  "limit": 50,
+  "offset": 50
+}
+
+// Get items without content (metadata only)
+{
+  "ID": "feed-id",
+  "limit": 20,
+  "includeContent": false
+}
+
+// Get items with truncated content
+{
+  "ID": "feed-id",
+  "limit": 30,
+  "maxContentLength": 500
+}
+```
+
+**Best Practices:**
+- For large feeds (>100 items), use smaller `limit` values (10-20)
+- Set `includeContent: false` when you only need titles and links
+- Use `maxContentLength` to truncate long articles
+- Check `has_more` field to determine if more pages exist
+- For advanced filtering (date ranges, categories, search), use the **MCP Resources API** instead
+
+**When to Use Resources API vs Tools:**
+- **Tools** (`get_syndication_feed_items`): Simple pagination, good for browsing
+- **Resources** (`feeds://feed/{id}/items?...`): Advanced filters (date ranges, categories, search, etc.)
 
 **Dynamic Feed Management Tools (when `--allow-runtime-feeds` is enabled):**
 4. `add_feed` - Add a new RSS/Atom/JSON feed at runtime

@@ -21,6 +21,16 @@ import (
 // FeedAndItemsResult represents a feed along with its items
 type FeedAndItemsResult = model.FeedAndItemsResult
 
+// Pagination constants for get_syndication_feed_items tool
+const (
+	// DefaultItemLimit is the default number of items returned when limit is not specified
+	DefaultItemLimit = 50
+	// MaxItemLimit is the maximum number of items that can be requested in a single call
+	MaxItemLimit = 100
+	// TruncationMarker is appended to truncated content fields
+	TruncationMarker = "... [truncated]"
+)
+
 var sessionCounter int64
 
 // Config holds the configuration for creating a new MCP server
@@ -86,7 +96,11 @@ type FetchLinkParams struct {
 
 // GetSyndicationFeedParams contains parameters for the get_syndication_feed_items tool.
 type GetSyndicationFeedParams struct {
-	ID string
+	ID               string `json:"ID"`
+	Limit            *int   `json:"limit,omitempty"`            // Maximum items to return (default: 50, max: 100)
+	Offset           *int   `json:"offset,omitempty"`           // Number of items to skip (default: 0)
+	IncludeContent   *bool  `json:"includeContent,omitempty"`   // Include full content/description (default: true)
+	MaxContentLength *int   `json:"maxContentLength,omitempty"` // Max length for content fields in characters (default: unlimited)
 }
 
 // AddFeedParams contains parameters for the add_feed tool.
@@ -140,21 +154,40 @@ type MergedFeedResult struct {
 
 // Run starts the MCP server and handles client connections until context is canceled
 func (s *Server) Run(ctx context.Context) (err error) {
-	// Create a new MCP server with resource subscription support
-	srv := mcp.NewServer(
+	srv := s.createMCPServer()
+	s.registerCoreTools(srv)
+	s.addAggregationTools(srv)
+	s.addDynamicFeedTools(srv)
+	s.addResourceHandlers(srv)
+	s.addPrompts(srv)
+
+	return s.runTransport(ctx, srv)
+}
+
+// createMCPServer creates and configures the MCP server instance
+func (s *Server) createMCPServer() *mcp.Server {
+	return mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "RSS, Atom, and JSON Feed Server",
 			Version: version.GetVersion(),
 		},
 		&mcp.ServerOptions{
-			// Enable resource subscription support
 			SubscribeHandler:   s.handleSubscribeResource,
 			UnsubscribeHandler: s.handleUnsubscribeResource,
-			HasResources:       true, // Advertise resource capabilities
+			HasResources:       true,
 		},
 	)
+}
 
-	// Add fetch_link tool
+// registerCoreTools registers the core feed-related tools
+func (s *Server) registerCoreTools(srv *mcp.Server) {
+	s.addFetchLinkTool(srv)
+	s.addAllFeedsTool(srv)
+	s.addGetFeedItemsTool(srv)
+}
+
+// addFetchLinkTool adds the fetch_link tool
+func (s *Server) addFetchLinkTool(srv *mcp.Server) {
 	fetchLinkTool := &mcp.Tool{
 		Name:        "fetch_link",
 		Description: "Fetch link URL",
@@ -169,19 +202,13 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			},
 		},
 	}
-	// The MCP SDK v0.3.0 AddTool function signature includes three return values:
-	// (*mcp.CallToolResult, any, error) where the middle 'any' value is for
-	// additional metadata that can be returned to the client.
 	mcp.AddTool(srv, fetchLinkTool, func(ctx context.Context, req *mcp.CallToolRequest, args FetchLinkParams) (*mcp.CallToolResult, any, error) {
 		c := colly.NewCollector()
-
 		var data []byte
-
 		c.OnResponse(func(response *colly.Response) {
 			data = response.Body
 		})
-
-		err = c.Visit(args.URL)
+		err := c.Visit(args.URL)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -189,19 +216,20 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 		}, nil, nil
 	})
+}
 
-	// Add all_syndication_feeds tool
+// addAllFeedsTool adds the all_syndication_feeds tool
+func (s *Server) addAllFeedsTool(srv *mcp.Server) {
 	allFeedsTool := &mcp.Tool{
 		Name:        "all_syndication_feeds",
 		Description: "list available feedItem resources",
-		InputSchema: &jsonschema.Schema{Type: "object"}, // No parameters needed
+		InputSchema: &jsonschema.Schema{Type: "object"},
 	}
 	mcp.AddTool(srv, allFeedsTool, func(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
 		feedResults, err := s.allFeedsGetter.GetAllFeeds(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
-		// Create a separate Content for each FeedResult
 		content := make([]mcp.Content, 0, len(feedResults))
 		for _, feedResult := range feedResults {
 			data, err := json.Marshal(feedResult)
@@ -214,11 +242,13 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			Content: content,
 		}, nil, nil
 	})
+}
 
-	// Add get_syndication_feed_items tool
+// addGetFeedItemsTool adds the get_syndication_feed_items tool to the server
+func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 	getSyndicationFeedTool := &mcp.Tool{
 		Name:        "get_syndication_feed_items",
-		Description: "get syndication feed and items by id",
+		Description: "get syndication feed and items by id with pagination and content control",
 		InputSchema: &jsonschema.Schema{
 			Type:     "object",
 			Required: []string{"ID"},
@@ -226,6 +256,26 @@ func (s *Server) Run(ctx context.Context) (err error) {
 				"ID": {
 					Type:        "string",
 					Description: "Feed ID",
+				},
+				"limit": {
+					Type:        "integer",
+					Description: fmt.Sprintf("Maximum number of items to return (default: %d, max: %d)", DefaultItemLimit, MaxItemLimit),
+					Minimum:     &[]float64{0}[0],
+					Maximum:     &[]float64{float64(MaxItemLimit)}[0],
+				},
+				"offset": {
+					Type:        "integer",
+					Description: "Number of items to skip for pagination (default: 0)",
+					Minimum:     &[]float64{0}[0],
+				},
+				"includeContent": {
+					Type:        "boolean",
+					Description: "Whether to include full content/description fields (default: true). Set to false to reduce response size.",
+				},
+				"maxContentLength": {
+					Type:        "integer",
+					Description: "Maximum length for content/description fields in characters (default: unlimited). Content longer than this will be truncated.",
+					Minimum:     &[]float64{0}[0],
 				},
 			},
 		},
@@ -236,56 +286,131 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			return nil, nil, err
 		}
 
-		// Create content slice with capacity for feed metadata + all items
-		content := make([]mcp.Content, 0, 1+len(feedResult.Items))
-
-		// First, marshal the feed metadata (without items)
-		feedMetadata := feedResult.ToMetadata()
-
-		data, err := json.Marshal(feedMetadata)
-		if err != nil {
-			return nil, nil, err
-		}
-		content = append(content, &mcp.TextContent{Text: string(data)})
-
-		// Then, add each item as separate content
-		for _, item := range feedResult.Items {
-			itemData, err := json.Marshal(item)
-			if err != nil {
-				return nil, nil, err
-			}
-			content = append(content, &mcp.TextContent{Text: string(itemData)})
-		}
+		limit, offset, includeContent, maxContentLength := s.parsePaginationParams(args)
+		paginatedItems, paginationInfo := s.applyPagination(feedResult.Items, limit, offset)
+		content := s.buildFeedContent(feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength)
 
 		return &mcp.CallToolResult{
 			Content: content,
 		}, nil, nil
 	})
+}
 
-	// Add feed aggregation tools (Phase 2)
-	s.addAggregationTools(srv)
+// parsePaginationParams extracts and validates pagination parameters
+func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int) {
+	limit = DefaultItemLimit
+	if args.Limit != nil {
+		limit = *args.Limit
+		if limit > MaxItemLimit {
+			limit = MaxItemLimit
+		}
+		if limit < 0 {
+			limit = 0
+		}
+	}
 
-	// Add dynamic feed management tools if DynamicFeedManager is available
-	s.addDynamicFeedTools(srv)
+	offset = 0
+	if args.Offset != nil {
+		offset = *args.Offset
+		if offset < 0 {
+			offset = 0
+		}
+	}
 
-	// Add resource handlers for MCP Resources support
-	s.addResourceHandlers(srv)
+	includeContent = true
+	if args.IncludeContent != nil {
+		includeContent = *args.IncludeContent
+	}
 
-	// Add MCP prompts for feed intelligence features
-	s.addPrompts(srv)
+	if args.MaxContentLength != nil {
+		maxContentLength = *args.MaxContentLength
+		if maxContentLength < 0 {
+			maxContentLength = 0
+		}
+	}
 
+	return limit, offset, includeContent, maxContentLength
+}
+
+// PaginationInfo contains pagination metadata
+type PaginationInfo struct {
+	TotalItems    int
+	ReturnedItems int
+	Offset        int
+	Limit         int
+	HasMore       bool
+}
+
+// applyPagination slices items based on limit and offset
+func (s *Server) applyPagination(items []*gofeed.Item, limit, offset int) ([]*gofeed.Item, PaginationInfo) {
+	totalItems := len(items)
+	startIdx := offset
+	if startIdx > totalItems {
+		startIdx = totalItems
+	}
+
+	endIdx := startIdx + limit
+	if endIdx > totalItems {
+		endIdx = totalItems
+	}
+
+	paginatedItems := items[startIdx:endIdx]
+
+	return paginatedItems, PaginationInfo{
+		TotalItems:    totalItems,
+		ReturnedItems: len(paginatedItems),
+		Offset:        offset,
+		Limit:         limit,
+		HasMore:       endIdx < totalItems,
+	}
+}
+
+// buildFeedContent creates the MCP content response with feed metadata and items
+func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []*gofeed.Item, info PaginationInfo, includeContent bool, maxContentLength int) []mcp.Content {
+	content := make([]mcp.Content, 0, 1+len(items))
+
+	type FeedMetadataWithPagination struct {
+		*model.FeedMetadata
+		TotalItems    int  `json:"total_items"`
+		ReturnedItems int  `json:"returned_items"`
+		Offset        int  `json:"offset"`
+		Limit         int  `json:"limit"`
+		HasMore       bool `json:"has_more"`
+	}
+
+	feedMetadataWithPagination := &FeedMetadataWithPagination{
+		FeedMetadata:  feedResult.ToMetadata(),
+		TotalItems:    info.TotalItems,
+		ReturnedItems: info.ReturnedItems,
+		Offset:        info.Offset,
+		Limit:         info.Limit,
+		HasMore:       info.HasMore,
+	}
+
+	data, _ := json.Marshal(feedMetadataWithPagination)
+	content = append(content, &mcp.TextContent{Text: string(data)})
+
+	for _, item := range items {
+		processedItem := processItemForOutput(item, includeContent, maxContentLength)
+		itemData, _ := json.Marshal(processedItem)
+		content = append(content, &mcp.TextContent{Text: string(itemData)})
+	}
+
+	return content
+}
+
+// runTransport starts the MCP server with the configured transport
+func (s *Server) runTransport(ctx context.Context, srv *mcp.Server) error {
 	switch s.transport {
 	case model.StdioTransport:
-		err = srv.Run(ctx, &mcp.StdioTransport{})
+		return srv.Run(ctx, &mcp.StdioTransport{})
 	case model.HTTPWithSSETransport:
-		err = srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
+		return srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
 	default:
 		return model.NewFeedError(model.ErrorTypeTransport, "unsupported transport").
 			WithOperation("run_server").
 			WithComponent("mcp_server")
 	}
-
-	return err
 }
 
 // addAggregationTools adds feed aggregation tools to the server
@@ -947,6 +1072,42 @@ func (s *Server) exportInFormat(feedResults []*FeedAndItemsResult, args *ExportF
 			WithOperation("export_feed_data").
 			WithComponent("mcp_server")
 	}
+}
+
+// Helper functions for item processing
+
+// processItemForOutput processes a feed item based on content inclusion and length limits
+func processItemForOutput(item *gofeed.Item, includeContent bool, maxContentLength int) *gofeed.Item {
+	if item == nil {
+		return nil
+	}
+
+	// Create a copy to avoid modifying the original
+	processedItem := *item
+
+	// Strip content fields if not requested
+	if !includeContent {
+		processedItem.Content = ""
+		processedItem.Description = ""
+	} else if maxContentLength > 0 {
+		// Truncate content if it exceeds max length
+		if len(processedItem.Content) > maxContentLength {
+			truncateLen := maxContentLength
+			if truncateLen > len(processedItem.Content) {
+				truncateLen = len(processedItem.Content)
+			}
+			processedItem.Content = processedItem.Content[:truncateLen] + TruncationMarker
+		}
+		if len(processedItem.Description) > maxContentLength {
+			truncateLen := maxContentLength
+			if truncateLen > len(processedItem.Description) {
+				truncateLen = len(processedItem.Description)
+			}
+			processedItem.Description = processedItem.Description[:truncateLen] + TruncationMarker
+		}
+	}
+
+	return &processedItem
 }
 
 // Helper functions for feed merging and export
