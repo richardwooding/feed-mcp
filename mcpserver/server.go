@@ -21,6 +21,16 @@ import (
 // FeedAndItemsResult represents a feed along with its items
 type FeedAndItemsResult = model.FeedAndItemsResult
 
+// Pagination constants for get_syndication_feed_items tool
+const (
+	// DefaultItemLimit is the default number of items returned when limit is not specified
+	DefaultItemLimit = 50
+	// MaxItemLimit is the maximum number of items that can be requested in a single call
+	MaxItemLimit = 100
+	// TruncationMarker is appended to truncated content fields
+	TruncationMarker = "... [truncated]"
+)
+
 var sessionCounter int64
 
 // Config holds the configuration for creating a new MCP server
@@ -233,9 +243,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 				},
 				"limit": {
 					Type:        "integer",
-					Description: "Maximum number of items to return (default: 50, max: 100)",
+					Description: fmt.Sprintf("Maximum number of items to return (default: %d, max: %d)", DefaultItemLimit, MaxItemLimit),
 					Minimum:     &[]float64{0}[0],
-					Maximum:     &[]float64{100}[0],
+					Maximum:     &[]float64{float64(MaxItemLimit)}[0],
 				},
 				"offset": {
 					Type:        "integer",
@@ -261,11 +271,11 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		}
 
 		// Apply defaults for pagination parameters
-		limit := 50
+		limit := DefaultItemLimit
 		if args.Limit != nil {
 			limit = *args.Limit
-			if limit > 100 {
-				limit = 100 // Cap at 100
+			if limit > MaxItemLimit {
+				limit = MaxItemLimit // Cap at max
 			}
 			if limit < 0 {
 				limit = 0
@@ -1058,10 +1068,18 @@ func processItemForOutput(item *gofeed.Item, includeContent bool, maxContentLeng
 	} else if maxContentLength > 0 {
 		// Truncate content if it exceeds max length
 		if len(processedItem.Content) > maxContentLength {
-			processedItem.Content = processedItem.Content[:maxContentLength] + "... [truncated]"
+			truncateLen := maxContentLength
+			if truncateLen > len(processedItem.Content) {
+				truncateLen = len(processedItem.Content)
+			}
+			processedItem.Content = processedItem.Content[:truncateLen] + TruncationMarker
 		}
 		if len(processedItem.Description) > maxContentLength {
-			processedItem.Description = processedItem.Description[:maxContentLength] + "... [truncated]"
+			truncateLen := maxContentLength
+			if truncateLen > len(processedItem.Description) {
+				truncateLen = len(processedItem.Description)
+			}
+			processedItem.Description = processedItem.Description[:truncateLen] + TruncationMarker
 		}
 	}
 

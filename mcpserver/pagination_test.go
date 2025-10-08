@@ -1,25 +1,10 @@
 package mcpserver
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/mmcdole/gofeed"
 )
-
-// Helper to create test items
-func createTestItems(count int) []*gofeed.Item {
-	items := make([]*gofeed.Item, count)
-	for i := 0; i < count; i++ {
-		items[i] = &gofeed.Item{
-			Title:       fmt.Sprintf("Item %d", i),
-			Description: fmt.Sprintf("Description for item %d", i),
-			Content:     fmt.Sprintf("Full content for item %d", i),
-			Link:        fmt.Sprintf("https://example.com/item/%d", i),
-		}
-	}
-	return items
-}
 
 func TestPaginationLogic(t *testing.T) {
 	tests := []struct {
@@ -91,11 +76,11 @@ func TestPaginationLogic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Apply pagination logic (same as in server.go)
-			limit := 50
+			limit := DefaultItemLimit
 			if tt.limit != nil {
 				limit = *tt.limit
-				if limit > 100 {
-					limit = 100
+				if limit > MaxItemLimit {
+					limit = MaxItemLimit
 				}
 				if limit < 0 {
 					limit = 0
@@ -177,8 +162,10 @@ func TestProcessItemForOutput(t *testing.T) {
 					t.Error("Expected content fields to be populated")
 				}
 				if tt.expectTruncation {
-					if len(result.Content) > tt.maxContentLength+20 { // +20 for truncation marker
-						t.Errorf("Content not truncated: length=%d, max=%d", len(result.Content), tt.maxContentLength)
+					// TruncationMarker is "... [truncated]" which is 16 characters
+					maxExpectedLen := tt.maxContentLength + len(TruncationMarker)
+					if len(result.Content) > maxExpectedLen {
+						t.Errorf("Content not truncated: length=%d, max=%d", len(result.Content), maxExpectedLen)
 					}
 				}
 			} else {
