@@ -86,7 +86,11 @@ type FetchLinkParams struct {
 
 // GetSyndicationFeedParams contains parameters for the get_syndication_feed_items tool.
 type GetSyndicationFeedParams struct {
-	ID string
+	ID               string `json:"ID"`
+	Limit            *int   `json:"limit,omitempty"`            // Maximum items to return (default: 50, max: 100)
+	Offset           *int   `json:"offset,omitempty"`           // Number of items to skip (default: 0)
+	IncludeContent   *bool  `json:"includeContent,omitempty"`   // Include full content/description (default: true)
+	MaxContentLength *int   `json:"maxContentLength,omitempty"` // Max length for content fields in characters (default: unlimited)
 }
 
 // AddFeedParams contains parameters for the add_feed tool.
@@ -218,7 +222,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	// Add get_syndication_feed_items tool
 	getSyndicationFeedTool := &mcp.Tool{
 		Name:        "get_syndication_feed_items",
-		Description: "get syndication feed and items by id",
+		Description: "get syndication feed and items by id with pagination and content control",
 		InputSchema: &jsonschema.Schema{
 			Type:     "object",
 			Required: []string{"ID"},
@@ -226,6 +230,26 @@ func (s *Server) Run(ctx context.Context) (err error) {
 				"ID": {
 					Type:        "string",
 					Description: "Feed ID",
+				},
+				"limit": {
+					Type:        "integer",
+					Description: "Maximum number of items to return (default: 50, max: 100)",
+					Minimum:     &[]float64{0}[0],
+					Maximum:     &[]float64{100}[0],
+				},
+				"offset": {
+					Type:        "integer",
+					Description: "Number of items to skip for pagination (default: 0)",
+					Minimum:     &[]float64{0}[0],
+				},
+				"includeContent": {
+					Type:        "boolean",
+					Description: "Whether to include full content/description fields (default: true). Set to false to reduce response size.",
+				},
+				"maxContentLength": {
+					Type:        "integer",
+					Description: "Maximum length for content/description fields in characters (default: unlimited). Content longer than this will be truncated.",
+					Minimum:     &[]float64{0}[0],
 				},
 			},
 		},
@@ -236,21 +260,88 @@ func (s *Server) Run(ctx context.Context) (err error) {
 			return nil, nil, err
 		}
 
-		// Create content slice with capacity for feed metadata + all items
-		content := make([]mcp.Content, 0, 1+len(feedResult.Items))
+		// Apply defaults for pagination parameters
+		limit := 50
+		if args.Limit != nil {
+			limit = *args.Limit
+			if limit > 100 {
+				limit = 100 // Cap at 100
+			}
+			if limit < 0 {
+				limit = 0
+			}
+		}
 
-		// First, marshal the feed metadata (without items)
-		feedMetadata := feedResult.ToMetadata()
+		offset := 0
+		if args.Offset != nil {
+			offset = *args.Offset
+			if offset < 0 {
+				offset = 0
+			}
+		}
 
-		data, err := json.Marshal(feedMetadata)
+		includeContent := true
+		if args.IncludeContent != nil {
+			includeContent = *args.IncludeContent
+		}
+
+		var maxContentLength int
+		if args.MaxContentLength != nil {
+			maxContentLength = *args.MaxContentLength
+			if maxContentLength < 0 {
+				maxContentLength = 0
+			}
+		}
+
+		// Calculate pagination
+		totalItems := len(feedResult.Items)
+		startIdx := offset
+		if startIdx > totalItems {
+			startIdx = totalItems
+		}
+
+		endIdx := startIdx + limit
+		if endIdx > totalItems {
+			endIdx = totalItems
+		}
+
+		// Slice items based on pagination
+		paginatedItems := feedResult.Items[startIdx:endIdx]
+
+		// Create content slice with capacity for feed metadata + paginated items
+		content := make([]mcp.Content, 0, 1+len(paginatedItems))
+
+		// First, marshal the feed metadata with pagination info
+		type FeedMetadataWithPagination struct {
+			*model.FeedMetadata
+			TotalItems    int  `json:"total_items"`
+			ReturnedItems int  `json:"returned_items"`
+			Offset        int  `json:"offset"`
+			Limit         int  `json:"limit"`
+			HasMore       bool `json:"has_more"`
+		}
+
+		feedMetadataWithPagination := &FeedMetadataWithPagination{
+			FeedMetadata:  feedResult.ToMetadata(),
+			TotalItems:    totalItems,
+			ReturnedItems: len(paginatedItems),
+			Offset:        offset,
+			Limit:         limit,
+			HasMore:       endIdx < totalItems,
+		}
+
+		data, err := json.Marshal(feedMetadataWithPagination)
 		if err != nil {
 			return nil, nil, err
 		}
 		content = append(content, &mcp.TextContent{Text: string(data)})
 
-		// Then, add each item as separate content
-		for _, item := range feedResult.Items {
-			itemData, err := json.Marshal(item)
+		// Then, add each paginated item as separate content
+		for _, item := range paginatedItems {
+			// Process item based on content parameters
+			processedItem := processItemForOutput(item, includeContent, maxContentLength)
+
+			itemData, err := json.Marshal(processedItem)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -947,6 +1038,34 @@ func (s *Server) exportInFormat(feedResults []*FeedAndItemsResult, args *ExportF
 			WithOperation("export_feed_data").
 			WithComponent("mcp_server")
 	}
+}
+
+// Helper functions for item processing
+
+// processItemForOutput processes a feed item based on content inclusion and length limits
+func processItemForOutput(item *gofeed.Item, includeContent bool, maxContentLength int) *gofeed.Item {
+	if item == nil {
+		return nil
+	}
+
+	// Create a copy to avoid modifying the original
+	processedItem := *item
+
+	// Strip content fields if not requested
+	if !includeContent {
+		processedItem.Content = ""
+		processedItem.Description = ""
+	} else if maxContentLength > 0 {
+		// Truncate content if it exceeds max length
+		if len(processedItem.Content) > maxContentLength {
+			processedItem.Content = processedItem.Content[:maxContentLength] + "... [truncated]"
+		}
+		if len(processedItem.Description) > maxContentLength {
+			processedItem.Description = processedItem.Description[:maxContentLength] + "... [truncated]"
+		}
+	}
+
+	return &processedItem
 }
 
 // Helper functions for feed merging and export
