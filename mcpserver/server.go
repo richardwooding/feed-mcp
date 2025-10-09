@@ -24,11 +24,13 @@ type FeedAndItemsResult = model.FeedAndItemsResult
 // Pagination constants for get_syndication_feed_items tool
 const (
 	// DefaultItemLimit is the default number of items returned when limit is not specified
-	DefaultItemLimit = 50
+	DefaultItemLimit = 10
 	// MaxItemLimit is the maximum number of items that can be requested in a single call
-	MaxItemLimit = 100
+	MaxItemLimit = 20
 	// TruncationMarker is appended to truncated content fields
 	TruncationMarker = "... [truncated]"
+	// DefaultContentLength is the default maximum length for content/description fields when included
+	DefaultContentLength = 500
 )
 
 var sessionCounter int64
@@ -317,16 +319,23 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, of
 		}
 	}
 
-	includeContent = true
+	// Default to false to reduce response size
+	includeContent = false
 	if args.IncludeContent != nil {
 		includeContent = *args.IncludeContent
 	}
 
+	// Default to DefaultContentLength when content is included
+	maxContentLength = DefaultContentLength
 	if args.MaxContentLength != nil {
 		maxContentLength = *args.MaxContentLength
 		if maxContentLength < 0 {
 			maxContentLength = 0
 		}
+	}
+	// If content is not included, maxContentLength is irrelevant
+	if !includeContent {
+		maxContentLength = 0
 	}
 
 	return limit, offset, includeContent, maxContentLength
