@@ -643,69 +643,110 @@ The server exposes MCP tools that Claude can use:
 2. `get_syndication_feed_items` - Returns items from a specific feed with pagination and content control
 3. `fetch_link` - Fetches and returns content from any URL
 
-#### Handling Large Feeds and the 1MB Limit
+#### Handling Large Feeds and Response Size Limits
 
-MCP has a 1MB limit on tool result sizes. For feeds with many items or large content, `get_syndication_feed_items` supports pagination and content filtering to stay under this limit:
+Claude Code has conversation context limits that can be exceeded when fetching large feeds. The `get_syndication_feed_items` tool uses **conservative defaults** to prevent hitting these limits while still providing useful feed data.
 
 **Pagination Parameters:**
-- `limit` (integer, 0-100): Maximum items to return (default: 50, max: 100)
+- `limit` (integer, 0-20): Maximum items to return (default: 10, max: 20)
 - `offset` (integer, ≥0): Number of items to skip (default: 0)
-- `includeContent` (boolean): Whether to include full content/description (default: true)
-- `maxContentLength` (integer, ≥0): Max characters for content fields (default: unlimited)
+- `includeContent` (boolean): Whether to include full content/description (default: **false**)
+- `maxContentLength` (integer, ≥0): Max characters for content fields (default: 500 when content included)
 
 **Response Metadata:**
 Every response includes pagination metadata:
 ```json
 {
   "total_items": 150,
-  "returned_items": 50,
+  "returned_items": 10,
   "offset": 0,
-  "limit": 50,
+  "limit": 10,
   "has_more": true
 }
 ```
 
+**Default Behavior (v2.0.0+):**
+By default, responses include **metadata only** (title, link, date, author) without full content/description fields. This reduces response size by 80-90% and prevents conversation length errors.
+
 **Usage Examples:**
 
 ```json
-// Get first 10 items
+// Default: Get first 10 items with metadata only (RECOMMENDED)
 {
-  "ID": "feed-id",
-  "limit": 10
+  "ID": "css-tricks.com-feed"
 }
 
-// Get next page (items 50-100)
+// Browse with metadata only (fast, small responses)
 {
   "ID": "feed-id",
-  "limit": 50,
-  "offset": 50
+  "limit": 10,
+  "offset": 0
 }
 
-// Get items without content (metadata only)
+// Read specific items with content preview (500 chars)
 {
   "ID": "feed-id",
-  "limit": 20,
-  "includeContent": false
+  "limit": 5,
+  "includeContent": true
 }
 
-// Get items with truncated content
+// Read items with full content (use sparingly!)
 {
   "ID": "feed-id",
-  "limit": 30,
-  "maxContentLength": 500
+  "limit": 5,
+  "includeContent": true,
+  "maxContentLength": 0
+}
+
+// Custom content length
+{
+  "ID": "feed-id",
+  "limit": 10,
+  "includeContent": true,
+  "maxContentLength": 1000
 }
 ```
 
 **Best Practices:**
-- For large feeds (>100 items), use smaller `limit` values (10-20)
-- Set `includeContent: false` when you only need titles and links
-- Use `maxContentLength` to truncate long articles
-- Check `has_more` field to determine if more pages exist
-- For advanced filtering (date ranges, categories, search), use the **MCP Resources API** instead
+
+**For Content-Rich Feeds (CSS-Tricks, Smashing Magazine, etc.):**
+- Use default settings (limit: 10, includeContent: false) for browsing
+- Only set `includeContent: true` when reading specific items
+- Keep `limit` ≤ 5 when including content
+- Use `maxContentLength` to control response size
+
+**Feed Size Guidelines:**
+- **Small feeds** (<10KB/item): Safe with `limit: 10, includeContent: true`
+- **Medium feeds** (10-30KB/item): Use `limit: 5, includeContent: true, maxContentLength: 500`
+- **Large feeds** (>30KB/item): Use `includeContent: false` or `limit: 3`
+
+**Response Size Estimates:**
+- Metadata only: ~1-2KB per item
+- With 500 char preview: ~3-5KB per item
+- With full content: 10-30KB+ per item (feed-dependent)
+
+**Two-Pass Workflow (Recommended):**
+1. **Browse**: Get metadata only to see what's available
+2. **Read**: Fetch specific items with content when needed
+
+```json
+// Pass 1: Browse (fast, small response)
+{ "ID": "feed-id", "limit": 10 }
+
+// Pass 2: Read item #3 (includes content)
+{ "ID": "feed-id", "limit": 1, "offset": 2, "includeContent": true }
+```
 
 **When to Use Resources API vs Tools:**
 - **Tools** (`get_syndication_feed_items`): Simple pagination, good for browsing
-- **Resources** (`feeds://feed/{id}/items?...`): Advanced filters (date ranges, categories, search, etc.)
+- **Resources** (`feeds://feed/{id}/items?...`): Advanced filters (date ranges, categories, search)
+
+**Troubleshooting "Maximum Conversation Length" Errors:**
+If you encounter "Claude hit the maximum length for this conversation":
+1. Reduce `limit` to 5 or fewer items
+2. Set `includeContent: false` to get metadata only
+3. Use `maxContentLength: 200` for shorter previews
+4. Start a new conversation and retry with smaller parameters
 
 **Dynamic Feed Management Tools (when `--allow-runtime-feeds` is enabled):**
 4. `add_feed` - Add a new RSS/Atom/JSON feed at runtime

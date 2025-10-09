@@ -24,11 +24,13 @@ type FeedAndItemsResult = model.FeedAndItemsResult
 // Pagination constants for get_syndication_feed_items tool
 const (
 	// DefaultItemLimit is the default number of items returned when limit is not specified
-	DefaultItemLimit = 50
+	DefaultItemLimit = 10
 	// MaxItemLimit is the maximum number of items that can be requested in a single call
-	MaxItemLimit = 100
+	MaxItemLimit = 20
 	// TruncationMarker is appended to truncated content fields
 	TruncationMarker = "... [truncated]"
+	// DefaultContentLength is the default maximum length for content/description fields when included
+	DefaultContentLength = 500
 )
 
 var sessionCounter int64
@@ -248,33 +250,33 @@ func (s *Server) addAllFeedsTool(srv *mcp.Server) {
 func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 	getSyndicationFeedTool := &mcp.Tool{
 		Name:        "get_syndication_feed_items",
-		Description: "get syndication feed and items by id with pagination and content control",
+		Description: "Get feed items with metadata-only by default (title, link, date). Use two-pass workflow: 1) Browse with defaults to see available items, 2) Read specific items with includeContent=true. Prevents conversation length errors by excluding large content/description fields unless explicitly requested.",
 		InputSchema: &jsonschema.Schema{
 			Type:     "object",
 			Required: []string{"ID"},
 			Properties: map[string]*jsonschema.Schema{
 				"ID": {
 					Type:        "string",
-					Description: "Feed ID",
+					Description: "Feed ID from all_syndication_feeds tool",
 				},
 				"limit": {
 					Type:        "integer",
-					Description: fmt.Sprintf("Maximum number of items to return (default: %d, max: %d)", DefaultItemLimit, MaxItemLimit),
+					Description: fmt.Sprintf("Maximum items to return (default: %d, max: %d). Use smaller values when includeContent=true to avoid conversation length errors.", DefaultItemLimit, MaxItemLimit),
 					Minimum:     &[]float64{0}[0],
 					Maximum:     &[]float64{float64(MaxItemLimit)}[0],
 				},
 				"offset": {
 					Type:        "integer",
-					Description: "Number of items to skip for pagination (default: 0)",
+					Description: "Number of items to skip for pagination (default: 0). Use with limit to navigate pages of results.",
 					Minimum:     &[]float64{0}[0],
 				},
 				"includeContent": {
 					Type:        "boolean",
-					Description: "Whether to include full content/description fields (default: true). Set to false to reduce response size.",
+					Description: "Whether to include content/description fields (default: false). Leave false for browsing (metadata only: title, link, date, author). Set true only when reading specific items to avoid large responses.",
 				},
 				"maxContentLength": {
 					Type:        "integer",
-					Description: "Maximum length for content/description fields in characters (default: unlimited). Content longer than this will be truncated.",
+					Description: fmt.Sprintf("Maximum characters for content/description fields (default: %d when includeContent=true, 0 for unlimited). Use to preview content without full articles.", DefaultContentLength),
 					Minimum:     &[]float64{0}[0],
 				},
 			},
@@ -317,16 +319,23 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, of
 		}
 	}
 
-	includeContent = true
+	// Default to false to reduce response size
+	includeContent = false
 	if args.IncludeContent != nil {
 		includeContent = *args.IncludeContent
 	}
 
+	// Default to DefaultContentLength when content is included
+	maxContentLength = DefaultContentLength
 	if args.MaxContentLength != nil {
 		maxContentLength = *args.MaxContentLength
 		if maxContentLength < 0 {
 			maxContentLength = 0
 		}
+	}
+	// If content is not included, maxContentLength is irrelevant
+	if !includeContent {
+		maxContentLength = 0
 	}
 
 	return limit, offset, includeContent, maxContentLength

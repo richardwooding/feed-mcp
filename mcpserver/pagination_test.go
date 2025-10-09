@@ -54,13 +54,13 @@ func TestPaginationLogic(t *testing.T) {
 		expectedReturned int
 		expectedHasMore  bool
 	}{
-		{"default pagination (50 items from 150)", 150, nil, nil, 50, true},
-		{"limit 10 items", 150, ptrInt(10), nil, 10, true},
-		{"offset 50, limit 50", 150, ptrInt(50), ptrInt(50), 50, true},
-		{"offset 140, limit 50 (partial page)", 150, ptrInt(50), ptrInt(140), 10, false},
-		{"limit exceeds max (should cap at 100)", 150, ptrInt(200), nil, 100, true},
+		{"default pagination (10 items from 150)", 150, nil, nil, 10, true},
+		{"limit 5 items", 150, ptrInt(5), nil, 5, true},
+		{"offset 10, limit 10", 150, ptrInt(10), ptrInt(10), 10, true},
+		{"offset 15, limit 10 (partial page)", 25, ptrInt(10), ptrInt(15), 10, false},
+		{"limit exceeds max (should cap at 20)", 150, ptrInt(200), nil, 20, true},
 		{"offset beyond total items", 150, nil, ptrInt(200), 0, false},
-		{"small feed (20 items, default limit)", 20, nil, nil, 20, false},
+		{"small feed (5 items, default limit)", 5, nil, nil, 5, false},
 	}
 
 	for _, tt := range tests {
@@ -86,19 +86,25 @@ func TestProcessItemForOutput(t *testing.T) {
 		Link:        "https://example.com/item",
 	}
 
-	t.Run("include full content", func(t *testing.T) {
+	t.Run("include full content (unlimited)", func(t *testing.T) {
 		result := processItemForOutput(testItem, true, 0)
 		verifyContentIncluded(t, result, testItem)
 		verifyMetadataPreserved(t, result, testItem)
 	})
 
-	t.Run("exclude content", func(t *testing.T) {
+	t.Run("exclude content (default behavior)", func(t *testing.T) {
 		result := processItemForOutput(testItem, false, 0)
 		verifyContentExcluded(t, result)
 		verifyMetadataPreserved(t, result, testItem)
 	})
 
-	t.Run("truncate content at 20 chars", func(t *testing.T) {
+	t.Run("truncate content at 500 chars (default when included)", func(t *testing.T) {
+		result := processItemForOutput(testItem, true, DefaultContentLength)
+		verifyContentTruncated(t, result, DefaultContentLength)
+		verifyMetadataPreserved(t, result, testItem)
+	})
+
+	t.Run("truncate content at 20 chars (custom)", func(t *testing.T) {
 		result := processItemForOutput(testItem, true, 20)
 		verifyContentTruncated(t, result, 20)
 		verifyMetadataPreserved(t, result, testItem)
