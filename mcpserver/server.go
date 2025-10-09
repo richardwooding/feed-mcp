@@ -250,33 +250,33 @@ func (s *Server) addAllFeedsTool(srv *mcp.Server) {
 func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 	getSyndicationFeedTool := &mcp.Tool{
 		Name:        "get_syndication_feed_items",
-		Description: "get syndication feed and items by id with pagination and content control",
+		Description: "Get feed items with metadata-only by default (title, link, date). Use two-pass workflow: 1) Browse with defaults to see available items, 2) Read specific items with includeContent=true. Prevents conversation length errors by excluding large content/description fields unless explicitly requested.",
 		InputSchema: &jsonschema.Schema{
 			Type:     "object",
 			Required: []string{"ID"},
 			Properties: map[string]*jsonschema.Schema{
 				"ID": {
 					Type:        "string",
-					Description: "Feed ID",
+					Description: "Feed ID from all_syndication_feeds tool",
 				},
 				"limit": {
 					Type:        "integer",
-					Description: fmt.Sprintf("Maximum number of items to return (default: %d, max: %d)", DefaultItemLimit, MaxItemLimit),
+					Description: fmt.Sprintf("Maximum items to return (default: %d, max: %d). Use smaller values when includeContent=true to avoid conversation length errors.", DefaultItemLimit, MaxItemLimit),
 					Minimum:     &[]float64{0}[0],
 					Maximum:     &[]float64{float64(MaxItemLimit)}[0],
 				},
 				"offset": {
 					Type:        "integer",
-					Description: "Number of items to skip for pagination (default: 0)",
+					Description: "Number of items to skip for pagination (default: 0). Use with limit to navigate pages of results.",
 					Minimum:     &[]float64{0}[0],
 				},
 				"includeContent": {
 					Type:        "boolean",
-					Description: "Whether to include full content/description fields (default: true). Set to false to reduce response size.",
+					Description: "Whether to include content/description fields (default: false). Leave false for browsing (metadata only: title, link, date, author). Set true only when reading specific items to avoid large responses.",
 				},
 				"maxContentLength": {
 					Type:        "integer",
-					Description: "Maximum length for content/description fields in characters (default: unlimited). Content longer than this will be truncated.",
+					Description: fmt.Sprintf("Maximum characters for content/description fields (default: %d when includeContent=true, 0 for unlimited). Use to preview content without full articles.", DefaultContentLength),
 					Minimum:     &[]float64{0}[0],
 				},
 			},
