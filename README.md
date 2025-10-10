@@ -114,6 +114,29 @@ Try asking Claude:
 }
 ```
 
+### Podcasts
+```json
+{
+  "mcpServers": {
+    "podcasts": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "ghcr.io/richardwooding/feed-mcp:latest",
+        "run",
+        "https://feeds.npr.org/510282/podcast.xml",
+        "https://feeds.npr.org/381444908/podcast.xml"
+      ]
+    }
+  }
+}
+```
+
+**Try asking Claude:**
+- "What are the latest podcast episodes?"
+- "Summarize the most recent episode from NPR Politics"
+- "Are there any episodes about climate change this week?"
+
 ## Using Your RSS Reader Feeds
 
 Already have feeds in Feedly, Inoreader, or another RSS reader? Export them as OPML and use with feed-mcp:
