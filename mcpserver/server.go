@@ -283,7 +283,7 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 				},
 				"includeImages": {
 					Type:        "boolean",
-					Description: "Whether to include image ResourceLinks for thumbnails and media (default: false). Images are returned as lightweight URL references (~100 bytes each), not embedded data.",
+					Description: "Whether to include image ResourceLinks for thumbnails and media (default: false). Images are returned as lightweight URL references (~100 bytes each), not embedded data. Each image ResourceLink includes Meta: {\"itemIndex\": N} to associate it with the feed item at position N in the items array.",
 				},
 			},
 		},
