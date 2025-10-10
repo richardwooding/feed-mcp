@@ -3,17 +3,28 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"io"
+	"net/http"
+	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	ristretto "github.com/dgraph-io/ristretto/v2"
+	gocache "github.com/eko/gocache/lib/v4/cache"
+	"github.com/eko/gocache/lib/v4/store"
+	ristrettostore "github.com/eko/gocache/store/ristretto/v4"
 	"github.com/gocolly/colly"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mmcdole/gofeed"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/sony/gobreaker"
 
 	"github.com/richardwooding/feed-mcp/model"
 	"github.com/richardwooding/feed-mcp/version"
@@ -32,6 +43,23 @@ const (
 	TruncationMarker = "... [truncated]"
 	// DefaultContentLength is the default maximum length for content/description fields when included
 	DefaultContentLength = 500
+	// MaxImageSize is the maximum size of embedded images (Claude Desktop limit)
+	MaxImageSize = 1024 * 1024 // 1MB
+	// ImageFetchTimeout is the timeout for fetching individual images
+	ImageFetchTimeout = 5 * time.Second
+	// MaxImagesPerItem is the maximum number of images to embed per feed item
+	MaxImagesPerItem = 10
+	// ImageCacheTTL is the default TTL for cached embedded images
+	ImageCacheTTL = 1 * time.Hour
+
+	// Image MIME types
+	mimeTypeJPEG = "image/jpeg"
+	mimeTypePNG  = "image/png"
+	mimeTypeGIF  = "image/gif"
+	mimeTypeWebP = "image/webp"
+	mimeTypeSVG  = "image/svg+xml"
+	mimeTypeBMP  = "image/bmp"
+	mimeTypeICO  = "image/x-icon"
 )
 
 var sessionCounter int64
@@ -46,12 +74,16 @@ type Config struct {
 
 // Server implements an MCP server for serving syndication feeds
 type Server struct {
-	allFeedsGetter     AllFeedsGetter
-	feedAndItemsGetter FeedAndItemsGetter
-	dynamicFeedManager DynamicFeedManager // Optional: for runtime feed management
-	resourceManager    *ResourceManager
-	sessionID          string
-	transport          model.Transport
+	allFeedsGetter       AllFeedsGetter
+	feedAndItemsGetter   FeedAndItemsGetter
+	dynamicFeedManager   DynamicFeedManager // Optional: for runtime feed management
+	resourceManager      *ResourceManager
+	sessionID            string
+	transport            model.Transport
+	imageCache           *gocache.Cache[[]byte]               // Cache for embedded images
+	imageCircuitBreakers map[string]*gobreaker.CircuitBreaker // Circuit breakers per image host
+	imageCBMutex         sync.RWMutex                         // Protects imageCircuitBreakers map
+	httpClient           *http.Client                         // HTTP client for fetching images
 }
 
 // generateSessionID creates a unique session ID for this server instance
@@ -84,6 +116,11 @@ func NewServer(config Config) (*Server, error) {
 		dynamicFeedManager: config.DynamicFeedManager,
 		sessionID:          generateSessionID(),
 	}
+
+	// Initialize image cache and HTTP client
+	if err := server.initializeImageCache(); err != nil {
+		return nil, err
+	}
 	server.resourceManager = NewResourceManager(config.AllFeedsGetter, config.FeedAndItemsGetter)
 
 	// Set up cache invalidation hook to trigger resource change notifications
@@ -105,6 +142,7 @@ type GetSyndicationFeedParams struct {
 	IncludeContent   *bool  `json:"includeContent,omitempty"`   // Include full content/description (default: true)
 	MaxContentLength *int   `json:"maxContentLength,omitempty"` // Max length for content fields in characters (default: unlimited)
 	IncludeImages    *bool  `json:"includeImages,omitempty"`    // Include image ResourceLinks (default: false)
+	EmbedImages      *bool  `json:"embedImages,omitempty"`      // Fetch and embed images as base64 ImageContent for inline display (default: false, requires includeImages=true)
 }
 
 // AddFeedParams contains parameters for the add_feed tool.
@@ -283,7 +321,11 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 				},
 				"includeImages": {
 					Type:        "boolean",
-					Description: "Whether to include image ResourceLinks for thumbnails and media (default: false). Images are returned as lightweight URL references (~100 bytes each), not embedded data. Each image ResourceLink includes Meta: {\"itemIndex\": N} to associate it with the feed item at position N in the items array.",
+					Description: "Whether to include images from feed items (default: false). When false: no images. When true with embedImages=false: returns ResourceLinks (~100 bytes each, URLs only). When true with embedImages=true: returns ImageContent (base64-encoded, displays inline in Claude Desktop). All images include Meta: {\"itemIndex\": N} for association with feed item at position N.",
+				},
+				"embedImages": {
+					Type:        "boolean",
+					Description: "Fetch and embed images as base64 ImageContent for inline display (default: false). Requires includeImages=true. Images are cached, rate-limited, and subject to: 1MB size limit per image (Claude Desktop constraint), circuit breaker protection (3 failures = skip host), 5s timeout per fetch. Failed fetches are skipped gracefully.",
 				},
 			},
 		},
@@ -294,9 +336,9 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 			return nil, nil, err
 		}
 
-		limit, offset, includeContent, maxContentLength, includeImages := s.parsePaginationParams(args)
+		limit, offset, includeContent, maxContentLength, includeImages, embedImages := s.parsePaginationParams(args)
 		paginatedItems, paginationInfo := s.applyPagination(feedResult.Items, limit, offset)
-		content := s.buildFeedContent(feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength, includeImages)
+		content := s.buildFeedContent(ctx, feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength, includeImages, embedImages)
 
 		return &mcp.CallToolResult{
 			Content: content,
@@ -305,7 +347,9 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 }
 
 // parsePaginationParams extracts and validates pagination parameters
-func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int, includeImages bool) {
+//
+//nolint:gocritic // Multiple return values are necessary for parsing all parameters
+func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int, includeImages, embedImages bool) {
 	limit = DefaultItemLimit
 	if args.Limit != nil {
 		limit = *args.Limit
@@ -350,7 +394,17 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, of
 		includeImages = *args.IncludeImages
 	}
 
-	return limit, offset, includeContent, maxContentLength, includeImages
+	// Default to false to reduce response size
+	embedImages = false
+	if args.EmbedImages != nil {
+		embedImages = *args.EmbedImages
+	}
+	// embedImages requires includeImages to be true
+	if embedImages && !includeImages {
+		embedImages = false
+	}
+
+	return limit, offset, includeContent, maxContentLength, includeImages, embedImages
 }
 
 // PaginationInfo contains pagination metadata
@@ -387,7 +441,7 @@ func (s *Server) applyPagination(items []*gofeed.Item, limit, offset int) ([]*go
 }
 
 // buildFeedContent creates the MCP content response with feed metadata and items
-func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []*gofeed.Item, info PaginationInfo, includeContent bool, maxContentLength int, includeImages bool) []mcp.Content {
+func (s *Server) buildFeedContent(ctx context.Context, feedResult *model.FeedAndItemsResult, items []*gofeed.Item, info PaginationInfo, includeContent bool, maxContentLength int, includeImages, embedImages bool) []mcp.Content {
 	content := make([]mcp.Content, 0, 1+len(items))
 
 	type FeedMetadataWithPagination struct {
@@ -416,13 +470,32 @@ func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []
 		itemData, _ := json.Marshal(processedItem)
 		content = append(content, &mcp.TextContent{Text: string(itemData)})
 
-		// Add image ResourceLinks if requested
+		// Add images if requested
 		if includeImages {
 			imageLinks := extractImageLinks(item)
+
+			// Limit images per item
+			if len(imageLinks) > MaxImagesPerItem {
+				imageLinks = imageLinks[:MaxImagesPerItem]
+			}
+
 			for _, link := range imageLinks {
-				// Add item index to Meta for client-side association
-				link.Meta = mcp.Meta{"itemIndex": i}
-				content = append(content, link)
+				if embedImages {
+					// Fetch and embed image as ImageContent
+					imageContent, err := s.fetchAndEmbedImage(ctx, link.URI, link.MIMEType, i)
+					if err != nil {
+						// Log error but continue with other images (graceful degradation)
+						// Fall back to ResourceLink on failure
+						link.Meta = mcp.Meta{"itemIndex": i}
+						content = append(content, link)
+						continue
+					}
+					content = append(content, imageContent)
+				} else {
+					// Return as ResourceLink (lightweight URL reference)
+					link.Meta = mcp.Meta{"itemIndex": i}
+					content = append(content, link)
+				}
 			}
 		}
 	}
@@ -1162,19 +1235,19 @@ func guessMIMETypeFromURL(urlStr string) string {
 	// Map common image extensions to MIME types
 	switch strings.ToLower(ext) {
 	case "jpg", "jpeg":
-		return "image/jpeg"
+		return mimeTypeJPEG
 	case "png":
-		return "image/png"
+		return mimeTypePNG
 	case "gif":
-		return "image/gif"
+		return mimeTypeGIF
 	case "webp":
-		return "image/webp"
+		return mimeTypeWebP
 	case "svg":
-		return "image/svg+xml"
+		return mimeTypeSVG
 	case "bmp":
-		return "image/bmp"
+		return mimeTypeBMP
 	case "ico":
-		return "image/x-icon"
+		return mimeTypeICO
 	default:
 		return "" // Return empty string for unknown extensions (not an image)
 	}
@@ -1225,6 +1298,146 @@ func extractImageLinks(item *gofeed.Item) []*mcp.ResourceLink {
 	}
 
 	return links
+}
+
+// initializeImageCache creates and configures the image cache, circuit breakers, and HTTP client
+func (s *Server) initializeImageCache() error {
+	// Create ristretto cache
+	ristrettoCache, err := ristretto.NewCache[string, []byte](&ristretto.Config[string, []byte]{
+		NumCounters: 1000,
+		MaxCost:     100,
+		BufferItems: 64,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create image cache: %w", err)
+	}
+
+	// Wrap ristretto cache with gocache
+	imageStore := ristrettostore.NewRistretto(ristrettoCache)
+	s.imageCache = gocache.New[[]byte](imageStore)
+
+	// Initialize circuit breakers map
+	s.imageCircuitBreakers = make(map[string]*gobreaker.CircuitBreaker)
+
+	// Create HTTP client with timeout
+	s.httpClient = &http.Client{
+		Timeout: ImageFetchTimeout,
+	}
+
+	return nil
+}
+
+// getOrCreateImageCircuitBreaker gets or creates a circuit breaker for an image host
+func (s *Server) getOrCreateImageCircuitBreaker(host string) *gobreaker.CircuitBreaker {
+	s.imageCBMutex.RLock()
+	cb, exists := s.imageCircuitBreakers[host]
+	s.imageCBMutex.RUnlock()
+
+	if exists {
+		return cb
+	}
+
+	s.imageCBMutex.Lock()
+	defer s.imageCBMutex.Unlock()
+
+	// Check again in case another goroutine created it
+	if cb, exists := s.imageCircuitBreakers[host]; exists {
+		return cb
+	}
+
+	// Create new circuit breaker for this host
+	cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        fmt.Sprintf("image-%s", host),
+		MaxRequests: 3,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 3
+		},
+	})
+
+	s.imageCircuitBreakers[host] = cb
+	return cb
+}
+
+// hashImageURL creates a cache key for an image URL using FNV-1a hash
+func hashImageURL(imageURL string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(imageURL)) // hash.Hash.Write never returns an error
+	return fmt.Sprintf("image:%x", h.Sum64())
+}
+
+// fetchAndEmbedImage fetches an image from URL and returns it as base64-encoded ImageContent
+func (s *Server) fetchAndEmbedImage(ctx context.Context, imageURL, mimeType string, itemIndex int) (*mcp.ImageContent, error) {
+	// Check cache first
+	cacheKey := hashImageURL(imageURL)
+	if cachedData, err := s.imageCache.Get(ctx, cacheKey); err == nil {
+		return &mcp.ImageContent{
+			Data:     cachedData,
+			MIMEType: mimeType,
+			Meta:     mcp.Meta{"itemIndex": itemIndex},
+		}, nil
+	}
+
+	// Parse URL to get host for circuit breaker
+	parsedURL, err := url.Parse(imageURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image URL: %w", err)
+	}
+
+	// Get circuit breaker for this host
+	cb := s.getOrCreateImageCircuitBreaker(parsedURL.Host)
+
+	// Execute fetch with circuit breaker
+	result, err := cb.Execute(func() (interface{}, error) {
+		// Create request with timeout context
+		req, err := http.NewRequestWithContext(ctx, "GET", imageURL, http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		// Fetch image
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch image: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("image fetch returned status %d", resp.StatusCode)
+		}
+
+		// Read with size limit
+		limitedReader := io.LimitReader(resp.Body, MaxImageSize+1)
+		data, err := io.ReadAll(limitedReader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read image data: %w", err)
+		}
+
+		// Check size limit
+		if len(data) > MaxImageSize {
+			return nil, fmt.Errorf("image exceeds 1MB limit (%d bytes)", len(data))
+		}
+
+		// Base64 encode
+		encoded := base64.StdEncoding.EncodeToString(data)
+		encodedBytes := []byte(encoded)
+
+		// Cache the encoded data
+		_ = s.imageCache.Set(ctx, cacheKey, encodedBytes, store.WithExpiration(ImageCacheTTL))
+
+		return encodedBytes, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	encodedData := result.([]byte)
+
+	return &mcp.ImageContent{
+		Data:     encodedData,
+		MIMEType: mimeType,
+		Meta:     mcp.Meta{"itemIndex": itemIndex},
+	}, nil
 }
 
 // Helper functions for feed merging and export
