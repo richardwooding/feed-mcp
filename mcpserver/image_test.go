@@ -6,22 +6,28 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+const (
+	testMIMETypeJPEG = "image/jpeg"
+	testMIMETypePNG  = "image/png"
+	testMIMETypeGIF  = "image/gif"
+)
+
 func TestGuessMIMETypeFromURL(t *testing.T) {
 	tests := []struct {
 		name     string
 		url      string
 		expected string
 	}{
-		{"JPEG extension", "https://example.com/image.jpg", "image/jpeg"},
-		{"JPG extension", "https://example.com/image.JPG", "image/jpeg"},
-		{"PNG extension", "https://example.com/photo.png", "image/png"},
-		{"GIF extension", "https://example.com/animated.gif", "image/gif"},
+		{"JPEG extension", "https://example.com/image.jpg", testMIMETypeJPEG},
+		{"JPG extension", "https://example.com/image.JPG", testMIMETypeJPEG},
+		{"PNG extension", "https://example.com/photo.png", testMIMETypePNG},
+		{"GIF extension", "https://example.com/animated.gif", testMIMETypeGIF},
 		{"WebP extension", "https://example.com/modern.webp", "image/webp"},
 		{"SVG extension", "https://example.com/vector.svg", "image/svg+xml"},
 		{"BMP extension", "https://example.com/bitmap.bmp", "image/bmp"},
 		{"ICO extension", "https://example.com/favicon.ico", "image/x-icon"},
-		{"URL with query params", "https://example.com/image.jpg?size=large", "image/jpeg"},
-		{"URL with fragment", "https://example.com/image.png#section", "image/png"},
+		{"URL with query params", "https://example.com/image.jpg?size=large", testMIMETypeJPEG},
+		{"URL with fragment", "https://example.com/image.png#section", testMIMETypePNG},
 		{"No extension", "https://example.com/image", ""},         // Empty string for unknown
 		{"Unknown extension", "https://example.com/file.xyz", ""}, // Empty string for unknown
 	}
@@ -36,6 +42,7 @@ func TestGuessMIMETypeFromURL(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Test function complexity is acceptable for comprehensive test coverage
 func TestExtractImageLinks(t *testing.T) {
 	t.Run("extract from Item.Image only", func(t *testing.T) {
 		item := &gofeed.Item{
@@ -58,8 +65,8 @@ func TestExtractImageLinks(t *testing.T) {
 		if links[0].Title != "Featured Image" {
 			t.Errorf("Expected Title %q, got %q", "Featured Image", links[0].Title)
 		}
-		if links[0].MIMEType != "image/jpeg" {
-			t.Errorf("Expected MIMEType %q, got %q", "image/jpeg", links[0].MIMEType)
+		if links[0].MIMEType != testMIMETypeJPEG {
+			t.Errorf("Expected MIMEType %q, got %q", testMIMETypeJPEG, links[0].MIMEType)
 		}
 	})
 
@@ -69,11 +76,11 @@ func TestExtractImageLinks(t *testing.T) {
 			Enclosures: []*gofeed.Enclosure{
 				{
 					URL:  "https://example.com/photo1.png",
-					Type: "image/png",
+					Type: testMIMETypePNG,
 				},
 				{
 					URL:  "https://example.com/photo2.jpg",
-					Type: "image/jpeg",
+					Type: testMIMETypeJPEG,
 				},
 			},
 		}
@@ -94,8 +101,8 @@ func TestExtractImageLinks(t *testing.T) {
 		if links[1].URI != "https://example.com/photo2.jpg" {
 			t.Errorf("Expected second URI %q, got %q", "https://example.com/photo2.jpg", links[1].URI)
 		}
-		if links[1].MIMEType != "image/jpeg" {
-			t.Errorf("Expected second MIMEType %q, got %q", "image/jpeg", links[1].MIMEType)
+		if links[1].MIMEType != testMIMETypeJPEG {
+			t.Errorf("Expected second MIMEType %q, got %q", testMIMETypeJPEG, links[1].MIMEType)
 		}
 	})
 
@@ -153,8 +160,8 @@ func TestExtractImageLinks(t *testing.T) {
 		if links[0].URI != "https://example.com/photo.jpg" {
 			t.Errorf("Expected URI %q, got %q", "https://example.com/photo.jpg", links[0].URI)
 		}
-		if links[0].MIMEType != "image/jpeg" {
-			t.Errorf("Expected guessed MIMEType %q, got %q", "image/jpeg", links[0].MIMEType)
+		if links[0].MIMEType != testMIMETypeJPEG {
+			t.Errorf("Expected guessed MIMEType %q, got %q", testMIMETypeJPEG, links[0].MIMEType)
 		}
 	})
 
