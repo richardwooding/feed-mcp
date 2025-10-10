@@ -1,0 +1,49 @@
+name: Test MCP Docs
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+
+jobs:
+  test-docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+    
+    - name: Build feed-mcp binary
+      run: |
+        # Build for Linux to ensure compatibility with Docker container
+        GOOS=linux GOARCH=amd64 go build -o feed-mcp main.go
+        chmod +x feed-mcp
+    
+    - name: Test binary exists
+      run: |
+        ls -lh feed-mcp
+        file feed-mcp
+    
+    - name: Generate MCP HTML Documentation
+      uses: SPANDigital/mcp-server-dump@main
+      with:
+        server-command: './feed-mcp run'
+        transport: 'command'
+        format: 'html'
+        output-file: 'test-docs.html'
+        scan-tools: 'true'
+        scan-resources: 'true'
+        scan-prompts: 'true'
+    
+    - name: Check output
+      run: |
+        if [ -f test-docs.html ]; then
+          echo "✅ HTML documentation generated successfully"
+          ls -lh test-docs.html
+          head -20 test-docs.html
+        else
+          echo "❌ HTML documentation not found"
+          exit 1
+        fi

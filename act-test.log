@@ -1,0 +1,200 @@
+time="2025-09-16T05:13:04+02:00" level=info msg="Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock'"
+[Test MCP Docs/test-docs] ⭐ Run Set up job
+[Test MCP Docs/test-docs] 🚀  Start image=catthehacker/ubuntu:act-latest
+[Test MCP Docs/test-docs]   🐳  docker pull image=catthehacker/ubuntu:act-latest platform=linux/amd64 username= forcePull=true
+[Test MCP Docs/test-docs] using DockerAuthConfig authentication for docker pull
+[Test MCP Docs/test-docs]   🐳  docker create image=catthehacker/ubuntu:act-latest platform=linux/amd64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[Test MCP Docs/test-docs]   🐳  docker run image=catthehacker/ubuntu:act-latest platform=linux/amd64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[Test MCP Docs/test-docs]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+[Test MCP Docs/test-docs]   ✅  Success - Set up job
+[Test MCP Docs/test-docs]   ☁  git clone 'https://github.com/actions/setup-go' # ref=v4
+[Test MCP Docs/test-docs]   ☁  git clone 'https://github.com/SPANDigital/mcp-server-dump' # ref=main
+[Test MCP Docs/test-docs] ⭐ Run Pre Generate MCP HTML Documentation
+[Test MCP Docs/test-docs]   ✅  Success - Pre Generate MCP HTML Documentation [30.836667ms]
+[Test MCP Docs/test-docs] ⭐ Run Main actions/checkout@v4
+[Test MCP Docs/test-docs]   🐳  docker cp src=/Users/richardwooding/personal/feed-mcp/. dst=/Users/richardwooding/personal/feed-mcp
+[Test MCP Docs/test-docs]   ✅  Success - Main actions/checkout@v4 [236.276916ms]
+[Test MCP Docs/test-docs] ⭐ Run Main Set up Go
+[Test MCP Docs/test-docs]   🐳  docker cp src=/Users/richardwooding/.cache/act/actions-setup-go@v4/ dst=/var/run/act/actions/actions-setup-go@v4/
+[Test MCP Docs/test-docs]   🐳  docker exec cmd=[/opt/acttoolcache/node/18.20.8/x64/bin/node /var/run/act/actions/actions-setup-go@v4/dist/setup/index.js] user= workdir=
+[Test MCP Docs/test-docs]   | Setup go version spec 1.23
+[Test MCP Docs/test-docs]   | Attempting to download 1.23...
+[Test MCP Docs/test-docs]   | matching 1.23...
+[Test MCP Docs/test-docs]   | Acquiring 1.23.12 from https://github.com/actions/go-versions/releases/download/1.23.12-16792118003/go-1.23.12-linux-x64.tar.gz
+[Test MCP Docs/test-docs]   | Extracting Go...
+[Test MCP Docs/test-docs]   | [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /tmp/7b369154-15dd-4205-b7de-3dec8da90e8c -f /tmp/3afbb534-788a-43fb-b873-583681e5b7e5
+[Test MCP Docs/test-docs]   | Successfully extracted go to /tmp/7b369154-15dd-4205-b7de-3dec8da90e8c
+[Test MCP Docs/test-docs]   | Adding to the cache ...
+[Test MCP Docs/test-docs]   | Successfully cached go to /opt/hostedtoolcache/go/1.23.12/x64
+[Test MCP Docs/test-docs]   | Added go to the path
+[Test MCP Docs/test-docs]   | Successfully set up Go version 1.23
+[Test MCP Docs/test-docs]   | go: downloading go1.25.0 (linux/amd64)
+[Test MCP Docs/test-docs]   | [command]/opt/hostedtoolcache/go/1.23.12/x64/bin/go env GOMODCACHE
+[Test MCP Docs/test-docs]   | [command]/opt/hostedtoolcache/go/1.23.12/x64/bin/go env GOCACHE
+[Test MCP Docs/test-docs]   | /root/go/pkg/mod
+[Test MCP Docs/test-docs]   | /root/.cache/go-build
+[Test MCP Docs/test-docs]   | Cache is not found
+[Test MCP Docs/test-docs]   ❓ add-matcher /run/act/actions/actions-setup-go@v4/matchers.json
+[Test MCP Docs/test-docs]   | go version go1.25.0 linux/amd64
+[Test MCP Docs/test-docs]   | 
+[Test MCP Docs/test-docs]   ❓  ::group::go env
+[Test MCP Docs/test-docs]   | AR='ar'
+[Test MCP Docs/test-docs]   | CC='gcc'
+[Test MCP Docs/test-docs]   | CGO_CFLAGS='-O2 -g'
+[Test MCP Docs/test-docs]   | CGO_CPPFLAGS=''
+[Test MCP Docs/test-docs]   | CGO_CXXFLAGS='-O2 -g'
+[Test MCP Docs/test-docs]   | CGO_ENABLED='1'
+[Test MCP Docs/test-docs]   | CGO_FFLAGS='-O2 -g'
+[Test MCP Docs/test-docs]   | CGO_LDFLAGS='-O2 -g'
+[Test MCP Docs/test-docs]   | CXX='g++'
+[Test MCP Docs/test-docs]   | GCCGO='gccgo'
+[Test MCP Docs/test-docs]   | GO111MODULE=''
+[Test MCP Docs/test-docs]   | GOAMD64='v1'
+[Test MCP Docs/test-docs]   | GOARCH='amd64'
+[Test MCP Docs/test-docs]   | GOAUTH='netrc'
+[Test MCP Docs/test-docs]   | GOBIN=''
+[Test MCP Docs/test-docs]   | GOCACHE='/root/.cache/go-build'
+[Test MCP Docs/test-docs]   | GOCACHEPROG=''
+[Test MCP Docs/test-docs]   | GODEBUG=''
+[Test MCP Docs/test-docs]   | GOENV='/root/.config/go/env'
+[Test MCP Docs/test-docs]   | GOEXE=''
+[Test MCP Docs/test-docs]   | GOEXPERIMENT=''
+[Test MCP Docs/test-docs]   | GOFIPS140='off'
+[Test MCP Docs/test-docs]   | GOFLAGS=''
+[Test MCP Docs/test-docs]   | GOGCCFLAGS='-fPIC -m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build3548729642=/tmp/go-build -gno-record-gcc-switches'
+[Test MCP Docs/test-docs]   | GOHOSTARCH='amd64'
+[Test MCP Docs/test-docs]   | GOHOSTOS='linux'
+[Test MCP Docs/test-docs]   | GOINSECURE=''
+[Test MCP Docs/test-docs]   | GOMOD='/Users/richardwooding/personal/feed-mcp/go.mod'
+[Test MCP Docs/test-docs]   | GOMODCACHE='/root/go/pkg/mod'
+[Test MCP Docs/test-docs]   | GONOPROXY=''
+[Test MCP Docs/test-docs]   | GONOSUMDB=''
+[Test MCP Docs/test-docs]   | GOOS='linux'
+[Test MCP Docs/test-docs]   | GOPATH='/root/go'
+[Test MCP Docs/test-docs]   | GOPRIVATE=''
+[Test MCP Docs/test-docs]   | GOPROXY='https://proxy.golang.org,direct'
+[Test MCP Docs/test-docs]   | GOROOT='/root/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.linux-amd64'
+[Test MCP Docs/test-docs]   | GOSUMDB='sum.golang.org'
+[Test MCP Docs/test-docs]   | GOTELEMETRY='local'
+[Test MCP Docs/test-docs]   | GOTELEMETRYDIR='/root/.config/go/telemetry'
+[Test MCP Docs/test-docs]   | GOTMPDIR=''
+[Test MCP Docs/test-docs]   | GOTOOLCHAIN='auto'
+[Test MCP Docs/test-docs]   | GOTOOLDIR='/root/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.linux-amd64/pkg/tool/linux_amd64'
+[Test MCP Docs/test-docs]   | GOVCS=''
+[Test MCP Docs/test-docs]   | GOVERSION='go1.25.0'
+[Test MCP Docs/test-docs]   | GOWORK=''
+[Test MCP Docs/test-docs]   | PKG_CONFIG='pkg-config'
+[Test MCP Docs/test-docs]   | 
+[Test MCP Docs/test-docs]   ❓  ::endgroup::
+[Test MCP Docs/test-docs]   ✅  Success - Main Set up Go [29.985146291s]
+[Test MCP Docs/test-docs]   ⚙  ::set-output:: cache-hit=false
+[Test MCP Docs/test-docs]   ⚙  ::set-output:: go-version=1.25.0
+[Test MCP Docs/test-docs]   ⚙  ::add-path:: /opt/hostedtoolcache/go/1.23.12/x64/bin
+[Test MCP Docs/test-docs]   ⚙  ::add-path:: /root/go/bin
+[Test MCP Docs/test-docs] ⭐ Run Main Build feed-mcp binary
+[Test MCP Docs/test-docs]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/2] user= workdir=
+[Test MCP Docs/test-docs]   | go: downloading github.com/alecthomas/kong v1.12.1
+[Test MCP Docs/test-docs]   | go: downloading github.com/mmcdole/gofeed v1.3.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/dgraph-io/ristretto v0.2.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/eko/gocache/lib/v4 v4.2.1
+[Test MCP Docs/test-docs]   | go: downloading github.com/matoous/go-nanoid/v2 v2.1.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/eko/gocache/store/ristretto/v4 v4.2.2
+[Test MCP Docs/test-docs]   | go: downloading github.com/sony/gobreaker v1.0.0
+[Test MCP Docs/test-docs]   | go: downloading golang.org/x/time v0.13.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/gocolly/colly v1.2.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/google/jsonschema-go v0.2.1-0.20250825175020-748c325cec76
+[Test MCP Docs/test-docs]   | go: downloading github.com/modelcontextprotocol/go-sdk v0.4.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/golang/mock v1.6.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/pkg/errors v0.9.1
+[Test MCP Docs/test-docs]   | go: downloading golang.org/x/sys v0.28.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/cespare/xxhash/v2 v2.3.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/dustin/go-humanize v1.0.1
+[Test MCP Docs/test-docs]   | go: downloading github.com/PuerkitoBio/goquery v1.8.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/json-iterator/go v1.1.12
+[Test MCP Docs/test-docs]   | go: downloading golang.org/x/net v0.33.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/mmcdole/goxpp v1.1.1-0.20240225020742-a0c311522b23
+[Test MCP Docs/test-docs]   | go: downloading go.uber.org/mock v0.4.0
+[Test MCP Docs/test-docs]   | go: downloading golang.org/x/sync v0.10.0
+[Test MCP Docs/test-docs]   | go: downloading golang.org/x/text v0.21.0
+[Test MCP Docs/test-docs]   | go: downloading golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
+[Test MCP Docs/test-docs]   | go: downloading github.com/prometheus/client_golang v1.19.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/antchfx/htmlquery v1.3.4
+[Test MCP Docs/test-docs]   | go: downloading github.com/antchfx/xmlquery v1.4.4
+[Test MCP Docs/test-docs]   | go: downloading github.com/gobwas/glob v0.2.3
+[Test MCP Docs/test-docs]   | go: downloading github.com/kennygrant/sanitize v1.2.4
+[Test MCP Docs/test-docs]   | go: downloading github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
+[Test MCP Docs/test-docs]   | go: downloading github.com/temoto/robotstxt v1.1.2
+[Test MCP Docs/test-docs]   | go: downloading google.golang.org/appengine v1.6.7
+[Test MCP Docs/test-docs]   | go: downloading github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+[Test MCP Docs/test-docs]   | go: downloading github.com/modern-go/reflect2 v1.0.2
+[Test MCP Docs/test-docs]   | go: downloading github.com/yosida95/uritemplate/v3 v3.0.2
+[Test MCP Docs/test-docs]   | go: downloading github.com/andybalholm/cascadia v1.3.1
+[Test MCP Docs/test-docs]   | go: downloading github.com/antchfx/xpath v1.3.3
+[Test MCP Docs/test-docs]   | go: downloading github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
+[Test MCP Docs/test-docs]   | go: downloading github.com/beorn7/perks v1.0.1
+[Test MCP Docs/test-docs]   | go: downloading github.com/prometheus/client_model v0.6.1
+[Test MCP Docs/test-docs]   | go: downloading github.com/prometheus/common v0.52.3
+[Test MCP Docs/test-docs]   | go: downloading github.com/prometheus/procfs v0.13.0
+[Test MCP Docs/test-docs]   | go: downloading google.golang.org/protobuf v1.33.0
+[Test MCP Docs/test-docs]   | go: downloading github.com/golang/protobuf v1.5.3
+[Test MCP Docs/test-docs]   ✅  Success - Main Build feed-mcp binary [47.373577209s]
+[Test MCP Docs/test-docs] ⭐ Run Main Test binary
+[Test MCP Docs/test-docs]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/3] user= workdir=
+[Test MCP Docs/test-docs]   | Usage: feed-mcp run [<feeds> ...] [flags]
+[Test MCP Docs/test-docs]   | 
+[Test MCP Docs/test-docs]   | Run MCP Server
+[Test MCP Docs/test-docs]   | 
+[Test MCP Docs/test-docs]   | Arguments:
+[Test MCP Docs/test-docs]   |   [<feeds> ...]    Feeds to list (cannot be used with --opml).
+[Test MCP Docs/test-docs]   | 
+[Test MCP Docs/test-docs]   | Flags:
+[Test MCP Docs/test-docs]   |   -h, --help                     Show context-sensitive help.
+[Test MCP Docs/test-docs]   |       --version                  Print version information and quit
+[Test MCP Docs/test-docs]   | 
+[Test MCP Docs/test-docs]   |       --transport="stdio"        Transport to use for the MCP server.
+[Test MCP Docs/test-docs]   |       --opml=STRING              OPML file path or URL to load feed URLs from
+[Test MCP Docs/test-docs]   |                                  (cannot be used with feeds).
+[Test MCP Docs/test-docs]   |       --expire-after=1h          Expire feeds after this duration.
+[Test MCP Docs/test-docs]   |       --timeout=30s              Timeout for fetching feed.
+[Test MCP Docs/test-docs]   |       --shutdown-timeout=30s     Timeout for graceful shutdown.
+[Test MCP Docs/test-docs]   |       --max-idle-conns=100       Maximum number of idle HTTP connections across
+[Test MCP Docs/test-docs]   |                                  all hosts.
+[Test MCP Docs/test-docs]   |       --max-conns-per-host=10    Maximum number of connections per host.
+[Test MCP Docs/test-docs]   |       --max-idle-conns-per-host=5
+[Test MCP Docs/test-docs]   |                                  Maximum number of idle connections per host.
+[Test MCP Docs/test-docs]   |       --idle-conn-timeout=90s    How long an idle connection remains idle before
+[Test MCP Docs/test-docs]   |                                  closing.
+[Test MCP Docs/test-docs]   |       --retry-max-attempts=3     Maximum number of retry attempts for failed
+[Test MCP Docs/test-docs]   |                                  feed fetches.
+[Test MCP Docs/test-docs]   |       --retry-base-delay=1s      Base delay for exponential backoff between
+[Test MCP Docs/test-docs]   |                                  retry attempts.
+[Test MCP Docs/test-docs]   |       --retry-max-delay=30s      Maximum delay between retry attempts.
+[Test MCP Docs/test-docs]   |       --retry-jitter             Enable jitter in retry delays to avoid
+[Test MCP Docs/test-docs]   |                                  thundering herd.
+[Test MCP Docs/test-docs]   |       --allow-private-ips        Allow feed URLs that resolve to private IP
+[Test MCP Docs/test-docs]   |                                  ranges or localhost (disabled by default for
+[Test MCP Docs/test-docs]   |                                  security).
+[Test MCP Docs/test-docs]   |       --allow-runtime-feeds      Enable runtime feed management tools (add_feed,
+[Test MCP Docs/test-docs]   |                                  remove_feed, list_managed_feeds).
+[Test MCP Docs/test-docs]   ✅  Success - Main Test binary [140.437625ms]
+[Test MCP Docs/test-docs] ⭐ Run Main Generate MCP HTML Documentation
+[Test MCP Docs/test-docs]   🐳  docker cp src=/Users/richardwooding/.cache/act/SPANDigital-mcp-server-dump@main/ dst=/var/run/act/actions/SPANDigital-mcp-server-dump@main/
+[Test MCP Docs/test-docs] ⭐ Run Main Run MCP Server Dump
+[Test MCP Docs/test-docs]   🐳  docker exec cmd=[bash --noprofile --norc -e -o pipefail /var/run/act/workflow/4-composite-0.sh] user= workdir=
+[Test MCP Docs/test-docs]   ❓  ::notice::Initializing MCP Server Documentation Extraction
+[Test MCP Docs/test-docs]   ❓  ::notice::Executing MCP Server Dump: docker run --rm -v "/Users/richardwooding/personal/feed-mcp:/workspace" -w /workspace ghcr.io/spandigital/mcp-server-dump:latest -t command -f html -o test-docs.html ./feed-mcp run
+[Test MCP Docs/test-docs]   | 2025/09/16 03:14:37 Error: failed to connect to MCP server: fork/exec ./feed-mcp: exec format error
+[Test MCP Docs/test-docs]   ❗  ::error::Failed: MCP Server documentation extraction encountered an error
+[Test MCP Docs/test-docs]   ❌  Failure - Main Run MCP Server Dump [521.576083ms]
+[Test MCP Docs/test-docs] exitcode '1': failure
+[Test MCP Docs/test-docs]   ⚙  ::set-output:: output-file=
+[Test MCP Docs/test-docs]   ⚙  ::set-output:: server-info=
+[Test MCP Docs/test-docs]   ❌  Failure - Main Generate MCP HTML Documentation [654.453666ms]
+[Test MCP Docs/test-docs] exitcode '1': failure
+[Test MCP Docs/test-docs] ⭐ Run Post Generate MCP HTML Documentation
+[Test MCP Docs/test-docs]   🐳  docker cp src=/Users/richardwooding/.cache/act/SPANDigital-mcp-server-dump@main/ dst=/var/run/act/actions/SPANDigital-mcp-server-dump@main/
+[Test MCP Docs/test-docs]   ✅  Success - Post Generate MCP HTML Documentation [55.191917ms]
+[Test MCP Docs/test-docs] ⭐ Run Complete job
+[Test MCP Docs/test-docs]   ✅  Success - Complete job
+[Test MCP Docs/test-docs] 🏁  Job failed
+Error: Job 'test-docs' failed
