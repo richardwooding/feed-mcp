@@ -30,6 +30,9 @@ jobs:
     - name: Test
       run: go test -v ./...
 
+    - name: Run fuzz tests (short)
+      run: go test -fuzz=. -fuzztime=30s ./...
+
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v7
       with:
