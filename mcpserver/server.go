@@ -336,9 +336,9 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 			return nil, nil, err
 		}
 
-		limit, offset, includeContent, maxContentLength, includeImages, embedImages := s.parsePaginationParams(args)
-		paginatedItems, paginationInfo := s.applyPagination(feedResult.Items, limit, offset)
-		content := s.buildFeedContent(ctx, feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength, includeImages, embedImages)
+		params := s.parsePaginationParams(args)
+		paginatedItems, paginationInfo := s.applyPagination(feedResult.Items, params.Limit, params.Offset)
+		content := s.buildFeedContent(ctx, feedResult, paginatedItems, paginationInfo, params.IncludeContent, params.MaxContentLength, params.IncludeImages, params.EmbedImages)
 
 		return &mcp.CallToolResult{
 			Content: content,
@@ -346,65 +346,69 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 	})
 }
 
-// parsePaginationParams extracts and validates pagination parameters
-//
-//nolint:gocritic // Multiple return values are necessary for parsing all parameters
-func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int, includeImages, embedImages bool) {
-	limit = DefaultItemLimit
+// parsePaginationParams extracts and validates pagination parameters.
+// Returns a ParsedFeedParams struct containing all parsed and validated parameters.
+func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) ParsedFeedParams {
+	params := ParsedFeedParams{
+		Limit:            DefaultItemLimit,
+		Offset:           0,
+		IncludeContent:   false,
+		MaxContentLength: DefaultContentLength,
+		IncludeImages:    false,
+		EmbedImages:      false,
+	}
+
+	// Parse limit
 	if args.Limit != nil {
-		limit = *args.Limit
-		if limit > MaxItemLimit {
-			limit = MaxItemLimit
+		params.Limit = *args.Limit
+		if params.Limit > MaxItemLimit {
+			params.Limit = MaxItemLimit
 		}
-		if limit < 0 {
-			limit = 0
+		if params.Limit < 0 {
+			params.Limit = 0
 		}
 	}
 
-	offset = 0
+	// Parse offset
 	if args.Offset != nil {
-		offset = *args.Offset
-		if offset < 0 {
-			offset = 0
+		params.Offset = *args.Offset
+		if params.Offset < 0 {
+			params.Offset = 0
 		}
 	}
 
-	// Default to false to reduce response size
-	includeContent = false
+	// Parse includeContent
 	if args.IncludeContent != nil {
-		includeContent = *args.IncludeContent
+		params.IncludeContent = *args.IncludeContent
 	}
 
-	// Default to DefaultContentLength when content is included
-	maxContentLength = DefaultContentLength
+	// Parse maxContentLength
 	if args.MaxContentLength != nil {
-		maxContentLength = *args.MaxContentLength
-		if maxContentLength < 0 {
-			maxContentLength = 0
+		params.MaxContentLength = *args.MaxContentLength
+		if params.MaxContentLength < 0 {
+			params.MaxContentLength = 0
 		}
 	}
 	// If content is not included, maxContentLength is irrelevant
-	if !includeContent {
-		maxContentLength = 0
+	if !params.IncludeContent {
+		params.MaxContentLength = 0
 	}
 
-	// Default to false to reduce response size
-	includeImages = false
+	// Parse includeImages
 	if args.IncludeImages != nil {
-		includeImages = *args.IncludeImages
+		params.IncludeImages = *args.IncludeImages
 	}
 
-	// Default to false to reduce response size
-	embedImages = false
+	// Parse embedImages
 	if args.EmbedImages != nil {
-		embedImages = *args.EmbedImages
+		params.EmbedImages = *args.EmbedImages
 	}
 	// embedImages requires includeImages to be true
-	if embedImages && !includeImages {
-		embedImages = false
+	if params.EmbedImages && !params.IncludeImages {
+		params.EmbedImages = false
 	}
 
-	return limit, offset, includeContent, maxContentLength, includeImages, embedImages
+	return params
 }
 
 // PaginationInfo contains pagination metadata
@@ -414,6 +418,16 @@ type PaginationInfo struct {
 	Offset        int
 	Limit         int
 	HasMore       bool
+}
+
+// ParsedFeedParams holds the parsed and validated feed request parameters
+type ParsedFeedParams struct {
+	Limit            int
+	Offset           int
+	IncludeContent   bool
+	MaxContentLength int
+	IncludeImages    bool
+	EmbedImages      bool
 }
 
 // applyPagination slices items based on limit and offset
@@ -1362,7 +1376,7 @@ func (s *Server) getOrCreateImageCircuitBreaker(host string) *gobreaker.CircuitB
 // hashImageURL creates a cache key for an image URL using FNV-1a hash
 func hashImageURL(imageURL string) string {
 	h := fnv.New64a()
-	_, _ = h.Write([]byte(imageURL)) // hash.Hash.Write never returns an error
+	h.Write([]byte(imageURL)) //nolint:gosec // hash.Hash.Write never returns an error
 	return fmt.Sprintf("image:%x", h.Sum64())
 }
 
