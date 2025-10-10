@@ -507,7 +507,7 @@ func TestTypeDefinitions(t *testing.T) {
 		serverType := reflect.TypeOf(Server{})
 
 		// Check that Server has the expected fields
-		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "dynamicFeedManager", "resourceManager", "sessionID", "transport"}
+		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "dynamicFeedManager", "resourceManager", "sessionID", "transport", "imageCache", "imageCircuitBreakers", "imageCBMutex", "httpClient"}
 
 		if serverType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Server, got %d", len(expectedFields), serverType.NumField())

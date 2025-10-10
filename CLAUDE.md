@@ -652,7 +652,8 @@ Claude Code has conversation context limits that can be exceeded when fetching l
 - `offset` (integer, ≥0): Number of items to skip (default: 0)
 - `includeContent` (boolean): Whether to include full content/description (default: **false**)
 - `maxContentLength` (integer, ≥0): Max characters for content fields (default: 500 when content included)
-- `includeImages` (boolean): Whether to include image ResourceLinks (default: **false**)
+- `includeImages` (boolean): Whether to include images (default: **false**)
+- `embedImages` (boolean): Fetch and embed images as ImageContent for inline display (default: **false**, requires `includeImages: true`)
 
 **Response Metadata:**
 Every response includes pagination metadata:
@@ -698,6 +699,14 @@ By default, responses include **metadata only** (title, link, date, author) with
   "includeImages": true
 }
 
+// Read items with embedded images (inline display in Claude Desktop)
+{
+  "ID": "feed-id",
+  "limit": 5,
+  "includeImages": true,
+  "embedImages": true
+}
+
 // Read items with content and images
 {
   "ID": "feed-id",
@@ -731,6 +740,7 @@ By default, responses include **metadata only** (title, link, date, author) with
 - Keep `limit` ≤ 5 when including content
 - Use `maxContentLength` to control response size
 - Set `includeImages: true` when you need image URLs (adds ~100 bytes per image)
+- Set `embedImages: true` only for inline display (adds ~100KB-1MB per image, limit ≤ 5)
 
 **Feed Size Guidelines:**
 - **Small feeds** (<10KB/item): Safe with `limit: 10, includeContent: true`
@@ -806,6 +816,69 @@ In this example:
 - Client fetches images directly from original sources
 - Safe to use with `includeImages: true` for most feeds
 - Minimal impact on conversation length limits
+
+**Embedded Images (ImageContent):**
+
+For clients that support inline image display (like Claude Desktop), the `embedImages` parameter fetches images from their original URLs and embeds them as base64-encoded ImageContent.
+
+**Parameters:**
+- `includeImages` (boolean): Must be `true` to enable image support (default: **false**)
+- `embedImages` (boolean): Fetches and embeds images as ImageContent (default: **false**)
+
+**Usage:**
+```json
+// Lightweight ResourceLinks (URLs only, ~100 bytes each)
+{
+  "ID": "feed-id",
+  "includeImages": true
+}
+
+// Embedded images for inline display (base64-encoded, displays in Claude Desktop)
+{
+  "ID": "feed-id",
+  "includeImages": true,
+  "embedImages": true
+}
+```
+
+**Infrastructure:**
+- **Caching**: Embedded images are cached for 1 hour to avoid re-fetching
+- **Circuit Breakers**: Per-host protection (3 failures = 30s open circuit)
+- **Rate Limiting**: 5s timeout per image fetch
+- **Size Limits**: 1MB max per image (Claude Desktop constraint), 10 images max per item
+- **Graceful Degradation**: Falls back to ResourceLink if fetch fails
+
+**When to Use Each Mode:**
+
+| Mode | includeImages | embedImages | Response Type | Size | Use Case |
+|------|---------------|-------------|---------------|------|----------|
+| No Images | `false` | `false` | None | 0 bytes | Metadata-only browsing |
+| URL References | `true` | `false` | ResourceLink | ~100 bytes/image | Client fetches images |
+| Inline Display | `true` | `true` | ImageContent | ~100KB-1MB/image | Display in Claude Desktop |
+
+**Trade-offs:**
+- **ResourceLinks (embedImages: false)**: Minimal size, client fetches images, no inline display
+- **ImageContent (embedImages: true)**: Large size, inline display, higher memory usage, cached
+
+**Best Practices:**
+- Use `embedImages: false` (ResourceLinks) for browsing or when client will fetch images
+- Use `embedImages: true` (ImageContent) only when inline display is needed
+- Keep `limit` low (≤5) when using `embedImages: true` due to 1MB per image size
+- ImageContent works best for feeds with small images (<500KB)
+- Circuit breakers automatically skip failing image hosts after 3 failures
+
+**Example Response with embedImages:**
+```json
+[
+  { "type": "text", "text": "{\"items\": [{\"title\": \"Article 1\", ...}]}" },
+  {
+    "type": "image",
+    "data": "iVBORw0KGgoAAAANSUhEUgAA...",  // base64-encoded
+    "mimeType": "image/jpeg",
+    "meta": {"itemIndex": 0}
+  }
+]
+```
 
 **When to Use Resources API vs Tools:**
 - **Tools** (`get_syndication_feed_items`): Simple pagination, good for browsing

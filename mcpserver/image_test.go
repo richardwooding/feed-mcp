@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mmcdole/gofeed"
@@ -315,8 +316,9 @@ func TestBuildFeedContentWithImages(t *testing.T) {
 			HasMore:    false,
 		}
 
-		// Call buildFeedContent with includeImages=true
-		content := server.buildFeedContent(feed, items, paginationInfo, false, 0, true)
+		// Call buildFeedContent with includeImages=true, embedImages=false
+		ctx := context.Background()
+		content := server.buildFeedContent(ctx, feed, items, paginationInfo, false, 0, true, false)
 
 		// Verify structure:
 		// [0] TextContent (feed metadata)
@@ -412,8 +414,9 @@ func TestBuildFeedContentWithImages(t *testing.T) {
 			HasMore:    false,
 		}
 
-		// Call buildFeedContent with includeImages=false
-		content := server.buildFeedContent(feed, items, paginationInfo, false, 0, false)
+		// Call buildFeedContent with includeImages=false, embedImages=false
+		ctx := context.Background()
+		content := server.buildFeedContent(ctx, feed, items, paginationInfo, false, 0, false, false)
 
 		// Should only have feed metadata + item content (no images)
 		expectedContentCount := 2
