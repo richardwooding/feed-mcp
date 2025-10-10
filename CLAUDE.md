@@ -652,6 +652,7 @@ Claude Code has conversation context limits that can be exceeded when fetching l
 - `offset` (integer, ≥0): Number of items to skip (default: 0)
 - `includeContent` (boolean): Whether to include full content/description (default: **false**)
 - `maxContentLength` (integer, ≥0): Max characters for content fields (default: 500 when content included)
+- `includeImages` (boolean): Whether to include image ResourceLinks (default: **false**)
 
 **Response Metadata:**
 Every response includes pagination metadata:
@@ -690,6 +691,21 @@ By default, responses include **metadata only** (title, link, date, author) with
   "includeContent": true
 }
 
+// Read items with images (lightweight ResourceLinks)
+{
+  "ID": "feed-id",
+  "limit": 10,
+  "includeImages": true
+}
+
+// Read items with content and images
+{
+  "ID": "feed-id",
+  "limit": 5,
+  "includeContent": true,
+  "includeImages": true
+}
+
 // Read items with full content (use sparingly!)
 {
   "ID": "feed-id",
@@ -714,6 +730,7 @@ By default, responses include **metadata only** (title, link, date, author) with
 - Only set `includeContent: true` when reading specific items
 - Keep `limit` ≤ 5 when including content
 - Use `maxContentLength` to control response size
+- Set `includeImages: true` when you need image URLs (adds ~100 bytes per image)
 
 **Feed Size Guidelines:**
 - **Small feeds** (<10KB/item): Safe with `limit: 10, includeContent: true`
@@ -736,6 +753,59 @@ By default, responses include **metadata only** (title, link, date, author) with
 // Pass 2: Read item #3 (includes content)
 { "ID": "feed-id", "limit": 1, "offset": 2, "includeContent": true }
 ```
+
+**Image Support:**
+
+Feed items can include images (featured images and media attachments). Images are returned as **MCP ResourceLinks** containing the original HTTP/HTTPS URLs from the feed.
+
+**Design Note:**
+ResourceLinks point to **external web resources** (the original image URLs from feeds), not MCP-managed resources. This approach:
+- Keeps response sizes minimal (~100 bytes per image vs 100s of KB for embedded data)
+- Allows clients to fetch images directly without server intermediation
+- Avoids server bandwidth/storage overhead for proxying/caching images
+- Maintains v2.0.0's goal of preventing conversation length errors
+
+The MCP SDK explicitly supports HTTPS URIs in ResourceLinks for referencing external resources.
+
+**Image Sources:**
+- `Item.Image` - Featured image for the feed item (e.g., article thumbnail)
+- `Item.Enclosures` - Media attachments (images, videos, etc.) - only images are included
+
+**How Images Are Returned:**
+When `includeImages: true`, the response contains:
+1. Text content with feed metadata and items (as usual)
+2. Additional `ResourceLink` content items with original image URLs from the feed
+
+**Image Association:**
+Each image ResourceLink includes `Meta: {"itemIndex": N}` to associate it with the feed item at position N in the items array. This allows clients to match images to their parent feed items.
+
+```json
+// Example response structure
+[
+  { "type": "text", "text": "{\"items\": [{\"title\": \"Article 1\", ...}, {\"title\": \"Article 2\", ...}]}" },
+  { "type": "resource_link", "uri": "https://example.com/featured.jpg", "mimeType": "image/jpeg", "title": "Featured Image", "meta": {"itemIndex": 0} },
+  { "type": "resource_link", "uri": "https://cdn.example.com/gallery1.png", "mimeType": "image/png", "meta": {"itemIndex": 0} },
+  { "type": "resource_link", "uri": "https://example.com/photo.jpg", "mimeType": "image/jpeg", "meta": {"itemIndex": 1} }
+]
+```
+
+In this example:
+- The first two images (featured.jpg and gallery1.png) belong to item 0 ("Article 1")
+- The third image (photo.jpg) belongs to item 1 ("Article 2")
+
+**Image Filtering:**
+- Only image types are included (image/jpeg, image/png, image/gif, etc.)
+- Non-image enclosures (videos, audio, documents) are automatically filtered out
+- MIME types are either provided by the feed or guessed from file extension
+- Invalid or non-image URLs are excluded
+
+**Performance:**
+- Each image ResourceLink adds ~100 bytes to the response
+- No image data is fetched or base64-encoded (just URL references)
+- Server doesn't proxy or cache image data
+- Client fetches images directly from original sources
+- Safe to use with `includeImages: true` for most feeds
+- Minimal impact on conversation length limits
 
 **When to Use Resources API vs Tools:**
 - **Tools** (`get_syndication_feed_items`): Simple pagination, good for browsing

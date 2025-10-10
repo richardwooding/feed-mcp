@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -103,6 +104,7 @@ type GetSyndicationFeedParams struct {
 	Offset           *int   `json:"offset,omitempty"`           // Number of items to skip (default: 0)
 	IncludeContent   *bool  `json:"includeContent,omitempty"`   // Include full content/description (default: true)
 	MaxContentLength *int   `json:"maxContentLength,omitempty"` // Max length for content fields in characters (default: unlimited)
+	IncludeImages    *bool  `json:"includeImages,omitempty"`    // Include image ResourceLinks (default: false)
 }
 
 // AddFeedParams contains parameters for the add_feed tool.
@@ -279,6 +281,10 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 					Description: fmt.Sprintf("Maximum characters for content/description fields (default: %d when includeContent=true, 0 for unlimited). Use to preview content without full articles.", DefaultContentLength),
 					Minimum:     &[]float64{0}[0],
 				},
+				"includeImages": {
+					Type:        "boolean",
+					Description: "Whether to include image ResourceLinks for thumbnails and media (default: false). Images are returned as lightweight URL references (~100 bytes each), not embedded data. Each image ResourceLink includes Meta: {\"itemIndex\": N} to associate it with the feed item at position N in the items array.",
+				},
 			},
 		},
 	}
@@ -288,9 +294,9 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 			return nil, nil, err
 		}
 
-		limit, offset, includeContent, maxContentLength := s.parsePaginationParams(args)
+		limit, offset, includeContent, maxContentLength, includeImages := s.parsePaginationParams(args)
 		paginatedItems, paginationInfo := s.applyPagination(feedResult.Items, limit, offset)
-		content := s.buildFeedContent(feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength)
+		content := s.buildFeedContent(feedResult, paginatedItems, paginationInfo, includeContent, maxContentLength, includeImages)
 
 		return &mcp.CallToolResult{
 			Content: content,
@@ -299,7 +305,7 @@ func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 }
 
 // parsePaginationParams extracts and validates pagination parameters
-func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int) {
+func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, offset int, includeContent bool, maxContentLength int, includeImages bool) {
 	limit = DefaultItemLimit
 	if args.Limit != nil {
 		limit = *args.Limit
@@ -338,7 +344,13 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) (limit, of
 		maxContentLength = 0
 	}
 
-	return limit, offset, includeContent, maxContentLength
+	// Default to false to reduce response size
+	includeImages = false
+	if args.IncludeImages != nil {
+		includeImages = *args.IncludeImages
+	}
+
+	return limit, offset, includeContent, maxContentLength, includeImages
 }
 
 // PaginationInfo contains pagination metadata
@@ -375,7 +387,7 @@ func (s *Server) applyPagination(items []*gofeed.Item, limit, offset int) ([]*go
 }
 
 // buildFeedContent creates the MCP content response with feed metadata and items
-func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []*gofeed.Item, info PaginationInfo, includeContent bool, maxContentLength int) []mcp.Content {
+func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []*gofeed.Item, info PaginationInfo, includeContent bool, maxContentLength int, includeImages bool) []mcp.Content {
 	content := make([]mcp.Content, 0, 1+len(items))
 
 	type FeedMetadataWithPagination struct {
@@ -399,10 +411,20 @@ func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []
 	data, _ := json.Marshal(feedMetadataWithPagination)
 	content = append(content, &mcp.TextContent{Text: string(data)})
 
-	for _, item := range items {
+	for i, item := range items {
 		processedItem := processItemForOutput(item, includeContent, maxContentLength)
 		itemData, _ := json.Marshal(processedItem)
 		content = append(content, &mcp.TextContent{Text: string(itemData)})
+
+		// Add image ResourceLinks if requested
+		if includeImages {
+			imageLinks := extractImageLinks(item)
+			for _, link := range imageLinks {
+				// Add item index to Meta for client-side association
+				link.Meta = mcp.Meta{"itemIndex": i}
+				content = append(content, link)
+			}
+		}
 	}
 
 	return content
@@ -1117,6 +1139,92 @@ func processItemForOutput(item *gofeed.Item, includeContent bool, maxContentLeng
 	}
 
 	return &processedItem
+}
+
+// guessMIMETypeFromURL guesses MIME type based on file extension in URL
+func guessMIMETypeFromURL(urlStr string) string {
+	// Extract extension from URL
+	ext := ""
+	if idx := strings.LastIndex(urlStr, "."); idx != -1 {
+		// Get everything after the last dot, but before any query parameters or fragments
+		extPart := urlStr[idx+1:]
+		// Check for query parameters
+		if qIdx := strings.Index(extPart, "?"); qIdx != -1 {
+			ext = extPart[:qIdx]
+		} else if fIdx := strings.Index(extPart, "#"); fIdx != -1 {
+			// Check for fragments
+			ext = extPart[:fIdx]
+		} else {
+			ext = extPart
+		}
+	}
+
+	// Map common image extensions to MIME types
+	switch strings.ToLower(ext) {
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	case "gif":
+		return "image/gif"
+	case "webp":
+		return "image/webp"
+	case "svg":
+		return "image/svg+xml"
+	case "bmp":
+		return "image/bmp"
+	case "ico":
+		return "image/x-icon"
+	default:
+		return "" // Return empty string for unknown extensions (not an image)
+	}
+}
+
+// extractImageLinks extracts image ResourceLinks from a feed item
+func extractImageLinks(item *gofeed.Item) []*mcp.ResourceLink {
+	var links []*mcp.ResourceLink
+
+	// Extract from Item.Image (featured image)
+	if item.Image != nil && item.Image.URL != "" {
+		mimeType := guessMIMETypeFromURL(item.Image.URL)
+		if mimeType != "" { // Only add if we can determine it's an image
+			link := &mcp.ResourceLink{
+				URI:      item.Image.URL,
+				MIMEType: mimeType,
+			}
+			if item.Image.Title != "" {
+				link.Title = item.Image.Title
+			}
+			links = append(links, link)
+		}
+	}
+
+	// Extract from Item.Enclosures (filter for images only)
+	for _, enc := range item.Enclosures {
+		if enc.URL == "" {
+			continue
+		}
+		// Only include if Type starts with "image/"
+		if strings.HasPrefix(enc.Type, "image/") {
+			link := &mcp.ResourceLink{
+				URI:      enc.URL,
+				MIMEType: enc.Type,
+			}
+			links = append(links, link)
+		} else if enc.Type == "" {
+			// If no Type is provided, guess based on URL
+			mimeType := guessMIMETypeFromURL(enc.URL)
+			if mimeType != "" && strings.HasPrefix(mimeType, "image/") {
+				link := &mcp.ResourceLink{
+					URI:      enc.URL,
+					MIMEType: mimeType,
+				}
+				links = append(links, link)
+			}
+		}
+	}
+
+	return links
 }
 
 // Helper functions for feed merging and export
