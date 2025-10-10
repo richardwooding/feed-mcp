@@ -1202,7 +1202,7 @@ func extractImageLinks(item *gofeed.Item) []*mcp.ResourceLink {
 		if enc.URL == "" {
 			continue
 		}
-		// Only include if Type starts with "image/" or URL looks like an image
+		// Only include if Type starts with "image/"
 		if strings.HasPrefix(enc.Type, "image/") {
 			link := &mcp.ResourceLink{
 				URI:      enc.URL,
@@ -1212,7 +1212,7 @@ func extractImageLinks(item *gofeed.Item) []*mcp.ResourceLink {
 		} else if enc.Type == "" {
 			// If no Type is provided, guess based on URL
 			mimeType := guessMIMETypeFromURL(enc.URL)
-			if strings.HasPrefix(mimeType, "image/") {
+			if mimeType != "" && strings.HasPrefix(mimeType, "image/") {
 				link := &mcp.ResourceLink{
 					URI:      enc.URL,
 					MIMEType: mimeType,
