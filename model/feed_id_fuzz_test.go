@@ -119,6 +119,7 @@ func FuzzGenerateFeedID(f *testing.F) {
 		// GenerateFeedID allows: lowercase letters, digits, hyphens, dots, underscores, colons, and brackets
 		// These are safe for use as identifiers and don't require escaping
 		for _, char := range id {
+			//nolint:staticcheck // Explicit condition is clearer than De Morgan's law here
 			if !((char >= 'a' && char <= 'z') ||
 				(char >= '0' && char <= '9') ||
 				char == '-' || char == '.' || char == '_' ||
