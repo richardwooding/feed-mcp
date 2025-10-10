@@ -776,14 +776,22 @@ When `includeImages: true`, the response contains:
 1. Text content with feed metadata and items (as usual)
 2. Additional `ResourceLink` content items with original image URLs from the feed
 
+**Image Association:**
+Each image ResourceLink includes `Meta: {"itemIndex": N}` to associate it with the feed item at position N in the items array. This allows clients to match images to their parent feed items.
+
 ```json
 // Example response structure
 [
-  { "type": "text", "text": "{feed metadata and items JSON}" },
-  { "type": "resource_link", "uri": "https://example.com/featured.jpg", "mimeType": "image/jpeg", "title": "Featured Image" },
-  { "type": "resource_link", "uri": "https://cdn.example.com/gallery1.png", "mimeType": "image/png" }
+  { "type": "text", "text": "{\"items\": [{\"title\": \"Article 1\", ...}, {\"title\": \"Article 2\", ...}]}" },
+  { "type": "resource_link", "uri": "https://example.com/featured.jpg", "mimeType": "image/jpeg", "title": "Featured Image", "meta": {"itemIndex": 0} },
+  { "type": "resource_link", "uri": "https://cdn.example.com/gallery1.png", "mimeType": "image/png", "meta": {"itemIndex": 0} },
+  { "type": "resource_link", "uri": "https://example.com/photo.jpg", "mimeType": "image/jpeg", "meta": {"itemIndex": 1} }
 ]
 ```
+
+In this example:
+- The first two images (featured.jpg and gallery1.png) belong to item 0 ("Article 1")
+- The third image (photo.jpg) belongs to item 1 ("Article 2")
 
 **Image Filtering:**
 - Only image types are included (image/jpeg, image/png, image/gif, etc.)

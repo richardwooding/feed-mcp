@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/richardwooding/feed-mcp/model"
 )
 
 const (
@@ -255,6 +258,174 @@ func TestExtractImageLinks(t *testing.T) {
 
 		if len(links) != 0 {
 			t.Errorf("Expected 0 image links for Item.Image with empty URL, got %d", len(links))
+		}
+	})
+}
+
+//nolint:gocognit // Test function complexity is acceptable for comprehensive test coverage
+func TestBuildFeedContentWithImages(t *testing.T) {
+	t.Run("images have itemIndex in Meta", func(t *testing.T) {
+		items := []*gofeed.Item{
+			{
+				Title: "Item 0",
+				Link:  "https://example.com/item0",
+				Image: &gofeed.Image{
+					URL:   "https://example.com/image0.jpg",
+					Title: "Image 0",
+				},
+			},
+			{
+				Title: "Item 1",
+				Link:  "https://example.com/item1",
+				Enclosures: []*gofeed.Enclosure{
+					{
+						URL:  "https://example.com/image1a.png",
+						Type: "image/png",
+					},
+					{
+						URL:  "https://example.com/image1b.gif",
+						Type: "image/gif",
+					},
+				},
+			},
+			{
+				Title: "Item 2",
+				Link:  "https://example.com/item2",
+				// No images
+			},
+		}
+
+		feed := &model.FeedAndItemsResult{
+			ID:        "test-feed",
+			PublicURL: "https://example.com/feed",
+			Title:     "Test Feed",
+			Feed: &model.Feed{
+				Title:       "Test Feed",
+				Description: "Test Description",
+			},
+			Items: items,
+		}
+
+		// Create a minimal Server instance to call buildFeedContent
+		server := &Server{}
+		paginationInfo := PaginationInfo{
+			Limit:      10,
+			Offset:     0,
+			TotalItems: len(items),
+			HasMore:    false,
+		}
+
+		// Call buildFeedContent with includeImages=true
+		content := server.buildFeedContent(feed, items, paginationInfo, false, 0, true)
+
+		// Verify structure:
+		// [0] TextContent (feed metadata)
+		// [1] TextContent (item 0)
+		// [2] ResourceLink (item 0 image) - itemIndex: 0
+		// [3] TextContent (item 1)
+		// [4] ResourceLink (item 1 image a) - itemIndex: 1
+		// [5] ResourceLink (item 1 image b) - itemIndex: 1
+		// [6] TextContent (item 2)
+
+		expectedContentCount := 7
+		if len(content) != expectedContentCount {
+			t.Fatalf("Expected %d content items, got %d", expectedContentCount, len(content))
+		}
+
+		// Check item 0's image has itemIndex: 0
+		resourceLink0, ok := content[2].(*mcp.ResourceLink)
+		if !ok {
+			t.Fatalf("Expected content[2] to be ResourceLink, got %T", content[2])
+		}
+		if resourceLink0.Meta == nil {
+			t.Fatal("Expected ResourceLink Meta to be set")
+		}
+		itemIndex0, ok := resourceLink0.Meta["itemIndex"].(int)
+		if !ok {
+			t.Fatalf("Expected itemIndex to be int, got %T", resourceLink0.Meta["itemIndex"])
+		}
+		if itemIndex0 != 0 {
+			t.Errorf("Expected item 0 image to have itemIndex=0, got %d", itemIndex0)
+		}
+
+		// Check item 1's first image has itemIndex: 1
+		resourceLink1a, ok := content[4].(*mcp.ResourceLink)
+		if !ok {
+			t.Fatalf("Expected content[4] to be ResourceLink, got %T", content[4])
+		}
+		if resourceLink1a.Meta == nil {
+			t.Fatal("Expected ResourceLink Meta to be set")
+		}
+		itemIndex1a, ok := resourceLink1a.Meta["itemIndex"].(int)
+		if !ok {
+			t.Fatalf("Expected itemIndex to be int, got %T", resourceLink1a.Meta["itemIndex"])
+		}
+		if itemIndex1a != 1 {
+			t.Errorf("Expected item 1 first image to have itemIndex=1, got %d", itemIndex1a)
+		}
+
+		// Check item 1's second image has itemIndex: 1
+		resourceLink1b, ok := content[5].(*mcp.ResourceLink)
+		if !ok {
+			t.Fatalf("Expected content[5] to be ResourceLink, got %T", content[5])
+		}
+		if resourceLink1b.Meta == nil {
+			t.Fatal("Expected ResourceLink Meta to be set")
+		}
+		itemIndex1b, ok := resourceLink1b.Meta["itemIndex"].(int)
+		if !ok {
+			t.Fatalf("Expected itemIndex to be int, got %T", resourceLink1b.Meta["itemIndex"])
+		}
+		if itemIndex1b != 1 {
+			t.Errorf("Expected item 1 second image to have itemIndex=1, got %d", itemIndex1b)
+		}
+	})
+
+	t.Run("no images when includeImages=false", func(t *testing.T) {
+		items := []*gofeed.Item{
+			{
+				Title: "Item with image",
+				Link:  "https://example.com/item",
+				Image: &gofeed.Image{
+					URL:   "https://example.com/image.jpg",
+					Title: "Image",
+				},
+			},
+		}
+
+		feed := &model.FeedAndItemsResult{
+			ID:        "test-feed",
+			PublicURL: "https://example.com/feed",
+			Title:     "Test Feed",
+			Feed: &model.Feed{
+				Title: "Test Feed",
+			},
+			Items: items,
+		}
+
+		// Create a minimal Server instance to call buildFeedContent
+		server := &Server{}
+		paginationInfo := PaginationInfo{
+			Limit:      10,
+			Offset:     0,
+			TotalItems: len(items),
+			HasMore:    false,
+		}
+
+		// Call buildFeedContent with includeImages=false
+		content := server.buildFeedContent(feed, items, paginationInfo, false, 0, false)
+
+		// Should only have feed metadata + item content (no images)
+		expectedContentCount := 2
+		if len(content) != expectedContentCount {
+			t.Fatalf("Expected %d content items, got %d", expectedContentCount, len(content))
+		}
+
+		// Verify no ResourceLinks
+		for i, c := range content {
+			if _, isResourceLink := c.(*mcp.ResourceLink); isResourceLink {
+				t.Errorf("Expected no ResourceLinks when includeImages=false, found one at index %d", i)
+			}
 		}
 	})
 }

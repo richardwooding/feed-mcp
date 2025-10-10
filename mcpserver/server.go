@@ -411,7 +411,7 @@ func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []
 	data, _ := json.Marshal(feedMetadataWithPagination)
 	content = append(content, &mcp.TextContent{Text: string(data)})
 
-	for _, item := range items {
+	for i, item := range items {
 		processedItem := processItemForOutput(item, includeContent, maxContentLength)
 		itemData, _ := json.Marshal(processedItem)
 		content = append(content, &mcp.TextContent{Text: string(itemData)})
@@ -420,6 +420,8 @@ func (s *Server) buildFeedContent(feedResult *model.FeedAndItemsResult, items []
 		if includeImages {
 			imageLinks := extractImageLinks(item)
 			for _, link := range imageLinks {
+				// Add item index to Meta for client-side association
+				link.Meta = mcp.Meta{"itemIndex": i}
 				content = append(content, link)
 			}
 		}
