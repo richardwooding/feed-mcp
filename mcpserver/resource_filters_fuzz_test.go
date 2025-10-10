@@ -27,8 +27,8 @@ func FuzzParseURIParameters(f *testing.F) {
 	// Edge cases for numeric parameters
 	f.Add("feeds://feed/test-feed/items?limit=0")
 	f.Add("feeds://feed/test-feed/items?limit=1000")
-	f.Add("feeds://feed/test-feed/items?limit=9999999")  // Above max
-	f.Add("feeds://feed/test-feed/items?limit=-1")       // Negative (invalid)
+	f.Add("feeds://feed/test-feed/items?limit=9999999") // Above max
+	f.Add("feeds://feed/test-feed/items?limit=-1")      // Negative (invalid)
 	f.Add("feeds://feed/test-feed/items?offset=0")
 	f.Add("feeds://feed/test-feed/items?offset=999999")
 	f.Add("feeds://feed/test-feed/items?offset=-5")      // Negative (invalid)
