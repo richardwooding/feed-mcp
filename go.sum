@@ -35,8 +35,8 @@ github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da h1:aIftn67I1fkbMa5
 github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da/go.mod h1:SqUrOPUnsFjfmXRMNPybcSiG0BgUW2AuFH8PAnS2iTw=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
-github.com/eko/gocache/lib/v4 v4.2.1 h1:mriVe/LExp1WZ2ohmd/+jDtoM35NokxxywNrw15ecl8=
-github.com/eko/gocache/lib/v4 v4.2.1/go.mod h1:/Lpnfie38P4Qkun24jyIVRv95GzhbC90dsq6Q7AtQ2I=
+github.com/eko/gocache/lib/v4 v4.2.2 h1:jUQ1EPoapmnxeDfekdu8nb2D5d5nSgxSJyPZ1PsloBM=
+github.com/eko/gocache/lib/v4 v4.2.2/go.mod h1:/Lpnfie38P4Qkun24jyIVRv95GzhbC90dsq6Q7AtQ2I=
 github.com/eko/gocache/store/ristretto/v4 v4.3.1 h1:DMaF5V3I+kuGvQKgt0ohQKBWf1KaCAzq6Rcokdk2yVU=
 github.com/eko/gocache/store/ristretto/v4 v4.3.1/go.mod h1:1F6nJFAY6fTx/UVd66iYr26V2GzZbVJqQJSl+CkRGh4=
 github.com/gobwas/glob v0.2.3 h1:A4xDbljILXROh+kObIiy5kIaPYD8e96x1tgBhUI5J+Y=
