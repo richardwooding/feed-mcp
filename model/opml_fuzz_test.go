@@ -113,8 +113,8 @@ func FuzzExtractFeedURLsFromOPML(f *testing.F) {
 // whether to load from file or URL based on the input string
 func FuzzLoadFeedURLsFromOPML(f *testing.F) {
 	// Seed corpus with various input patterns
-	f.Add("https://example.com/feeds.opml")
-	f.Add("http://example.com/feeds.opml")
+	// Note: HTTP/HTTPS URLs removed to prevent network calls during seed corpus validation in CI
+	// Fuzzing will still generate random HTTP URLs during actual fuzzing runs
 	f.Add("/path/to/feeds.opml")
 	f.Add("feeds.opml")
 	f.Add("")
