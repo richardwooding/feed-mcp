@@ -31,7 +31,7 @@ func FuzzParseURIParameters(f *testing.F) {
 	f.Add("feeds://feed/test-feed/items?limit=-1")      // Negative (invalid)
 	f.Add("feeds://feed/test-feed/items?offset=0")
 	f.Add("feeds://feed/test-feed/items?offset=999999")
-	f.Add("feeds://feed/test-feed/items?offset=-5")      // Negative (invalid)
+	f.Add("feeds://feed/test-feed/items?offset=-5") // Negative (invalid)
 
 	// Invalid numeric formats
 	f.Add("feeds://feed/test-feed/items?limit=abc")
@@ -40,7 +40,7 @@ func FuzzParseURIParameters(f *testing.F) {
 	f.Add("feeds://feed/test-feed/items?offset=xyz")
 
 	// Date format edge cases
-	f.Add("feeds://feed/test-feed/items?since=2023-01-01")           // Missing time
+	f.Add("feeds://feed/test-feed/items?since=2023-01-01") // Missing time
 	f.Add("feeds://feed/test-feed/items?since=invalid-date")
 	f.Add("feeds://feed/test-feed/items?since=")
 	f.Add("feeds://feed/test-feed/items?until=2023-13-45T99:99:99Z") // Invalid date
