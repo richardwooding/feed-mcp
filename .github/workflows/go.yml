@@ -30,6 +30,17 @@ jobs:
     - name: Test
       run: go test -v ./...
 
+    - name: Run fuzz tests (short)
+      run: |
+        # Run fuzz tests - test each package's seed corpus only (no actual fuzzing in CI)
+        # Full fuzzing runs happen in the dedicated weekly workflow
+        go test ./model -run=^$ -fuzz=FuzzValidateFeedURL -fuzztime=1x
+        go test ./model -run=^$ -fuzz=FuzzSanitizeFeedURLs -fuzztime=1x
+        go test ./model -run=^$ -fuzz=FuzzExtractFeedURLsFromOPML -fuzztime=1x
+        go test ./model -run=^$ -fuzz=FuzzLoadFeedURLsFromOPML -fuzztime=1x
+        go test ./model -run=^$ -fuzz=FuzzGenerateFeedID -fuzztime=1x
+        go test ./mcpserver -run=^$ -fuzz=FuzzParseURIParameters -fuzztime=1x
+
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v7
       with:

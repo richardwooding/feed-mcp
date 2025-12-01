@@ -1,0 +1,83 @@
+name: Fuzz Testing
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  # Run weekly on Sundays at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * 0'
+
+  # Allow manual workflow dispatch
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: 'Fuzzing duration (e.g., 1h, 30m, 5m)'
+        required: false
+        default: '1h'
+        type: string
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - model
+          - mcpserver
+        fuzz_test:
+          - FuzzValidateFeedURL
+          - FuzzSanitizeFeedURLs
+          - FuzzExtractFeedURLsFromOPML
+          - FuzzLoadFeedURLsFromOPML
+          - FuzzGenerateFeedID
+          - FuzzParseURIParameters
+        exclude:
+          # FuzzParseURIParameters is only in mcpserver
+          - package: model
+            fuzz_test: FuzzParseURIParameters
+          # Other fuzz tests are only in model
+          - package: mcpserver
+            fuzz_test: FuzzValidateFeedURL
+          - package: mcpserver
+            fuzz_test: FuzzSanitizeFeedURLs
+          - package: mcpserver
+            fuzz_test: FuzzExtractFeedURLsFromOPML
+          - package: mcpserver
+            fuzz_test: FuzzLoadFeedURLsFromOPML
+          - package: mcpserver
+            fuzz_test: FuzzGenerateFeedID
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
+
+      - name: Run fuzz test
+        run: |
+          FUZZ_TIME="${{ inputs.fuzz_time || '1h' }}"
+          echo "Running ${{ matrix.fuzz_test }} in ${{ matrix.package }} for $FUZZ_TIME"
+          go test -fuzz=${{ matrix.fuzz_test }} -fuzztime=$FUZZ_TIME ./${{ matrix.package }}
+        continue-on-error: true
+        id: fuzz_run
+
+      - name: Upload fuzz corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.package }}-${{ matrix.fuzz_test }}
+          path: |
+            ${{ matrix.package }}/testdata/fuzz/${{ matrix.fuzz_test }}
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Check for failures
+        if: steps.fuzz_run.outcome == 'failure'
+        run: |
+          echo "::warning::Fuzz test ${{ matrix.fuzz_test }} in ${{ matrix.package }} found potential issues"
+          exit 1
