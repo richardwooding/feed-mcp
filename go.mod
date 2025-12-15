@@ -7,7 +7,7 @@ require (
 	github.com/cucumber/godog v0.15.1
 	github.com/dgraph-io/ristretto/v2 v2.3.0
 	github.com/eko/gocache/lib/v4 v4.2.2
-	github.com/eko/gocache/store/ristretto/v4 v4.3.1
+	github.com/eko/gocache/store/ristretto/v4 v4.3.2
 	github.com/gocolly/colly v1.2.0
 	github.com/google/jsonschema-go v0.3.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
