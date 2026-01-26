@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/alecthomas/kong v1.13.0
 	github.com/cucumber/godog v0.15.1
-	github.com/dgraph-io/ristretto/v2 v2.3.0
+	github.com/dgraph-io/ristretto/v2 v2.4.0
 	github.com/eko/gocache/lib/v4 v4.2.3
 	github.com/eko/gocache/store/ristretto/v4 v4.3.2
 	github.com/gocolly/colly v1.2.0
