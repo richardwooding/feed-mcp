@@ -41,7 +41,7 @@ func TestParseURIParameters(t *testing.T) {
 			uri:         "feeds://feed/test-feed/items?limit=10",
 			expectError: false,
 			expected: &FilterParams{
-				Limit: intPtr(10),
+				Limit: new(10),
 			},
 		},
 		{
@@ -49,7 +49,7 @@ func TestParseURIParameters(t *testing.T) {
 			uri:         "feeds://feed/test-feed/items?offset=5",
 			expectError: false,
 			expected: &FilterParams{
-				Offset: intPtr(5),
+				Offset: new(5),
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestParseURIParameters(t *testing.T) {
 			expectError: false,
 			expected: &FilterParams{
 				Since:    parseTimePtr("2023-01-01T00:00:00Z"),
-				Limit:    intPtr(5),
+				Limit:    new(5),
 				Category: "tech",
 			},
 		},
@@ -103,7 +103,7 @@ func TestParseURIParameters(t *testing.T) {
 			uri:         "feeds://feed/test-feed/items?limit=2000",
 			expectError: false,
 			expected: &FilterParams{
-				Limit: intPtr(1000),
+				Limit: new(1000),
 			},
 		},
 		{
@@ -159,21 +159,21 @@ func TestApplyFilters(t *testing.T) {
 		{
 			Title:           "Advanced JavaScript Techniques",
 			Description:     "Master advanced JavaScript concepts",
-			PublishedParsed: timePtr(baseTime.Add(24 * time.Hour)),
+			PublishedParsed: new(baseTime.Add(24 * time.Hour)),
 			Categories:      []string{"programming", "javascript"},
 			Author:          &gofeed.Person{Name: "Jane Smith"},
 		},
 		{
 			Title:           "Web Design Trends 2023",
 			Description:     "Latest trends in web design",
-			PublishedParsed: timePtr(baseTime.Add(48 * time.Hour)),
+			PublishedParsed: new(baseTime.Add(48 * time.Hour)),
 			Categories:      []string{"design", "web"},
 			Author:          &gofeed.Person{Name: "Bob Wilson"},
 		},
 		{
 			Title:           "Database Optimization",
 			Description:     "How to optimize your database queries",
-			PublishedParsed: timePtr(baseTime.Add(72 * time.Hour)),
+			PublishedParsed: new(baseTime.Add(72 * time.Hour)),
 			Categories:      []string{"database", "performance"},
 			Author:          &gofeed.Person{Name: "Alice Johnson"},
 		},
@@ -199,7 +199,7 @@ func TestApplyFilters(t *testing.T) {
 		{
 			name: "Limit filter",
 			filters: &FilterParams{
-				Limit: intPtr(2),
+				Limit: new(2),
 			},
 			expectedCount: 2,
 			expectedTitles: []string{
@@ -210,7 +210,7 @@ func TestApplyFilters(t *testing.T) {
 		{
 			name: "Offset filter",
 			filters: &FilterParams{
-				Offset: intPtr(2),
+				Offset: new(2),
 			},
 			expectedCount: 2,
 			expectedTitles: []string{
@@ -221,8 +221,8 @@ func TestApplyFilters(t *testing.T) {
 		{
 			name: "Limit and offset",
 			filters: &FilterParams{
-				Limit:  intPtr(1),
-				Offset: intPtr(1),
+				Limit:  new(1),
+				Offset: new(1),
 			},
 			expectedCount: 1,
 			expectedTitles: []string{
@@ -232,7 +232,7 @@ func TestApplyFilters(t *testing.T) {
 		{
 			name: "Since filter",
 			filters: &FilterParams{
-				Since: timePtr(baseTime.Add(25 * time.Hour)),
+				Since: new(baseTime.Add(25 * time.Hour)),
 			},
 			expectedCount: 2,
 			expectedTitles: []string{
@@ -243,7 +243,7 @@ func TestApplyFilters(t *testing.T) {
 		{
 			name: "Until filter",
 			filters: &FilterParams{
-				Until: timePtr(baseTime.Add(25 * time.Hour)),
+				Until: new(baseTime.Add(25 * time.Hour)),
 			},
 			expectedCount: 2,
 			expectedTitles: []string{
@@ -296,7 +296,7 @@ func TestApplyFilters(t *testing.T) {
 			name: "Combined filters",
 			filters: &FilterParams{
 				Category: "programming",
-				Limit:    intPtr(1),
+				Limit:    new(1),
 			},
 			expectedCount: 1,
 			expectedTitles: []string{
@@ -399,7 +399,7 @@ func TestMatchesSearch(t *testing.T) {
 func TestCreateFilterSummary(t *testing.T) {
 	filters := &FilterParams{
 		Since:    parseTimePtr("2023-01-01T00:00:00Z"),
-		Limit:    intPtr(10),
+		Limit:    new(10),
 		Category: "tech",
 	}
 
@@ -468,14 +468,6 @@ func TestFilterParamsValidation(t *testing.T) {
 // Helper functions for tests
 func parseTimePtr(timeStr string) *time.Time {
 	t, _ := time.Parse(time.RFC3339, timeStr)
-	return &t
-}
-
-func intPtr(i int) *int {
-	return &i
-}
-
-func timePtr(t time.Time) *time.Time {
 	return &t
 }
 

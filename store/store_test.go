@@ -207,7 +207,7 @@ func TestRateLimitedTransport_RateLimit(t *testing.T) {
 	start := time.Now()
 
 	// Make 3 requests - should take at least 2 seconds due to rate limiting
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp, err := client.Get(srv.URL)
 		if err != nil {
 			t.Fatalf("request %d failed: %v", i, err)
@@ -460,7 +460,7 @@ func TestStore_CircuitBreakerFailures(t *testing.T) {
 	ctx := context.Background()
 
 	// Make multiple requests to trigger circuit breaker
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		results, err := store.GetAllFeeds(ctx)
 		if err != nil {
 			t.Fatalf("GetAllFeeds failed on attempt %d: %v", i+1, err)
@@ -540,7 +540,7 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 	ctx := context.Background()
 
 	// First 3 requests should fail and open the circuit
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		results, _ := store.GetAllFeeds(ctx)
 		if len(results) > 0 && results[0].FetchError == "" {
 			t.Errorf("expected failure on request %d", i+1)
@@ -563,7 +563,7 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 
 	// Should eventually succeed
 	maxAttempts := 3
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		if results[0].FetchError == "" && results[0].Title == "Recovered Feed" {
 			break
 		}
@@ -641,7 +641,7 @@ func TestStore_CircuitBreakerCustomFailureThreshold(t *testing.T) {
 	ctx := context.Background()
 
 	// Make 2 requests - should be enough to trigger circuit breaker with threshold of 2
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		results, err := store.GetAllFeeds(ctx)
 		if err != nil {
 			t.Fatalf("GetAllFeeds failed on attempt %d: %v", i+1, err)

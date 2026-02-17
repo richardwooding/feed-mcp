@@ -46,7 +46,7 @@ func BenchmarkStore_WithoutConnectionPooling(b *testing.B) {
 	servers := make([]*httptest.Server, 10)
 	urls := make([]string, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		server := createTestFeedServer(
 			"Benchmark Feed",
 			"A test feed for benchmarking",
@@ -94,7 +94,7 @@ func BenchmarkStore_WithConnectionPooling(b *testing.B) {
 	servers := make([]*httptest.Server, 10)
 	urls := make([]string, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		server := createTestFeedServer(
 			"Benchmark Feed",
 			"A test feed for benchmarking",
@@ -142,7 +142,7 @@ func BenchmarkStore_ConcurrentAccess(b *testing.B) {
 	servers := make([]*httptest.Server, 5)
 	urls := make([]string, 5)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Simulate some processing time
 			time.Sleep(10 * time.Millisecond)
@@ -252,7 +252,7 @@ func BenchmarkStore_ScalabilityTest(b *testing.B) {
 			servers := make([]*httptest.Server, feedCount)
 			urls := make([]string, feedCount)
 
-			for i := 0; i < feedCount; i++ {
+			for i := range feedCount {
 				server := createTestFeedServer(
 					"Scalability Feed",
 					"Feed for scalability testing",

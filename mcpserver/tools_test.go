@@ -193,7 +193,7 @@ func TestToolLogic(t *testing.T) {
 		}
 
 		// Test JSON marshaling for each feed (which happens in the tool)
-		var unmarshaledFeeds []*model.FeedResult
+		unmarshaledFeeds := make([]*model.FeedResult, 0, len(feedResults))
 		for i, feedResult := range feedResults {
 			data, err := json.Marshal(feedResult)
 			if err != nil {
@@ -504,7 +504,7 @@ func TestTransportErrorHandling(t *testing.T) {
 func TestTypeDefinitions(t *testing.T) {
 	// Test that our type definitions are what we expect
 	t.Run("Server struct fields", func(t *testing.T) {
-		serverType := reflect.TypeOf(Server{})
+		serverType := reflect.TypeFor[Server]()
 
 		// Check that Server has the expected fields
 		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "dynamicFeedManager", "resourceManager", "sessionID", "transport", "imageCache", "imageCircuitBreakers", "imageCBMutex", "httpClient"}
@@ -522,7 +522,7 @@ func TestTypeDefinitions(t *testing.T) {
 	})
 
 	t.Run("Config struct fields", func(t *testing.T) {
-		configType := reflect.TypeOf(Config{})
+		configType := reflect.TypeFor[Config]()
 
 		// Check that Config has the expected fields
 		expectedFields := []string{"AllFeedsGetter", "FeedAndItemsGetter", "DynamicFeedManager", "Transport"}

@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -248,13 +249,7 @@ func TestResourceManagerChangeDetection(t *testing.T) {
 	}
 
 	// Verify feed list URI is included
-	feedListFound := false
-	for _, uri := range changedURIs {
-		if uri == FeedListURI {
-			feedListFound = true
-			break
-		}
-	}
+	feedListFound := slices.Contains(changedURIs, FeedListURI)
 	if !feedListFound {
 		t.Error("Feed list URI should be in changed URIs")
 	}
@@ -271,7 +266,7 @@ func TestResourceManagerConcurrentAccess(t *testing.T) {
 
 	// Test concurrent session creation and subscription
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(id int) {
 			sessionID := fmt.Sprintf("session-%d", id)
 			rm.CreateSession(sessionID)
@@ -292,7 +287,7 @@ func TestResourceManagerConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

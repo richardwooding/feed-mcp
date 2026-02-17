@@ -38,7 +38,7 @@ type DynamicFeedMetadata struct {
 	Source      mcpserver.FeedSource `json:"source"`
 	Status      string               `json:"status"` // active, error, paused
 	LastError   string               `json:"lastError,omitempty"`
-	LastFetched time.Time            `json:"lastFetched,omitempty"`
+	LastFetched time.Time            `json:"lastFetched"`
 }
 
 // DynamicStore extends Store with dynamic feed management capabilities

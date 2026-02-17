@@ -234,7 +234,7 @@ func TestResourceContentErrors(t *testing.T) {
 
 	// Mock the marshalJSONContent function by testing the error it would generate
 	uri := errorTestFeedURI
-	data := map[string]interface{}{
+	data := map[string]any{
 		"problematic": problematicType{Chan: make(chan int)},
 	}
 
@@ -463,7 +463,7 @@ func TestErrorJSONSerialization(t *testing.T) {
 	jsonData, err := json.Marshal(feedErr)
 	require.NoError(t, err)
 
-	var unmarshalled map[string]interface{}
+	var unmarshalled map[string]any
 	err = json.Unmarshal(jsonData, &unmarshalled)
 	require.NoError(t, err)
 

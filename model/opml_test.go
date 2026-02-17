@@ -329,30 +329,31 @@ func TestLoadFeedURLsFromOPML(t *testing.T) {
 // BenchmarkExtractFeedURLsFromOPML tests performance of OPML parsing
 func BenchmarkExtractFeedURLsFromOPML(b *testing.B) {
 	// Create a larger OPML with multiple nested categories
-	opmlContent := `<?xml version="1.0" encoding="UTF-8"?>
+	var opmlContent strings.Builder
+	opmlContent.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
 	<head>
 		<title>Large Feed Collection</title>
 	</head>
-	<body>`
+	<body>`)
 
 	// Add multiple categories with feeds
-	for i := 0; i < 10; i++ {
-		opmlContent += `
-		<outline text="Category ` + string(rune('A'+i)) + `">`
-		for j := 0; j < 10; j++ {
-			opmlContent += `
-			<outline text="Feed ` + strconv.Itoa(j) + `" xmlUrl="https://example` + strconv.Itoa(j) + `.com/feed.xml" />`
+	for i := range 10 {
+		opmlContent.WriteString(`
+		<outline text="Category ` + string(rune('A'+i)) + `">`)
+		for j := range 10 {
+			opmlContent.WriteString(`
+			<outline text="Feed ` + strconv.Itoa(j) + `" xmlUrl="https://example` + strconv.Itoa(j) + `.com/feed.xml" />`)
 		}
-		opmlContent += `
-		</outline>`
+		opmlContent.WriteString(`
+		</outline>`)
 	}
 
-	opmlContent += `
+	opmlContent.WriteString(`
 	</body>
-</opml>`
+</opml>`)
 
-	opmlBytes := []byte(opmlContent)
+	opmlBytes := []byte(opmlContent.String())
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

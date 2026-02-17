@@ -188,7 +188,7 @@ func TestReadParameterDocsResource(t *testing.T) {
 	}
 
 	// Parse JSON to verify structure
-	var paramDocs map[string]interface{}
+	var paramDocs map[string]any
 	if err := json.Unmarshal([]byte(content.Text), &paramDocs); err != nil {
 		t.Errorf("Content is not valid JSON: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestReadParameterDocsResource(t *testing.T) {
 	// Check for expected top-level structure
 	if uriParams, ok := paramDocs["uri_parameters"]; !ok {
 		t.Error("Expected 'uri_parameters' key in parameter docs")
-	} else if uriParamsMap, ok := uriParams.(map[string]interface{}); !ok {
+	} else if uriParamsMap, ok := uriParams.(map[string]any); !ok {
 		t.Error("Expected 'uri_parameters' to be an object")
 	} else {
 		// Check for expected sections

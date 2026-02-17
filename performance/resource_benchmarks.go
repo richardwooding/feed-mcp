@@ -331,7 +331,7 @@ func generateFeedID(url string) string {
 
 func createMockAllFeedsGetter(count int) *mockAllFeedsGetter {
 	feeds := make([]*model.FeedResult, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		feedID := generateFeedID(fmt.Sprintf("https://example.com/perf-feed%d.xml", i))
 		feeds[i] = &model.FeedResult{
 			ID:        feedID,
@@ -345,13 +345,13 @@ func createMockAllFeedsGetter(count int) *mockAllFeedsGetter {
 func createMockFeedAndItemsGetter(feedCount, itemsPerFeed int) *mockFeedAndItemsGetter {
 	feedsMap := make(map[string]*model.FeedAndItemsResult)
 
-	for i := 0; i < feedCount; i++ {
+	for i := range feedCount {
 		url := fmt.Sprintf("https://example.com/perf-feed%d.xml", i)
 		feedID := generateFeedID(url)
 
 		// Create gofeed.Item objects
 		items := make([]*gofeed.Item, itemsPerFeed)
-		for j := 0; j < itemsPerFeed; j++ {
+		for j := range itemsPerFeed {
 			items[j] = &gofeed.Item{
 				Title:       fmt.Sprintf("Performance Item %d-%d", i, j),
 				Description: fmt.Sprintf("Performance test item %d in feed %d", j, i),

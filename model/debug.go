@@ -113,19 +113,19 @@ func (d *DebugLogger) ShouldLog(level LogLevel) bool {
 
 // LogMessage represents a structured log message
 type LogMessage struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Level     string                 `json:"level"`
-	Message   string                 `json:"message"`
-	Component string                 `json:"component,omitempty"`
-	Operation string                 `json:"operation,omitempty"`
-	URL       string                 `json:"url,omitempty"`
-	Error     string                 `json:"error,omitempty"`
-	Duration  string                 `json:"duration,omitempty"`
-	Extra     map[string]interface{} `json:"extra,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+	Level     string         `json:"level"`
+	Message   string         `json:"message"`
+	Component string         `json:"component,omitempty"`
+	Operation string         `json:"operation,omitempty"`
+	URL       string         `json:"url,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Duration  string         `json:"duration,omitempty"`
+	Extra     map[string]any `json:"extra,omitempty"`
 }
 
 // log writes a log message at the specified level
-func (d *DebugLogger) log(level LogLevel, message, component, operation, url string, err error, extra map[string]interface{}) {
+func (d *DebugLogger) log(level LogLevel, message, component, operation, url string, err error, extra map[string]any) {
 	if !d.ShouldLog(level) {
 		return
 	}
@@ -205,7 +205,7 @@ func (d *DebugLogger) Debug(message string) {
 }
 
 // DebugWithContext logs a debug-level message with context
-func (d *DebugLogger) DebugWithContext(message, component, operation, url string, extra map[string]interface{}) {
+func (d *DebugLogger) DebugWithContext(message, component, operation, url string, extra map[string]any) {
 	d.log(LogLevelDebug, message, component, operation, url, nil, extra)
 }
 
@@ -215,7 +215,7 @@ func (d *DebugLogger) Info(message string) {
 }
 
 // InfoWithContext logs an info-level message with context
-func (d *DebugLogger) InfoWithContext(message, component, operation, url string, extra map[string]interface{}) {
+func (d *DebugLogger) InfoWithContext(message, component, operation, url string, extra map[string]any) {
 	d.log(LogLevelInfo, message, component, operation, url, nil, extra)
 }
 
@@ -225,7 +225,7 @@ func (d *DebugLogger) Warn(message string) {
 }
 
 // WarnWithContext logs a warning-level message with context
-func (d *DebugLogger) WarnWithContext(message, component, operation, url string, err error, extra map[string]interface{}) {
+func (d *DebugLogger) WarnWithContext(message, component, operation, url string, err error, extra map[string]any) {
 	d.log(LogLevelWarn, message, component, operation, url, err, extra)
 }
 
@@ -235,7 +235,7 @@ func (d *DebugLogger) Error(message string, err error) {
 }
 
 // ErrorWithContext logs an error-level message with context
-func (d *DebugLogger) ErrorWithContext(message, component, operation, url string, err error, extra map[string]interface{}) {
+func (d *DebugLogger) ErrorWithContext(message, component, operation, url string, err error, extra map[string]any) {
 	d.log(LogLevelError, message, component, operation, url, err, extra)
 }
 
@@ -245,7 +245,7 @@ func (d *DebugLogger) LogFeedError(feedErr *FeedError) {
 		return
 	}
 
-	extra := make(map[string]interface{})
+	extra := make(map[string]any)
 	extra["error_id"] = feedErr.ID
 	extra["error_type"] = feedErr.ErrorType
 	extra["suggestion"] = feedErr.Suggestion
@@ -294,7 +294,7 @@ func DebugLog(message string) {
 }
 
 // DebugLogWithContext logs a debug message with context
-func DebugLogWithContext(message, component, operation, url string, extra map[string]interface{}) {
+func DebugLogWithContext(message, component, operation, url string, extra map[string]any) {
 	defaultLogger.DebugWithContext(message, component, operation, url, extra)
 }
 
@@ -304,7 +304,7 @@ func InfoLog(message string) {
 }
 
 // InfoLogWithContext logs an info message with context
-func InfoLogWithContext(message, component, operation, url string, extra map[string]interface{}) {
+func InfoLogWithContext(message, component, operation, url string, extra map[string]any) {
 	defaultLogger.InfoWithContext(message, component, operation, url, extra)
 }
 

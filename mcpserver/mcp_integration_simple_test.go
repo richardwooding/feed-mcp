@@ -17,7 +17,7 @@ import (
 // createMockItems creates mock feed items for testing
 func createTestMockItems(count int) []*gofeed.Item {
 	items := make([]*gofeed.Item, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		items[i] = &gofeed.Item{
 			Title:       fmt.Sprintf("Test Item %d", i+1),
 			Link:        fmt.Sprintf("https://example.com/item%d", i+1),
@@ -131,9 +131,9 @@ func TestMCPResourcesReadFeedListResource(t *testing.T) {
 
 	// Parse and verify the JSON content
 	var feedListResponse struct {
-		Feeds     []map[string]interface{} `json:"feeds"`
-		Count     int                      `json:"count"`
-		UpdatedAt string                   `json:"updated_at"`
+		Feeds     []map[string]any `json:"feeds"`
+		Count     int              `json:"count"`
+		UpdatedAt string           `json:"updated_at"`
 	}
 	if err := json.Unmarshal([]byte(content.Text), &feedListResponse); err != nil {
 		t.Fatalf("Failed to parse feed list JSON: %v", err)

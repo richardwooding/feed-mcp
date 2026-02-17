@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -89,10 +90,8 @@ func validateHost(host string) error {
 	}
 
 	// Check if any resolved IP is private
-	for _, ip := range ips {
-		if isPrivateIP(ip) {
-			return ErrPrivateIPBlocked
-		}
+	if slices.ContainsFunc(ips, isPrivateIP) {
+		return ErrPrivateIPBlocked
 	}
 
 	return nil
@@ -109,10 +108,8 @@ func isLocalhost(hostname string) bool {
 		"[::1]", // IPv6 with brackets
 	}
 
-	for _, pattern := range localhostPatterns {
-		if hostname == pattern {
-			return true
-		}
+	if slices.Contains(localhostPatterns, hostname) {
+		return true
 	}
 
 	return strings.HasPrefix(hostname, "127.")

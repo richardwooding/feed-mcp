@@ -360,10 +360,7 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) ParsedFeed
 
 	// Parse limit
 	if args.Limit != nil {
-		params.Limit = *args.Limit
-		if params.Limit > MaxItemLimit {
-			params.Limit = MaxItemLimit
-		}
+		params.Limit = min(*args.Limit, MaxItemLimit)
 		if params.Limit < 0 {
 			params.Limit = 0
 		}
@@ -371,10 +368,7 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) ParsedFeed
 
 	// Parse offset
 	if args.Offset != nil {
-		params.Offset = *args.Offset
-		if params.Offset < 0 {
-			params.Offset = 0
-		}
+		params.Offset = max(*args.Offset, 0)
 	}
 
 	// Parse includeContent
@@ -384,10 +378,7 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) ParsedFeed
 
 	// Parse maxContentLength
 	if args.MaxContentLength != nil {
-		params.MaxContentLength = *args.MaxContentLength
-		if params.MaxContentLength < 0 {
-			params.MaxContentLength = 0
-		}
+		params.MaxContentLength = max(*args.MaxContentLength, 0)
 	}
 	// If content is not included, maxContentLength is irrelevant
 	if !params.IncludeContent {
@@ -433,15 +424,9 @@ type ParsedFeedParams struct {
 // applyPagination slices items based on limit and offset
 func (s *Server) applyPagination(items []*gofeed.Item, limit, offset int) ([]*gofeed.Item, PaginationInfo) {
 	totalItems := len(items)
-	startIdx := offset
-	if startIdx > totalItems {
-		startIdx = totalItems
-	}
+	startIdx := min(offset, totalItems)
 
-	endIdx := startIdx + limit
-	if endIdx > totalItems {
-		endIdx = totalItems
-	}
+	endIdx := min(startIdx+limit, totalItems)
 
 	paginatedItems := items[startIdx:endIdx]
 
@@ -560,7 +545,7 @@ func (s *Server) addAggregationTools(srv *mcp.Server) {
 				"sortBy": {
 					Type:        "string",
 					Description: "Sort order: date (default), title, source",
-					Enum:        []interface{}{"date", "title", "source"},
+					Enum:        []any{"date", "title", "source"},
 				},
 				"deduplicate": {
 					Type:        "boolean",
@@ -603,7 +588,7 @@ func (s *Server) addAggregationTools(srv *mcp.Server) {
 				"format": {
 					Type:        "string",
 					Description: "Export format",
-					Enum:        []interface{}{"json", "csv", "opml", "rss", "atom"},
+					Enum:        []any{"json", "csv", "opml", "rss", "atom"},
 				},
 				"since": {
 					Type:        "string",
@@ -1210,17 +1195,11 @@ func processItemForOutput(item *gofeed.Item, includeContent bool, maxContentLeng
 	} else if maxContentLength > 0 {
 		// Truncate content if it exceeds max length
 		if len(processedItem.Content) > maxContentLength {
-			truncateLen := maxContentLength
-			if truncateLen > len(processedItem.Content) {
-				truncateLen = len(processedItem.Content)
-			}
+			truncateLen := min(maxContentLength, len(processedItem.Content))
 			processedItem.Content = processedItem.Content[:truncateLen] + TruncationMarker
 		}
 		if len(processedItem.Description) > maxContentLength {
-			truncateLen := maxContentLength
-			if truncateLen > len(processedItem.Description) {
-				truncateLen = len(processedItem.Description)
-			}
+			truncateLen := min(maxContentLength, len(processedItem.Description))
 			processedItem.Description = processedItem.Description[:truncateLen] + TruncationMarker
 		}
 	}
@@ -1236,11 +1215,11 @@ func guessMIMETypeFromURL(urlStr string) string {
 		// Get everything after the last dot, but before any query parameters or fragments
 		extPart := urlStr[idx+1:]
 		// Check for query parameters
-		if qIdx := strings.Index(extPart, "?"); qIdx != -1 {
-			ext = extPart[:qIdx]
-		} else if fIdx := strings.Index(extPart, "#"); fIdx != -1 {
+		if before, _, ok := strings.Cut(extPart, "?"); ok {
+			ext = before
+		} else if before, _, ok := strings.Cut(extPart, "#"); ok {
 			// Check for fragments
-			ext = extPart[:fIdx]
+			ext = before
 		} else {
 			ext = extPart
 		}
@@ -1402,7 +1381,7 @@ func (s *Server) fetchAndEmbedImage(ctx context.Context, imageURL, mimeType stri
 	cb := s.getOrCreateImageCircuitBreaker(parsedURL.Host)
 
 	// Execute fetch with circuit breaker
-	result, err := cb.Execute(func() (interface{}, error) {
+	result, err := cb.Execute(func() (any, error) {
 		// Create request with timeout context
 		req, err := http.NewRequestWithContext(ctx, "GET", imageURL, http.NoBody)
 		if err != nil {
@@ -1594,10 +1573,10 @@ func exportAsJSON(feedResults []*FeedAndItemsResult, includeAll bool) (string, e
 
 // exportAsCSV exports feed results as CSV
 func exportAsCSV(feedResults []*FeedAndItemsResult) (string, error) {
-	var result string
+	var result strings.Builder
 
 	// CSV header
-	result += "Feed Title,Feed URL,Item Title,Item Link,Published Date,Description\n"
+	result.WriteString("Feed Title,Feed URL,Item Title,Item Link,Published Date,Description\n")
 
 	// CSV rows
 	for _, feedResult := range feedResults {
@@ -1613,46 +1592,48 @@ func exportAsCSV(feedResults []*FeedAndItemsResult) (string, error) {
 			}
 			description := escapeCSVField(item.Description)
 
-			result += fmt.Sprintf("%s,%s,%s,%s,%s,%s\n",
-				feedTitle, feedURL, itemTitle, itemLink, publishedDate, description)
+			result.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s\n",
+				feedTitle, feedURL, itemTitle, itemLink, publishedDate, description))
 		}
 	}
 
-	return result, nil
+	return result.String(), nil
 }
 
 // exportAsOPML exports feed results as OPML
 func exportAsOPML(feedResults []*FeedAndItemsResult) (string, error) {
-	result := `<?xml version="1.0" encoding="UTF-8"?>
+	var result strings.Builder
+	result.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <opml version="1.0">
 <head>
 <title>Feed Export</title>
 <dateCreated>` + time.Now().Format(time.RFC1123Z) + `</dateCreated>
 </head>
 <body>
-`
+`)
 
 	for _, feedResult := range feedResults {
-		result += fmt.Sprintf(`<outline text=%q title=%q type="rss" xmlUrl=%q htmlUrl=%q/>`,
-			escapeXML(feedResult.Title), escapeXML(feedResult.Title), escapeXML(feedResult.PublicURL), escapeXML(feedResult.PublicURL))
-		result += "\n"
+		result.WriteString(fmt.Sprintf(`<outline text=%q title=%q type="rss" xmlUrl=%q htmlUrl=%q/>`,
+			escapeXML(feedResult.Title), escapeXML(feedResult.Title), escapeXML(feedResult.PublicURL), escapeXML(feedResult.PublicURL)))
+		result.WriteString("\n")
 	}
 
-	result += `</body>
-</opml>`
+	result.WriteString(`</body>
+</opml>`)
 
-	return result, nil
+	return result.String(), nil
 }
 
 // exportAsRSS exports feed results as RSS 2.0
 func exportAsRSS(feedResults []*FeedAndItemsResult) (string, error) {
-	result := `<?xml version="1.0" encoding="UTF-8"?>
+	var result strings.Builder
+	result.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
 <title>Combined Feed Export</title>
 <description>Combined feed containing items from multiple sources</description>
 <lastBuildDate>` + time.Now().Format(time.RFC1123Z) + `</lastBuildDate>
-`
+`)
 
 	for _, feedResult := range feedResults {
 		for _, item := range feedResult.Items {
@@ -1660,32 +1641,33 @@ func exportAsRSS(feedResults []*FeedAndItemsResult) (string, error) {
 			if item.PublishedParsed != nil {
 				pubDate = item.PublishedParsed.Format(time.RFC1123Z)
 			}
-			result += `<item>
+			result.WriteString(`<item>
 <title>` + escapeXML(item.Title) + `</title>
 <link>` + escapeXML(item.Link) + `</link>
 <description>` + escapeXML(item.Description) + `</description>
 <pubDate>` + pubDate + `</pubDate>
 <guid>` + escapeXML(item.Link) + `</guid>
 </item>
-`
+`)
 		}
 	}
 
-	result += `</channel>
-</rss>`
+	result.WriteString(`</channel>
+</rss>`)
 
-	return result, nil
+	return result.String(), nil
 }
 
 // exportAsAtom exports feed results as Atom 1.0
 func exportAsAtom(feedResults []*FeedAndItemsResult) (string, error) {
-	result := `<?xml version="1.0" encoding="UTF-8"?>
+	var result strings.Builder
+	result.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 <title>Combined Feed Export</title>
 <subtitle>Combined feed containing items from multiple sources</subtitle>
 <updated>` + time.Now().Format(time.RFC3339) + `</updated>
 <id>urn:feed-mcp:export:` + fmt.Sprintf("%d", time.Now().Unix()) + `</id>
-`
+`)
 
 	for _, feedResult := range feedResults {
 		for _, item := range feedResult.Items {
@@ -1693,20 +1675,20 @@ func exportAsAtom(feedResults []*FeedAndItemsResult) (string, error) {
 			if item.PublishedParsed != nil {
 				updatedDate = item.PublishedParsed.Format(time.RFC3339)
 			}
-			result += `<entry>
+			result.WriteString(`<entry>
 <title>` + escapeXML(item.Title) + `</title>
 <link href="` + escapeXML(item.Link) + `"/>
 <summary>` + escapeXML(item.Description) + `</summary>
 <updated>` + updatedDate + `</updated>
 <id>` + escapeXML(item.Link) + `</id>
 </entry>
-`
+`)
 		}
 	}
 
-	result += `</feed>`
+	result.WriteString(`</feed>`)
 
-	return result, nil
+	return result.String(), nil
 }
 
 // Utility functions for escaping
@@ -1744,15 +1726,15 @@ func containsAny(s, chars string) bool {
 
 // replaceAll replaces all occurrences of old with replacement in string
 func replaceAll(s, old, replacement string) string {
-	result := ""
+	var result strings.Builder
 	for i := 0; i < len(s); {
 		if i+len(old) <= len(s) && s[i:i+len(old)] == old {
-			result += replacement
+			result.WriteString(replacement)
 			i += len(old)
 		} else {
-			result += string(s[i])
+			result.WriteString(string(s[i]))
 			i++
 		}
 	}
-	return result
+	return result.String()
 }

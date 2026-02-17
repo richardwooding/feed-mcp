@@ -17,11 +17,11 @@ import (
 
 // PromptResult represents the structured result of a prompt execution
 type PromptResult struct {
-	Success   bool                   `json:"success"`
-	Message   string                 `json:"message,omitempty"`
-	Data      map[string]interface{} `json:"data,omitempty"`
-	Error     string                 `json:"error,omitempty"`
-	Generated time.Time              `json:"generated"`
+	Success   bool           `json:"success"`
+	Message   string         `json:"message,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Generated time.Time      `json:"generated"`
 }
 
 // titleCase converts the first character to uppercase, replacing deprecated strings.Title
@@ -40,8 +40,8 @@ func (s *Server) getFeedsForPrompt(ctx context.Context, feedIDs string) ([]*mode
 
 	if feedIDs != "" {
 		// Get specific feeds
-		idList := strings.Split(feedIDs, ",")
-		for _, id := range idList {
+		idList := strings.SplitSeq(feedIDs, ",")
+		for id := range idList {
 			id = strings.TrimSpace(id)
 			if id == "" {
 				continue
@@ -662,7 +662,7 @@ func formatMonitoringResults(monitoring *keywordMonitoring) string {
 
 		// Add source breakdown
 		if sources, exists := monitoring.sourceBreakdown[keyword]; exists && len(sources) > 0 {
-			var sourceList []string
+			sourceList := make([]string, 0, len(sources))
 			for source, sourceCount := range sources {
 				sourceList = append(sourceList, fmt.Sprintf("%s (%d)", source, sourceCount))
 			}
@@ -1093,14 +1093,15 @@ func generateErrorAnalysis(feeds []*model.FeedResult) string {
 		return "*No errors detected*"
 	}
 
-	analysis := "**Error Breakdown:**\n"
+	var analysis strings.Builder
+	analysis.WriteString("**Error Breakdown:**\n")
 	for errorType, count := range errorTypes {
-		analysis += fmt.Sprintf("- %s: %d occurrences\n", errorType, count)
+		analysis.WriteString(fmt.Sprintf("- %s: %d occurrences\n", errorType, count))
 	}
 
-	analysis += "\n**Failed Feeds:**\n" + strings.Join(errorFeeds, "\n")
+	analysis.WriteString("\n**Failed Feeds:**\n" + strings.Join(errorFeeds, "\n"))
 
-	return analysis
+	return analysis.String()
 }
 
 func getReliabilityStatus(uptime float64) string {

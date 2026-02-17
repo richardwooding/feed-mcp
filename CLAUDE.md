@@ -94,7 +94,7 @@ go fmt ./...    # Format code
 go vet ./...    # Run go vet for static analysis
 
 # Install and run golangci-lint v2 (comprehensive linting)
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.9.0
 $(go env GOPATH)/bin/golangci-lint run
 $(go env GOPATH)/bin/golangci-lint run --fix  # Run with auto-fix
 ```
