@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -322,13 +323,7 @@ func testFeedCacheInvalidation(t *testing.T, rm *ResourceManager, ctx context.Co
 	}
 
 	for _, expectedURI := range expectedURIs {
-		found := false
-		for _, actualURI := range *invalidatedURIs {
-			if actualURI == expectedURI {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(*invalidatedURIs, expectedURI)
 		if !found {
 			t.Errorf("Expected URI %s to be invalidated, but it wasn't", expectedURI)
 		}

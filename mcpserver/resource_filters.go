@@ -403,8 +403,8 @@ func hasCategory(item *gofeed.Item, category string) bool {
 	if item.Custom != nil {
 		// Check common tag fields
 		if tags, ok := item.Custom["tags"]; ok && tags != "" {
-			tagList := strings.Split(tags, ",")
-			for _, tag := range tagList {
+			tagList := strings.SplitSeq(tags, ",")
+			for tag := range tagList {
 				if strings.EqualFold(strings.TrimSpace(tag), category) {
 					return true
 				}

@@ -8,7 +8,7 @@
 
 # Variables
 BINARY_NAME := feed-mcp
-GOLANGCI_LINT_VERSION := v2.4.0
+GOLANGCI_LINT_VERSION := v2.9.0
 GOPATH := $(shell go env GOPATH)
 GOLANGCI_LINT := $(GOPATH)/bin/golangci-lint
 

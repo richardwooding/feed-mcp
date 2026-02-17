@@ -300,23 +300,24 @@ func BenchmarkRunCmd_OPML_Parsing(b *testing.B) {
 	opmlFile := filepath.Join(tmpDir, "large.opml")
 
 	// Generate OPML with many feeds
-	opmlContent := `<?xml version="1.0" encoding="UTF-8"?>
+	var opmlContent strings.Builder
+	opmlContent.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
 	<head>
 		<title>Large Feed Collection</title>
 	</head>
-	<body>`
+	<body>`)
 
-	for i := 0; i < 100; i++ {
-		opmlContent += fmt.Sprintf(`
-		<outline text="Feed %d" xmlUrl="https://example%d.com/feed.xml" />`, i, i)
+	for i := range 100 {
+		opmlContent.WriteString(fmt.Sprintf(`
+		<outline text="Feed %d" xmlUrl="https://example%d.com/feed.xml" />`, i, i))
 	}
 
-	opmlContent += `
+	opmlContent.WriteString(`
 	</body>
-</opml>`
+</opml>`)
 
-	os.WriteFile(opmlFile, []byte(opmlContent), 0o644)
+	os.WriteFile(opmlFile, []byte(opmlContent.String()), 0o644)
 
 	cmd := RunCmd{
 		Transport: "stdio",

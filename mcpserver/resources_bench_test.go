@@ -272,7 +272,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 
 				// Exercise the resource manager
 				_, _ = rm.ListResources(ctx)
-				for j := 0; j < 10; j++ {
+				for j := range 10 {
 					feedID := model.GenerateFeedID(fmt.Sprintf("https://example.com/feed%d.xml", j%count))
 					uri := strings.Replace(FeedItemsURI, "{feedId}", feedID, 1)
 					_, _ = rm.ReadResource(ctx, uri)
@@ -293,7 +293,7 @@ func BenchmarkLargeScale(b *testing.B) {
 	// Pre-warm cache and create sessions
 	sessionCount := 50
 	sessions := make([]string, sessionCount)
-	for i := 0; i < sessionCount; i++ {
+	for i := range sessionCount {
 		sessions[i] = fmt.Sprintf("session-%d", i)
 		rm.CreateSession(sessions[i])
 	}
@@ -333,7 +333,7 @@ func createBenchmarkResourceManager(feedCount int) *ResourceManager {
 	feeds := make([]*model.FeedResult, feedCount)
 	feedsMap := make(map[string]*model.FeedAndItemsResult)
 
-	for i := 0; i < feedCount; i++ {
+	for i := range feedCount {
 		url := fmt.Sprintf("https://example.com/feed%d.xml", i)
 		feedID := model.GenerateFeedID(url)
 
@@ -347,7 +347,7 @@ func createBenchmarkResourceManager(feedCount int) *ResourceManager {
 
 		// Create items with realistic content
 		items := make([]*gofeed.Item, 20) // 20 items per feed
-		for j := 0; j < 20; j++ {
+		for j := range 20 {
 			items[j] = &gofeed.Item{
 				Title:       fmt.Sprintf("Item %d-%d", i, j),
 				Description: fmt.Sprintf("Description for item %d in feed %d with some content", j, i),

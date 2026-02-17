@@ -439,7 +439,7 @@ func BenchmarkNewServer(b *testing.B) {
 
 func BenchmarkGetAllFeeds(b *testing.B) {
 	feeds := make([]*model.FeedResult, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		feeds[i] = &model.FeedResult{
 			ID:        "feed" + string(rune(i)),
 			PublicURL: "https://example.com/feed" + string(rune(i)) + ".xml",

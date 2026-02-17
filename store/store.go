@@ -173,12 +173,9 @@ func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitt
 	}
 
 	// Exponential backoff: baseDelay * 2^(attempt-1)
-	delay := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt-1)))
-
-	// Cap at maxDelay
-	if delay > maxDelay {
-		delay = maxDelay
-	}
+	delay := min(
+		// Cap at maxDelay
+		time.Duration(float64(baseDelay)*math.Pow(2, float64(attempt-1))), maxDelay)
 
 	// Add jitter to avoid thundering herd
 	if useJitter && delay > 0 {
@@ -189,11 +186,9 @@ func calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration, useJitt
 		} else {
 			jitter = 0
 		}
-		delay = delay - jitterRange/2 + jitter
-		// Ensure delay is never negative
-		if delay < 0 {
-			delay = 0
-		}
+		delay = max(
+			// Ensure delay is never negative
+			delay-jitterRange/2+jitter, 0)
 	}
 
 	return delay
@@ -247,7 +242,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 			}
 
 			// Debug log successful fetch
-			extra := map[string]interface{}{
+			extra := map[string]any{
 				"items_count": len(feed.Items),
 			}
 			msg := "Successfully fetched feed"
@@ -271,7 +266,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 		model.DebugLogWithContext(
 			fmt.Sprintf("Feed fetch attempt %d failed", attempt),
 			"feed_fetcher", "retryable_fetch", url,
-			map[string]interface{}{
+			map[string]any{
 				"attempt":      attempt,
 				"max_attempts": maxAttempts,
 				"error":        err.Error(),
@@ -285,7 +280,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 				model.DebugLogWithContext(
 					"Error is not retryable, stopping retry attempts",
 					"feed_fetcher", "retryable_fetch", url,
-					map[string]interface{}{
+					map[string]any{
 						"attempt": attempt,
 						"error":   err.Error(),
 					},
@@ -300,7 +295,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 		model.DebugLogWithContext(
 			fmt.Sprintf("Retrying in %v", delay),
 			"feed_fetcher", "retryable_fetch", url,
-			map[string]interface{}{
+			map[string]any{
 				"attempt":      attempt,
 				"next_attempt": attempt + 1,
 				"delay_ms":     delay.Milliseconds(),
@@ -465,7 +460,7 @@ func newStoreInternal(config Config) (*Store, error) {
 			// Use circuit breaker if enabled
 			if circuitBreakerEnabled {
 				if cb, exists := circuitBreakers[url]; exists {
-					result, err := cb.Execute(func() (interface{}, error) {
+					result, err := cb.Execute(func() (any, error) {
 						return retryableFeedFetch(ctx, url, fp, config, s.retryMetrics, &s.metricsMutex)
 					})
 					if err != nil {

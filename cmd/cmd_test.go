@@ -68,7 +68,7 @@ func TestRunCmd_Run_Valid(t *testing.T) {
 }
 
 // Helper method to test configuration parsing
-func (c *RunCmd) parseConfig() (interface{}, error) {
+func (c *RunCmd) parseConfig() (any, error) {
 	transport, err := model.ParseTransport(c.Transport)
 	if err != nil {
 		return nil, err

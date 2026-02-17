@@ -115,7 +115,7 @@ func (r *ResourceExample) GetRecentItems(ctx context.Context, feedID string, lim
 		return fmt.Errorf("no content in response")
 	}
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	if err := json.Unmarshal([]byte(resp.Contents[0].Text), &items); err != nil {
 		return fmt.Errorf("failed to parse items: %w", err)
 	}
@@ -151,7 +151,7 @@ func (r *ResourceExample) SearchFeedContent(ctx context.Context, feedID, searchT
 		return nil
 	}
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	if err := json.Unmarshal([]byte(resp.Contents[0].Text), &items); err != nil {
 		return fmt.Errorf("failed to parse search results: %w", err)
 	}
@@ -186,13 +186,13 @@ func (r *ResourceExample) GetFeedMetadata(ctx context.Context, feedID string) er
 		return fmt.Errorf("no metadata available")
 	}
 
-	var metadata map[string]interface{}
+	var metadata map[string]any
 	if err := json.Unmarshal([]byte(resp.Contents[0].Text), &metadata); err != nil {
 		return fmt.Errorf("failed to parse metadata: %w", err)
 	}
 
 	fmt.Printf("Feed Metadata:\n")
-	if feed, ok := metadata["feed"].(map[string]interface{}); ok {
+	if feed, ok := metadata["feed"].(map[string]any); ok {
 		if title, ok := feed["title"].(string); ok {
 			fmt.Printf("  Title: %s\n", title)
 		}
@@ -230,7 +230,7 @@ func (r *ResourceExample) GetTechNewsItems(ctx context.Context, feedID string) e
 			continue
 		}
 
-		var items []map[string]interface{}
+		var items []map[string]any
 		if err := json.Unmarshal([]byte(resp.Contents[0].Text), &items); err != nil {
 			log.Printf("Failed to parse items for category %s: %v", category, err)
 			continue
@@ -268,7 +268,7 @@ func (r *ResourceExample) ReadFeedWithPagination(ctx context.Context, feedID str
 			break
 		}
 
-		var items []map[string]interface{}
+		var items []map[string]any
 		if err := json.Unmarshal([]byte(resp.Contents[0].Text), &items); err != nil {
 			return fmt.Errorf("failed to parse page %d: %w", page, err)
 		}
@@ -326,7 +326,7 @@ func (r *ResourceExample) AnalyzeFeedActivity(ctx context.Context, feedID string
 	fmt.Printf("=== Analyzing Feed Activity for Last %d Days ===\n", days)
 
 	// Get items for each day to analyze posting patterns
-	for i := 0; i < days; i++ {
+	for i := range days {
 		date := time.Now().AddDate(0, 0, -i)
 		since := date.Format("2006-01-02")
 		until := date.AddDate(0, 0, 1).Format("2006-01-02")
@@ -343,7 +343,7 @@ func (r *ResourceExample) AnalyzeFeedActivity(ctx context.Context, feedID string
 			continue
 		}
 
-		var items []map[string]interface{}
+		var items []map[string]any
 		if err := json.Unmarshal([]byte(resp.Contents[0].Text), &items); err != nil {
 			log.Printf("Failed to parse items for %s: %v", since, err)
 			continue
@@ -359,7 +359,7 @@ func (r *ResourceExample) AnalyzeFeedActivity(ctx context.Context, feedID string
 func (r *ResourceExample) AggregateMultipleFeedContent(ctx context.Context, feedIDs []string, searchTerm string) error {
 	fmt.Printf("=== Aggregating Content for '%s' across %d feeds ===\n", searchTerm, len(feedIDs))
 
-	allItems := make([]map[string]interface{}, 0)
+	allItems := make([]map[string]any, 0)
 
 	for _, feedID := range feedIDs {
 		uri := fmt.Sprintf("feeds://feed/%s/items?search=%s&limit=10", feedID, searchTerm)
@@ -374,7 +374,7 @@ func (r *ResourceExample) AggregateMultipleFeedContent(ctx context.Context, feed
 			continue
 		}
 
-		var items []map[string]interface{}
+		var items []map[string]any
 		if err := json.Unmarshal([]byte(resp.Contents[0].Text), &items); err != nil {
 			log.Printf("Failed to parse items from feed %s: %v", feedID, err)
 			continue

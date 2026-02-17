@@ -11,10 +11,7 @@ func applyPaginationParams(totalItems int, limit *int, offset *int) (returnedIte
 	// Apply limit
 	effectiveLimit := DefaultItemLimit
 	if limit != nil {
-		effectiveLimit = *limit
-		if effectiveLimit > MaxItemLimit {
-			effectiveLimit = MaxItemLimit
-		}
+		effectiveLimit = min(*limit, MaxItemLimit)
 		if effectiveLimit < 0 {
 			effectiveLimit = 0
 		}
@@ -23,22 +20,13 @@ func applyPaginationParams(totalItems int, limit *int, offset *int) (returnedIte
 	// Apply offset
 	effectiveOffset := 0
 	if offset != nil {
-		effectiveOffset = *offset
-		if effectiveOffset < 0 {
-			effectiveOffset = 0
-		}
+		effectiveOffset = max(*offset, 0)
 	}
 
 	// Calculate pagination
-	startIdx := effectiveOffset
-	if startIdx > totalItems {
-		startIdx = totalItems
-	}
+	startIdx := min(effectiveOffset, totalItems)
 
-	endIdx := startIdx + effectiveLimit
-	if endIdx > totalItems {
-		endIdx = totalItems
-	}
+	endIdx := min(startIdx+effectiveLimit, totalItems)
 
 	returnedItems = endIdx - startIdx
 	hasMore = endIdx < totalItems
@@ -55,11 +43,11 @@ func TestPaginationLogic(t *testing.T) {
 		expectedHasMore  bool
 	}{
 		{"default pagination (10 items from 150)", 150, nil, nil, 10, true},
-		{"limit 5 items", 150, ptrInt(5), nil, 5, true},
-		{"offset 10, limit 10", 150, ptrInt(10), ptrInt(10), 10, true},
-		{"offset 15, limit 10 (partial page)", 25, ptrInt(10), ptrInt(15), 10, false},
-		{"limit exceeds max (should cap at 20)", 150, ptrInt(200), nil, 20, true},
-		{"offset beyond total items", 150, nil, ptrInt(200), 0, false},
+		{"limit 5 items", 150, new(5), nil, 5, true},
+		{"offset 10, limit 10", 150, new(10), new(10), 10, true},
+		{"offset 15, limit 10 (partial page)", 25, new(10), new(15), 10, false},
+		{"limit exceeds max (should cap at 20)", 150, new(200), nil, 20, true},
+		{"offset beyond total items", 150, nil, new(200), 0, false},
 		{"small feed (5 items, default limit)", 5, nil, nil, 5, false},
 	}
 
@@ -141,9 +129,4 @@ func verifyMetadataPreserved(t *testing.T, result, original *gofeed.Item) {
 	if result.Link != original.Link {
 		t.Error("Link should never be modified")
 	}
-}
-
-// Helper function
-func ptrInt(i int) *int {
-	return &i
 }
