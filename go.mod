@@ -3,7 +3,7 @@ module github.com/richardwooding/feed-mcp
 go 1.26
 
 require (
-	github.com/alecthomas/kong v1.14.0
+	github.com/alecthomas/kong v1.15.0
 	github.com/cucumber/godog v0.15.1
 	github.com/dgraph-io/ristretto/v2 v2.4.0
 	github.com/eko/gocache/lib/v4 v4.2.3
