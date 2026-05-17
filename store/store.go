@@ -98,7 +98,8 @@ func (r *RateLimitedTransport) limiterForHost(host string) *rate.Limiter {
 
 // RoundTrip implements the http.RoundTripper interface with per-host rate limiting.
 func (r *RateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if err := r.limiterForHost(req.URL.Hostname()).Wait(req.Context()); err != nil {
+	host := strings.ToLower(req.URL.Hostname())
+	if err := r.limiterForHost(host).Wait(req.Context()); err != nil {
 		return nil, err
 	}
 	return r.transport.RoundTrip(req)
