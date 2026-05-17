@@ -28,7 +28,7 @@ func GenerateFeedID(feedURL string) string {
 		if len(slug) > 40 {
 			h := fnv.New32a()
 			_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
-			hashStr := fmt.Sprintf("%x", h.Sum32())[:8]
+			hashStr := fmt.Sprintf("%08x", h.Sum32())
 			slug = slug[:32] + "-" + hashStr
 		}
 		return slug

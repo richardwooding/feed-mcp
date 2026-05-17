@@ -35,6 +35,14 @@ func TestGenerateFeedID(t *testing.T) {
 			feedURL:  "https://example.com/news & events/feed.xml",
 			expected: "example.com-news-events-feed-xml", // Spaces and & replaced with single dash
 		},
+		{
+			// Regression test for #113: FNV-32a hash with a leading zero nibble
+			// (Sum32 < 0x10000000) would render as < 8 hex chars under %x and
+			// panic when sliced to [:8]. Zero-padding via %08x prevents this.
+			name:     "Long URL with leading-zero hash",
+			feedURL:  "https://very-long-domain-name-example.com/p22/feed.xml",
+			expected: "very-long-domain-name-example.co-001353e5",
+		},
 	}
 
 	for _, tc := range testCases {
