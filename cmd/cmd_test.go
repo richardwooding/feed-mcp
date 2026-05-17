@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/alecthomas/kong"
+
 	"github.com/richardwooding/feed-mcp/model"
 )
 
@@ -80,3 +82,47 @@ func (c *RunCmd) parseConfig() (any, error) {
 }
 
 var ErrNoFeeds = errors.New("no feeds specified")
+
+// TestRunCmd_RateLimitFlagsDefaults verifies that --requests-per-second and
+// --burst-capacity have the documented defaults when omitted from the CLI.
+func TestRunCmd_RateLimitFlagsDefaults(t *testing.T) {
+	type cli struct {
+		Run RunCmd `cmd:""`
+	}
+	c := &cli{}
+	parser, err := kong.New(c)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := parser.Parse([]string{"run", "http://example.com/feed"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if c.Run.RequestsPerSecond != 2 {
+		t.Errorf("default RequestsPerSecond = %v, want 2", c.Run.RequestsPerSecond)
+	}
+	if c.Run.BurstCapacity != 5 {
+		t.Errorf("default BurstCapacity = %v, want 5", c.Run.BurstCapacity)
+	}
+}
+
+// TestRunCmd_RateLimitFlagsOverride verifies that --requests-per-second and
+// --burst-capacity propagate from CLI args onto the RunCmd struct.
+func TestRunCmd_RateLimitFlagsOverride(t *testing.T) {
+	type cli struct {
+		Run RunCmd `cmd:""`
+	}
+	c := &cli{}
+	parser, err := kong.New(c)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := parser.Parse([]string{"run", "--requests-per-second", "7.5", "--burst-capacity", "20", "http://example.com/feed"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if c.Run.RequestsPerSecond != 7.5 {
+		t.Errorf("RequestsPerSecond = %v, want 7.5", c.Run.RequestsPerSecond)
+	}
+	if c.Run.BurstCapacity != 20 {
+		t.Errorf("BurstCapacity = %v, want 20", c.Run.BurstCapacity)
+	}
+}

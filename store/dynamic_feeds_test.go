@@ -9,6 +9,32 @@ import (
 	"github.com/richardwooding/feed-mcp/mcpserver"
 )
 
+// TestDynamicStore_LazyStartup verifies that NewDynamicStore returns quickly
+// even when configured feeds are unreachable. The pre-#114 code called
+// checkFeedCache for every startup feed inside initializeStartupFeedMetadata,
+// blocking constructor return until each feed timed out under the rate limiter.
+func TestDynamicStore_LazyStartup(t *testing.T) {
+	urls := []string{
+		"http://127.0.0.1:1/dynamic-a",
+		"http://127.0.0.2:1/dynamic-b",
+		"http://127.0.0.3:1/dynamic-c",
+	}
+	cfg := Config{Feeds: urls, AllowPrivateIPs: true}
+
+	start := time.Now()
+	ds, err := NewDynamicStore(&cfg, false)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("NewDynamicStore failed: %v", err)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("NewDynamicStore took %v; expected <500ms (suggests eager metadata fetch)", elapsed)
+	}
+	if len(ds.feedMetadata) != len(urls) {
+		t.Errorf("expected %d metadata entries, got %d", len(urls), len(ds.feedMetadata))
+	}
+}
+
 // TestDynamicStore_NewDynamicStore tests the creation of a new dynamic store
 func TestDynamicStore_NewDynamicStore(t *testing.T) {
 	config := Config{

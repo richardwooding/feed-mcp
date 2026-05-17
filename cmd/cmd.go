@@ -23,6 +23,9 @@ type RunCmd struct {
 	MaxConnsPerHost     int           `name:"max-conns-per-host" default:"10" help:"Maximum number of connections per host."`
 	MaxIdleConnsPerHost int           `name:"max-idle-conns-per-host" default:"5" help:"Maximum number of idle connections per host."`
 	IdleConnTimeout     time.Duration `name:"idle-conn-timeout" default:"90s" help:"How long an idle connection remains idle before closing."`
+	// Rate limiting settings (applied per host)
+	RequestsPerSecond float64 `name:"requests-per-second" default:"2" help:"Per-host rate limit for outbound feed requests (requests per second)."`
+	BurstCapacity     int     `name:"burst-capacity" default:"5" help:"Per-host rate-limit burst capacity (max immediate requests before throttling)."`
 	// Retry mechanism settings
 	RetryMaxAttempts int           `name:"retry-max-attempts" default:"3" help:"Maximum number of retry attempts for failed feed fetches."`
 	RetryBaseDelay   time.Duration `name:"retry-base-delay" default:"1s" help:"Base delay for exponential backoff between retry attempts."`
@@ -82,6 +85,8 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		OPML:                c.OPML, // Pass OPML path for metadata source detection
 		Timeout:             c.Timeout,
 		ExpireAfter:         c.ExpireAfter,
+		RequestsPerSecond:   c.RequestsPerSecond,
+		BurstCapacity:       c.BurstCapacity,
 		MaxIdleConns:        c.MaxIdleConns,
 		MaxConnsPerHost:     c.MaxConnsPerHost,
 		MaxIdleConnsPerHost: c.MaxIdleConnsPerHost,
