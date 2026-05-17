@@ -346,10 +346,18 @@ func (ds *DynamicStore) ListManagedFeeds(ctx context.Context) ([]mcpserver.Manag
 			lastFetched = metadata.LastFetched // Keep original if cache fetch failed
 		}
 
+		// Title falls back to the freshly-fetched cacheInfo.Title when metadata
+		// is blank — startup/OPML feeds seed empty titles (see #114 lazy init)
+		// and rely on the first list_managed_feeds call to surface the real title.
+		title := metadata.Title
+		if title == "" && cacheInfo.Found {
+			title = cacheInfo.Title
+		}
+
 		feeds = append(feeds, mcpserver.ManagedFeedInfo{
 			FeedID:      feedID,
 			URL:         url,
-			Title:       metadata.Title,
+			Title:       title,
 			Category:    metadata.Category,
 			Description: metadata.Description,
 			Status:      status,

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +34,41 @@ func TestDynamicStore_LazyStartup(t *testing.T) {
 	}
 	if len(ds.feedMetadata) != len(urls) {
 		t.Errorf("expected %d metadata entries, got %d", len(urls), len(ds.feedMetadata))
+	}
+}
+
+// TestDynamicStore_ListManagedFeeds_TitleFallback verifies that startup feeds —
+// which now seed empty metadata.Title (lazy init from #114) — surface the real
+// title from the cache on the first list_managed_feeds call.
+func TestDynamicStore_ListManagedFeeds_TitleFallback(t *testing.T) {
+	const wantTitle = "Startup Feed Title"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>` + wantTitle + `</title><item><title>i</title><link>http://example.com/1</link></item></channel></rss>`))
+	}))
+	defer srv.Close()
+
+	ds, err := NewDynamicStore(&Config{Feeds: []string{srv.URL}, AllowPrivateIPs: true}, true)
+	if err != nil {
+		t.Fatalf("NewDynamicStore: %v", err)
+	}
+
+	// Sanity: startup metadata is seeded with an empty title (lazy init).
+	for _, md := range ds.feedMetadata {
+		if md.Title != "" {
+			t.Fatalf("expected empty seed Title, got %q", md.Title)
+		}
+	}
+
+	got, err := ds.ListManagedFeeds(context.Background())
+	if err != nil {
+		t.Fatalf("ListManagedFeeds: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 managed feed, got %d", len(got))
+	}
+	if got[0].Title != wantTitle {
+		t.Errorf("Title = %q, want %q (fallback to cacheInfo.Title not applied)", got[0].Title, wantTitle)
 	}
 }
 
