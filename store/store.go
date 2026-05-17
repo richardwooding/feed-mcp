@@ -76,28 +76,38 @@ type Store struct {
 	metricsMutex     sync.RWMutex
 }
 
-// RateLimitedTransport wraps an http.RoundTripper with rate limiting
+// RateLimitedTransport wraps an http.RoundTripper with per-host rate limiting.
+// A separate token bucket is maintained for each remote host so that fetches
+// against many distinct hosts are not artificially serialized, while requests
+// to any single host remain bounded by the configured rate and burst.
 type RateLimitedTransport struct {
-	transport   http.RoundTripper
-	rateLimiter *rate.Limiter
+	transport         http.RoundTripper
+	requestsPerSecond rate.Limit
+	burstCapacity     int
+	limiters          sync.Map // host (string) -> *rate.Limiter
 }
 
-// RoundTrip implements the http.RoundTripper interface with rate limiting
+// limiterForHost returns the limiter associated with host, creating one on first use.
+func (r *RateLimitedTransport) limiterForHost(host string) *rate.Limiter {
+	if v, ok := r.limiters.Load(host); ok {
+		return v.(*rate.Limiter)
+	}
+	v, _ := r.limiters.LoadOrStore(host, rate.NewLimiter(r.requestsPerSecond, r.burstCapacity))
+	return v.(*rate.Limiter)
+}
+
+// RoundTrip implements the http.RoundTripper interface with per-host rate limiting.
 func (r *RateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Wait for rate limiter permission
-	err := r.rateLimiter.Wait(req.Context())
-	if err != nil {
+	host := strings.ToLower(req.URL.Hostname())
+	if err := r.limiterForHost(host).Wait(req.Context()); err != nil {
 		return nil, err
 	}
-
-	// Proceed with the actual request
 	return r.transport.RoundTrip(req)
 }
 
-// NewRateLimitedHTTPClient creates an HTTP client with rate limiting and connection pooling
+// NewRateLimitedHTTPClient creates an HTTP client with per-host rate limiting and connection pooling.
+// The requestsPerSecond and burstCapacity arguments configure each host's token bucket independently.
 func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig) *http.Client {
-	limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burstCapacity)
-
 	// Create a custom transport with connection pooling settings
 	baseTransport := &http.Transport{
 		MaxIdleConns:        poolConfig.MaxIdleConns,
@@ -116,8 +126,9 @@ func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, pool
 	}
 
 	transport := &RateLimitedTransport{
-		transport:   baseTransport,
-		rateLimiter: limiter,
+		transport:         baseTransport,
+		requestsPerSecond: rate.Limit(requestsPerSecond),
+		burstCapacity:     burstCapacity,
 	}
 
 	return &http.Client{
@@ -503,21 +514,15 @@ func newStoreInternal(config Config) (*Store, error) {
 	)
 	s.feedCacheManager = cacheManager
 
+	// Build the ID-to-URL map synchronously without fetching. The cache populates
+	// lazily on the first GetAllFeeds / GetFeedAndItems call via the LoadableCache
+	// loader above. Pre-fetching here previously blocked NewStore for ~(n/rps)
+	// seconds with a global rate limiter and caused MCP initialize timeouts on
+	// large feed lists (issue #114).
 	feeds := make(map[string]string, len(config.Feeds))
-	var feedsMutex sync.Mutex
-	wg := sync.WaitGroup{}
 	for _, feedURL := range config.Feeds {
-		wg.Add(1)
-		go func(url string) {
-			defer wg.Done()
-			id := model.GenerateFeedID(url)
-			feedsMutex.Lock()
-			feeds[id] = url
-			feedsMutex.Unlock()
-			_, _ = cacheManager.Get(context.Background(), url)
-		}(feedURL)
+		feeds[model.GenerateFeedID(feedURL)] = feedURL
 	}
-	wg.Wait()
 
 	s.feeds = feeds
 	return s, nil

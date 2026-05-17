@@ -267,32 +267,42 @@ go run main.go run \
 
 ### Rate Limiting
 
-The feed-mcp server includes built-in rate limiting to be respectful to feed servers:
+The feed-mcp server applies a **per-host** token-bucket rate limit so it can be polite to any single feed server without artificially serialising fetches across many distinct hosts.
 
-**Default Settings:**
+**Default Settings (per host):**
 - 2 requests per second
 - Burst capacity of 5 requests
-- Applied to all HTTP requests made by the feed parser
+- Each remote host gets its own independent limiter, created on first use
 
 **How it Works:**
 - Uses `golang.org/x/time/rate` for token bucket rate limiting
-- Implements a custom `RateLimitedTransport` that wraps `http.RoundTripper`
+- `RateLimitedTransport` holds a `sync.Map` of `*rate.Limiter` keyed by `req.URL.Hostname()`
 - Automatically applied when no custom HTTP client is provided
-- Rate limiting occurs at the HTTP transport layer, ensuring all feed requests are controlled
+- Multiple subreddits on `www.reddit.com` share one limiter; feeds on distinct hosts run in parallel
 
-**Configuration:**
-Rate limiting is configured in the `store.Config` struct:
+**CLI flags:**
+```bash
+# Use defaults (2 req/s, burst 5, per host)
+go run main.go run https://example.com/feed.xml
+
+# Custom per-host limits
+go run main.go run --requests-per-second 5 --burst-capacity 10 https://example.com/feed.xml
+```
+
+**Programmatic Configuration:**
 ```go
 config := store.Config{
     Feeds:             []string{"https://example.com/feed.xml"},
-    RequestsPerSecond: 1.0,  // 1 request per second
-    BurstCapacity:     3,    // Allow burst of 3 requests
+    RequestsPerSecond: 1.0,  // 1 request per second per host
+    BurstCapacity:     3,    // 3-request burst per host
 }
 ```
 
+**History:** Prior to issue #114 the limiter was global. A single 2 req/s bucket across all hosts plus an eager pre-fetch of every feed at startup caused MCP `initialize` to time out on large OPML files (~80s for 164 feeds). The fix moved fetches off the startup path (lazy cache population) and split the limiter per host.
+
 **Customization:**
 - Pass a custom `HttpClient` to bypass built-in rate limiting
-- Adjust `RequestsPerSecond` and `BurstCapacity` for different rate limits
+- Adjust `RequestsPerSecond` and `BurstCapacity` for different per-host limits
 - Set to 0 or negative values to use sensible defaults
 
 ### Circuit Breaker Pattern

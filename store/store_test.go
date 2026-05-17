@@ -978,21 +978,13 @@ func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	// Reset counter before NewStore call since it will trigger initial fetch
-	atomic.StoreInt64(&requestCount, 0)
-
 	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// NewStore should have made exactly 3 attempts (retries during initialization)
-	initCount := atomic.LoadInt64(&requestCount)
-	if initCount != 3 {
-		t.Errorf("expected 3 requests during NewStore, got %d", initCount)
-	}
-
-	// Reset counter to test fresh fetch
+	// NewStore no longer triggers fetches eagerly (see #114). Counter is reset
+	// here so the assertion below measures only the GetAllFeeds-triggered fetch.
 	atomic.StoreInt64(&requestCount, 0)
 
 	feeds, err := store.GetAllFeeds(context.Background())
@@ -1009,7 +1001,7 @@ func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
 		t.Error("expected fetch error, got none")
 	}
 
-	// Should have made exactly 3 more attempts
+	// Should have made exactly 3 attempts (1 initial + 2 retries)
 	finalCount := atomic.LoadInt64(&requestCount)
 	if finalCount != 3 {
 		t.Errorf("expected 3 requests during GetAllFeeds, got %d", finalCount)
@@ -1039,21 +1031,12 @@ func TestRetryMechanism_NonRetryableError(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	// Reset counter before NewStore call since it will trigger initial fetch
-	atomic.StoreInt64(&requestCount, 0)
-
 	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// NewStore should have made only 1 attempt (4xx errors are not retryable)
-	initCount := atomic.LoadInt64(&requestCount)
-	if initCount != 1 {
-		t.Errorf("expected 1 request during NewStore, got %d", initCount)
-	}
-
-	// Reset counter to test fresh fetch
+	// NewStore no longer triggers fetches eagerly (see #114).
 	atomic.StoreInt64(&requestCount, 0)
 
 	feeds, err := store.GetAllFeeds(context.Background())
@@ -1102,21 +1085,12 @@ func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	// Reset counters before NewStore call since it will trigger initial fetch
-	atomic.StoreInt64(&requestCount, 0)
-	timestamps = nil
-
 	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify NewStore made 3 attempts with proper timing
-	if len(timestamps) != 3 {
-		t.Fatalf("expected 3 timestamps during NewStore, got %d", len(timestamps))
-	}
-
-	// Reset for GetAllFeeds test
+	// NewStore no longer triggers fetches eagerly (see #114).
 	atomic.StoreInt64(&requestCount, 0)
 	timestamps = nil
 
@@ -1309,19 +1283,14 @@ func TestRetryMechanism_DefaultConfiguration(t *testing.T) {
 		// Don't set retry values to test defaults (should be 3 attempts, 1s base delay)
 	}
 
-	// Reset counter
-	atomic.StoreInt64(&requestCount, 0)
-
 	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// NewStore should succeed after 3 attempts (default retry max attempts)
-	initCount := atomic.LoadInt64(&requestCount)
-	if initCount != 3 {
-		t.Errorf("expected 3 requests during NewStore with defaults, got %d", initCount)
-	}
+	// NewStore no longer triggers fetches eagerly (see #114). Reset and let
+	// GetAllFeeds drive the retry path with default RetryMaxAttempts=3.
+	atomic.StoreInt64(&requestCount, 0)
 
 	// Verify the store was created successfully and defaults worked
 	feeds, err := store.GetAllFeeds(context.Background())
@@ -1362,25 +1331,13 @@ func TestRetryMetrics_SuccessfulFeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get initial metrics
+	// NewStore no longer triggers fetches eagerly (#114), so metrics start at zero.
 	initialMetrics := store.GetRetryMetrics()
-
-	// Should have 1 successful feed from initialization
-	if initialMetrics.SuccessfulFeeds != 1 {
-		t.Errorf("expected 1 successful feed in initial metrics, got %d", initialMetrics.SuccessfulFeeds)
-	}
-	if initialMetrics.TotalAttempts != 1 {
-		t.Errorf("expected 1 total attempt in initial metrics, got %d", initialMetrics.TotalAttempts)
-	}
-	if initialMetrics.TotalRetries != 0 {
-		t.Errorf("expected 0 retries in initial metrics, got %d", initialMetrics.TotalRetries)
-	}
-	if initialMetrics.RetrySuccessRate != 100.0 {
-		t.Errorf("expected 100%% success rate in initial metrics, got %f", initialMetrics.RetrySuccessRate)
+	if initialMetrics.TotalAttempts != 0 {
+		t.Errorf("expected 0 attempts before any fetch, got %d", initialMetrics.TotalAttempts)
 	}
 
-	// Wait for cache to expire then fetch again to trigger cache miss
-	time.Sleep(10 * time.Millisecond) // Wait for cache expiration
+	// Trigger a fetch via the lazy load path.
 	feeds, err := store.GetAllFeeds(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -1390,21 +1347,18 @@ func TestRetryMetrics_SuccessfulFeeds(t *testing.T) {
 		t.Fatalf("expected 1 feed, got %d", len(feeds))
 	}
 
-	// Get final metrics
 	finalMetrics := store.GetRetryMetrics()
-
-	// Should have 2 successful feeds total
-	if finalMetrics.SuccessfulFeeds != 2 {
-		t.Errorf("expected 2 successful feeds in final metrics, got %d", finalMetrics.SuccessfulFeeds)
+	if finalMetrics.SuccessfulFeeds != 1 {
+		t.Errorf("expected 1 successful feed, got %d", finalMetrics.SuccessfulFeeds)
 	}
-	if finalMetrics.TotalAttempts != 2 {
-		t.Errorf("expected 2 total attempts in final metrics, got %d", finalMetrics.TotalAttempts)
+	if finalMetrics.TotalAttempts != 1 {
+		t.Errorf("expected 1 total attempt, got %d", finalMetrics.TotalAttempts)
 	}
 	if finalMetrics.TotalRetries != 0 {
-		t.Errorf("expected 0 retries in final metrics, got %d", finalMetrics.TotalRetries)
+		t.Errorf("expected 0 retries, got %d", finalMetrics.TotalRetries)
 	}
 	if finalMetrics.RetrySuccessRate != 100.0 {
-		t.Errorf("expected 100%% success rate in final metrics, got %f", finalMetrics.RetrySuccessRate)
+		t.Errorf("expected 100%% success rate, got %f", finalMetrics.RetrySuccessRate)
 	}
 }
 
@@ -1448,15 +1402,17 @@ func TestRetryMetrics_WithRetries(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	// Reset counter
-	atomic.StoreInt64(&requestCount, 0)
-
 	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Get metrics after initialization
+	// NewStore is lazy (#114); drive the retry path via GetAllFeeds.
+	atomic.StoreInt64(&requestCount, 0)
+	if _, err := store.GetAllFeeds(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
 	metrics := store.GetRetryMetrics()
 
 	// Should have 1 successful feed with retries
@@ -1500,15 +1456,17 @@ func TestRetryMetrics_FailedFeeds(t *testing.T) {
 		CircuitBreakerEnabled: &disabled,
 	}
 
-	// Reset counter
-	atomic.StoreInt64(&requestCount, 0)
-
 	store, err := NewStore(&config)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Get metrics after initialization
+	// NewStore is lazy (#114); drive the retry path via GetAllFeeds.
+	atomic.StoreInt64(&requestCount, 0)
+	if _, err := store.GetAllFeeds(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
 	metrics := store.GetRetryMetrics()
 
 	// Should have 1 failed feed with retries
@@ -1557,7 +1515,11 @@ func TestRetryMetrics_MixedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get metrics after initialization
+	// NewStore is lazy (#114); drive both feed fetches via GetAllFeeds.
+	if _, err := store.GetAllFeeds(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
 	metrics := store.GetRetryMetrics()
 
 	// Should have mixed results
@@ -1579,5 +1541,119 @@ func TestRetryMetrics_MixedResults(t *testing.T) {
 	expectedSuccessRate := 50.0
 	if metrics.RetrySuccessRate != expectedSuccessRate {
 		t.Errorf("expected %.1f%% success rate, got %f", expectedSuccessRate, metrics.RetrySuccessRate)
+	}
+}
+
+// TestNewStore_LazyStartup verifies that NewStore returns quickly even when
+// configured feeds are unreachable. The pre-#114 implementation eagerly fetched
+// every feed and blocked NewStore until the rate-limited retry chain finished,
+// which could exceed the MCP initialize handshake window.
+func TestNewStore_LazyStartup(t *testing.T) {
+	// Several unreachable URLs across distinct hosts. With the eager prefetch
+	// each would have stalled for retries × timeout; with lazy startup the
+	// constructor should return without making any network calls.
+	urls := []string{
+		"http://127.0.0.1:1/feed-a",
+		"http://127.0.0.2:1/feed-b",
+		"http://127.0.0.3:1/feed-c",
+	}
+
+	start := time.Now()
+	s, err := NewStore(&Config{Feeds: urls, AllowPrivateIPs: true})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	// Generous bound: lazy construction is microseconds; allow CI variance.
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("NewStore took %v; expected <500ms (suggests eager prefetch)", elapsed)
+	}
+	if len(s.feeds) != len(urls) {
+		t.Errorf("expected %d feeds registered, got %d", len(urls), len(s.feeds))
+	}
+}
+
+// fakeRoundTripper returns an empty 200 response without making a network call,
+// so RateLimitedTransport tests measure only the limiter's wait time.
+type fakeRoundTripper struct{}
+
+func (f *fakeRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       http.NoBody,
+		Header:     make(http.Header),
+	}, nil
+}
+
+// newTestRequest builds a GET request for the given hostname (no real network use).
+func newTestRequest(t *testing.T, host string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://"+host+"/", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	return req
+}
+
+// TestRateLimitedTransport_PerHost verifies that requests to different hosts
+// proceed in parallel rather than serializing through a global limiter.
+func TestRateLimitedTransport_PerHost(t *testing.T) {
+	rt := &RateLimitedTransport{
+		transport:         &fakeRoundTripper{},
+		requestsPerSecond: 1.0, // very restrictive: a global limiter would force ~1s wait
+		burstCapacity:     1,
+	}
+
+	start := time.Now()
+	done := make(chan error, 2)
+	for _, host := range []string{"host-a.example", "host-b.example"} {
+		go func(h string) {
+			resp, err := rt.RoundTrip(newTestRequest(t, h))
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+			done <- err
+		}(host)
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-done; err != nil {
+			t.Fatalf("RoundTrip failed: %v", err)
+		}
+	}
+	elapsed := time.Since(start)
+
+	// With per-host limiters each host has its own burst token, so both calls
+	// proceed immediately. A global limiter at burst 1 would force the second
+	// caller to wait ~1 second.
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("parallel cross-host requests took %v; expected <200ms with per-host limiting", elapsed)
+	}
+}
+
+// TestRateLimitedTransport_SameHostStillLimited verifies the per-host limiter
+// still throttles repeated requests to the same host.
+func TestRateLimitedTransport_SameHostStillLimited(t *testing.T) {
+	rt := &RateLimitedTransport{
+		transport:         &fakeRoundTripper{},
+		requestsPerSecond: 5.0, // 200ms per token after burst is spent
+		burstCapacity:     1,
+	}
+
+	start := time.Now()
+	for i := 0; i < 2; i++ {
+		resp, err := rt.RoundTrip(newTestRequest(t, "host-c.example"))
+		if err != nil {
+			t.Fatalf("RoundTrip %d failed: %v", i, err)
+		}
+		_ = resp.Body.Close()
+	}
+	elapsed := time.Since(start)
+
+	// First request consumes the burst token; second waits ~200ms for a refill.
+	if elapsed < 150*time.Millisecond {
+		t.Fatalf("two same-host requests took only %v; expected ~200ms throttle", elapsed)
+	}
+	if elapsed > 1*time.Second {
+		t.Fatalf("two same-host requests took %v; throttling too aggressive", elapsed)
 	}
 }

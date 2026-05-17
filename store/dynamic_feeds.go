@@ -122,29 +122,25 @@ func (ds *DynamicStore) checkFeedCache(ctx context.Context, url string) feedCach
 	return info
 }
 
-// initializeStartupFeedMetadata creates metadata entries for feeds loaded at startup
+// initializeStartupFeedMetadata creates metadata entries for feeds loaded at startup.
+// Titles are deliberately left blank here; populating them required a synchronous
+// fetch per feed which blocked NewDynamicStore for tens of seconds on large feed
+// lists (issue #114). Title and LastFetched are populated on first read via
+// list_managed_feeds or the regular feed access paths.
 func (ds *DynamicStore) initializeStartupFeedMetadata() {
 	ds.dynamicMutex.Lock()
 	defer ds.dynamicMutex.Unlock()
 
-	for feedID, url := range ds.feeds {
-		// Determine source based on how feeds were loaded
-		source := mcpserver.FeedSourceStartup
-		if ds.config.OPML != "" {
-			source = mcpserver.FeedSourceOPML
-		}
+	source := mcpserver.FeedSourceStartup
+	if ds.config.OPML != "" {
+		source = mcpserver.FeedSourceOPML
+	}
 
+	for feedID := range ds.feeds {
 		ds.feedMetadata[feedID] = &DynamicFeedMetadata{
 			AddedAt: time.Now(), // Approximate startup time
 			Source:  source,
 			Status:  statusActive,
-		}
-
-		// Try to get feed title from cache
-		cacheInfo := ds.checkFeedCache(context.Background(), url)
-		if cacheInfo.Found {
-			ds.feedMetadata[feedID].Title = cacheInfo.Title
-			ds.feedMetadata[feedID].LastFetched = cacheInfo.LastFetched
 		}
 	}
 }
@@ -350,10 +346,18 @@ func (ds *DynamicStore) ListManagedFeeds(ctx context.Context) ([]mcpserver.Manag
 			lastFetched = metadata.LastFetched // Keep original if cache fetch failed
 		}
 
+		// Title falls back to the freshly-fetched cacheInfo.Title when metadata
+		// is blank — startup/OPML feeds seed empty titles (see #114 lazy init)
+		// and rely on the first list_managed_feeds call to surface the real title.
+		title := metadata.Title
+		if title == "" && cacheInfo.Found {
+			title = cacheInfo.Title
+		}
+
 		feeds = append(feeds, mcpserver.ManagedFeedInfo{
 			FeedID:      feedID,
 			URL:         url,
-			Title:       metadata.Title,
+			Title:       title,
 			Category:    metadata.Category,
 			Description: metadata.Description,
 			Status:      status,
