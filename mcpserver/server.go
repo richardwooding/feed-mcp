@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -508,11 +509,54 @@ func (s *Server) runTransport(ctx context.Context, srv *mcp.Server) error {
 	case model.StdioTransport:
 		return srv.Run(ctx, &mcp.StdioTransport{})
 	case model.HTTPWithSSETransport:
-		return srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
+		return s.runHTTPTransport(ctx, srv)
 	default:
 		return model.NewFeedError(model.ErrorTypeTransport, "unsupported transport").
 			WithOperation("run_server").
 			WithComponent("mcp_server")
+	}
+}
+
+// runHTTPTransport starts the HTTP server with SSE transport
+func (s *Server) runHTTPTransport(ctx context.Context, srv *mcp.Server) error {
+	// Get port from environment variable, default to 8080
+	port := "8080"
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		port = envPort
+	}
+
+	// Create SSE handler - returns our MCP server for all requests
+	handler := mcp.NewSSEHandler(func(request *http.Request) *mcp.Server {
+		// Return the same server instance for all paths
+		return srv
+	}, nil)
+
+	// Create HTTP server
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%s", port),
+		Handler: handler,
+	}
+
+	// Channel to receive server errors
+	errCh := make(chan error, 1)
+
+	// Start HTTP server in goroutine
+	go func() {
+		fmt.Printf("Starting HTTP+SSE server on port %s\n", port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// Wait for context cancellation or server error
+	select {
+	case <-ctx.Done():
+		// Graceful shutdown
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return httpServer.Shutdown(shutdownCtx)
+	case err := <-errCh:
+		return err
 	}
 }
 
