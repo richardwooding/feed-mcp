@@ -253,6 +253,54 @@ Prefer Podman over Docker? Just replace `docker` with `podman`:
 }
 ```
 
+## Transport Options
+
+feed-mcp supports multiple transport protocols for different deployment scenarios:
+
+| Transport | Description | Use Case |
+|-----------|-------------|----------|
+| `stdio` | Standard input/output (default) | Claude Desktop, local CLI |
+| `streamable-http` | HTTP server with Streamable HTTP protocol | Web deployments, remote access |
+| `http-with-sse` | Deprecated, maps to `streamable-http` | Backwards compatibility only |
+
+### stdio (Default)
+
+Standard input/output transport for local usage. This is the default and what Claude Desktop uses:
+
+```bash
+feed-mcp run https://techcrunch.com/feed/
+```
+
+### Streamable HTTP
+
+HTTP-based transport for web deployments and remote access:
+
+```bash
+# Start HTTP server on default port 8080
+feed-mcp run --transport=streamable-http https://techcrunch.com/feed/
+
+# Custom port
+feed-mcp run --transport=streamable-http --http-port=3000 https://techcrunch.com/feed/
+
+# Stateless mode (for load-balanced deployments)
+feed-mcp run --transport=streamable-http --http-stateless https://techcrunch.com/feed/
+```
+
+**Docker with HTTP transport:**
+
+```bash
+docker run -p 8080:8080 ghcr.io/richardwooding/feed-mcp:latest \
+  run --transport=streamable-http https://techcrunch.com/feed/
+```
+
+**HTTP transport options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--http-port` | `8080` | Port for HTTP server (also reads `PORT` env var) |
+| `--http-stateless` | `false` | Run in stateless mode (no session tracking) |
+| `--http-session-timeout` | `30m` | Timeout for idle HTTP sessions |
+
 ## Troubleshooting
 
 ### "Claude hit the maximum length for this conversation"
