@@ -70,6 +70,10 @@ type Config struct {
 	FeedAndItemsGetter FeedAndItemsGetter
 	DynamicFeedManager DynamicFeedManager // Optional: for runtime feed management
 	Transport          model.Transport
+	// HTTP server configuration (for streamable-http transport)
+	HTTPPort           string
+	HTTPStateless      bool
+	HTTPSessionTimeout time.Duration
 }
 
 // Server implements an MCP server for serving syndication feeds
@@ -84,6 +88,10 @@ type Server struct {
 	imageCircuitBreakers map[string]*gobreaker.CircuitBreaker // Circuit breakers per image host
 	imageCBMutex         sync.RWMutex                         // Protects imageCircuitBreakers map
 	httpClient           *http.Client                         // HTTP client for fetching images
+	// HTTP server configuration (for streamable-http transport)
+	httpPort           string
+	httpStateless      bool
+	httpSessionTimeout time.Duration
 }
 
 // generateSessionID creates a unique session ID for this server instance
@@ -93,7 +101,7 @@ func generateSessionID() string {
 }
 
 // NewServer creates a new MCP server with the given configuration
-func NewServer(config Config) (*Server, error) {
+func NewServer(config *Config) (*Server, error) {
 	if config.Transport == model.UndefinedTransport {
 		return nil, model.NewFeedError(model.ErrorTypeTransport, "transport must be specified").
 			WithOperation("create_server").
@@ -109,12 +117,25 @@ func NewServer(config Config) (*Server, error) {
 			WithOperation("create_server").
 			WithComponent("mcp_server")
 	}
+	// Set HTTP defaults if not specified
+	httpPort := config.HTTPPort
+	if httpPort == "" {
+		httpPort = "8080"
+	}
+	httpSessionTimeout := config.HTTPSessionTimeout
+	if httpSessionTimeout == 0 {
+		httpSessionTimeout = 30 * time.Minute
+	}
+
 	server := &Server{
 		transport:          config.Transport,
 		allFeedsGetter:     config.AllFeedsGetter,
 		feedAndItemsGetter: config.FeedAndItemsGetter,
 		dynamicFeedManager: config.DynamicFeedManager,
 		sessionID:          generateSessionID(),
+		httpPort:           httpPort,
+		httpStateless:      config.HTTPStateless,
+		httpSessionTimeout: httpSessionTimeout,
 	}
 
 	// Initialize image cache and HTTP client
@@ -507,12 +528,52 @@ func (s *Server) runTransport(ctx context.Context, srv *mcp.Server) error {
 	switch s.transport {
 	case model.StdioTransport:
 		return srv.Run(ctx, &mcp.StdioTransport{})
-	case model.HTTPWithSSETransport:
-		return srv.Run(ctx, &mcp.StreamableServerTransport{SessionID: s.sessionID})
+	case model.HTTPWithSSETransport, model.StreamableHTTPTransport:
+		return s.runStreamableHTTPTransport(ctx, srv)
 	default:
 		return model.NewFeedError(model.ErrorTypeTransport, "unsupported transport").
 			WithOperation("run_server").
 			WithComponent("mcp_server")
+	}
+}
+
+// runStreamableHTTPTransport starts the HTTP server with Streamable HTTP transport
+func (s *Server) runStreamableHTTPTransport(ctx context.Context, srv *mcp.Server) error {
+	// Create Streamable HTTP handler per MCP spec
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return srv
+	}, &mcp.StreamableHTTPOptions{
+		Stateless:      s.httpStateless,
+		SessionTimeout: s.httpSessionTimeout,
+	})
+
+	// Create HTTP server with security settings
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%s", s.httpPort),
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+	}
+
+	// Channel to receive server errors
+	errCh := make(chan error, 1)
+
+	// Start HTTP server in goroutine
+	go func() {
+		fmt.Printf("Starting Streamable HTTP server on port %s\n", s.httpPort)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// Wait for context cancellation or server error
+	select {
+	case <-ctx.Done():
+		// Graceful shutdown
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return httpServer.Shutdown(shutdownCtx)
+	case err := <-errCh:
+		return err
 	}
 }
 

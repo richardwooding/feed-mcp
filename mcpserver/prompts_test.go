@@ -37,7 +37,7 @@ func createTestServer(t *testing.T) *Server {
 		FeedAndItemsGetter: mockFeedItems,
 	}
 
-	server, err := NewServer(config)
+	server, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("NewServer() failed: %v", err)
 	}

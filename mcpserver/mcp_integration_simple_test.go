@@ -65,7 +65,7 @@ func setupIntegrationTestServer(t *testing.T) *Server {
 		FeedAndItemsGetter: mockFeedGetter,
 	}
 
-	server, err := NewServer(config)
+	server, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestMCPServerResourceHandlersRegistration(t *testing.T) {
 		FeedAndItemsGetter: mockFeedGetter,
 	}
 
-	server, err := NewServer(config)
+	server, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

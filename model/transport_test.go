@@ -11,7 +11,8 @@ func TestParseTransport(t *testing.T) {
 		wantErr bool
 	}{
 		{"stdio", StdioTransport, false},
-		{"http-with-sse", HTTPWithSSETransport, false},
+		{"http-with-sse", StreamableHTTPTransport, false}, // Deprecated input, maps to StreamableHTTPTransport
+		{"streamable-http", StreamableHTTPTransport, false},
 		{"invalid", UndefinedTransport, true},
 		{"", UndefinedTransport, true},
 	}
@@ -32,7 +33,8 @@ func TestTransportString(t *testing.T) {
 		tr   Transport
 	}{
 		{"stdio", StdioTransport},
-		{"http-with-sse", HTTPWithSSETransport},
+		{"http-with-sse", HTTPWithSSETransport}, // Deprecated constant
+		{"streamable-http", StreamableHTTPTransport},
 		{"undefined", UndefinedTransport},
 		{"undefined", Transport(99)},
 	}

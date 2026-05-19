@@ -12,7 +12,7 @@ import (
 
 // RunCmd holds the command line arguments and flags for the run command
 type RunCmd struct {
-	Transport       string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse" help:"Transport to use for the MCP server."`
+	Transport       string        `name:"transport" default:"stdio" enum:"stdio,http-with-sse,streamable-http" help:"Transport to use for the MCP server (streamable-http is recommended for HTTP)."`
 	Feeds           []string      `arg:"" name:"feeds" optional:"" help:"Feeds to list (cannot be used with --opml)."`
 	OPML            string        `name:"opml" help:"OPML file path or URL to load feed URLs from (cannot be used with feeds)."`
 	ExpireAfter     time.Duration `name:"expire-after" default:"1h" help:"Expire feeds after this duration."`
@@ -35,6 +35,10 @@ type RunCmd struct {
 	AllowPrivateIPs bool `name:"allow-private-ips" default:"false" help:"Allow feed URLs that resolve to private IP ranges or localhost (disabled by default for security)."`
 	// Runtime feed management settings
 	AllowRuntimeFeeds bool `name:"allow-runtime-feeds" default:"false" help:"Enable runtime feed management tools (add_feed, remove_feed, list_managed_feeds)."`
+	// HTTP server settings (for streamable-http transport)
+	HTTPPort           string        `name:"http-port" default:"8080" env:"PORT" help:"Port for HTTP server (streamable-http transport)."`
+	HTTPStateless      bool          `name:"http-stateless" default:"false" help:"Run HTTP server in stateless mode (no session tracking)."`
+	HTTPSessionTimeout time.Duration `name:"http-session-timeout" default:"30m" help:"Timeout for idle HTTP sessions."`
 }
 
 // Run executes the feed MCP server with the given configuration
@@ -99,7 +103,10 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	}
 
 	serverConfig := mcpserver.Config{
-		Transport: transport,
+		Transport:          transport,
+		HTTPPort:           c.HTTPPort,
+		HTTPStateless:      c.HTTPStateless,
+		HTTPSessionTimeout: c.HTTPSessionTimeout,
 	}
 
 	if c.AllowRuntimeFeeds {
@@ -121,7 +128,7 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		serverConfig.FeedAndItemsGetter = feedStore
 	}
 
-	server, err := mcpserver.NewServer(serverConfig)
+	server, err := mcpserver.NewServer(&serverConfig)
 	if err != nil {
 		return err
 	}
