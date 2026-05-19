@@ -174,7 +174,7 @@ func TestToolLogic(t *testing.T) {
 		FeedAndItemsGetter: mockFeedItems,
 	}
 
-	server, err := NewServer(config)
+	server, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("NewServer() failed: %v", err)
 	}
@@ -483,7 +483,7 @@ func TestTransportErrorHandling(t *testing.T) {
 		FeedAndItemsGetter: mockFeedItems,
 	}
 
-	server, err := NewServer(config)
+	server, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("NewServer() failed: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestTypeDefinitions(t *testing.T) {
 		serverType := reflect.TypeFor[Server]()
 
 		// Check that Server has the expected fields
-		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "dynamicFeedManager", "resourceManager", "sessionID", "transport", "imageCache", "imageCircuitBreakers", "imageCBMutex", "httpClient"}
+		expectedFields := []string{"allFeedsGetter", "feedAndItemsGetter", "dynamicFeedManager", "resourceManager", "sessionID", "transport", "imageCache", "imageCircuitBreakers", "imageCBMutex", "httpClient", "httpPort", "httpStateless", "httpSessionTimeout"}
 
 		if serverType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Server, got %d", len(expectedFields), serverType.NumField())
@@ -525,7 +525,7 @@ func TestTypeDefinitions(t *testing.T) {
 		configType := reflect.TypeFor[Config]()
 
 		// Check that Config has the expected fields
-		expectedFields := []string{"AllFeedsGetter", "FeedAndItemsGetter", "DynamicFeedManager", "Transport"}
+		expectedFields := []string{"AllFeedsGetter", "FeedAndItemsGetter", "DynamicFeedManager", "Transport", "HTTPPort", "HTTPStateless", "HTTPSessionTimeout"}
 
 		if configType.NumField() != len(expectedFields) {
 			t.Errorf("Expected %d fields in Config, got %d", len(expectedFields), configType.NumField())

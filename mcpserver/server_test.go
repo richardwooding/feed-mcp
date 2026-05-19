@@ -92,7 +92,7 @@ func TestNewServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server, err := NewServer(tt.config)
+			server, err := NewServer(&tt.config)
 
 			if tt.wantErr {
 				if err == nil {
@@ -150,12 +150,12 @@ func TestNewServerSessionIDUniqueness(t *testing.T) {
 	}
 
 	// Create multiple servers and verify they have unique session IDs
-	server1, err := NewServer(config)
+	server1, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 
-	server2, err := NewServer(config)
+	server2, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -228,7 +228,7 @@ func TestServerToolsIntegration(t *testing.T) {
 		FeedAndItemsGetter: mockFeedItems,
 	}
 
-	server, err := NewServer(config)
+	server, err := NewServer(&config)
 	if err != nil {
 		t.Fatalf("NewServer() failed: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestServerWithErrors(t *testing.T) {
 			FeedAndItemsGetter: mockFeedItems,
 		}
 
-		server, err := NewServer(config)
+		server, err := NewServer(&config)
 		if err != nil {
 			t.Fatalf("NewServer() failed: %v", err)
 		}
@@ -339,7 +339,7 @@ func TestServerWithErrors(t *testing.T) {
 			FeedAndItemsGetter: mockFeedItems,
 		}
 
-		server, err := NewServer(config)
+		server, err := NewServer(&config)
 		if err != nil {
 			t.Fatalf("NewServer() failed: %v", err)
 		}
@@ -400,7 +400,7 @@ func TestServerTransportTypes(t *testing.T) {
 				FeedAndItemsGetter: &mockFeedAndItemsGetter{},
 			}
 
-			server, err := NewServer(config)
+			server, err := NewServer(&config)
 
 			if tt.valid {
 				if err != nil {
@@ -430,7 +430,7 @@ func BenchmarkNewServer(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := NewServer(config)
+		_, err := NewServer(&config)
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -14,7 +14,8 @@ type Transport uint8
 const (
 	UndefinedTransport Transport = iota
 	StdioTransport
-	HTTPWithSSETransport
+	HTTPWithSSETransport    // Deprecated: use StreamableHTTPTransport instead
+	StreamableHTTPTransport // Streamable HTTP transport per MCP spec
 )
 
 // ParseTransport converts a string to a Transport type
@@ -23,7 +24,10 @@ func ParseTransport(transport string) (Transport, error) {
 	case "stdio":
 		return StdioTransport, nil
 	case "http-with-sse":
-		return HTTPWithSSETransport, nil
+		// Deprecated: maps to StreamableHTTPTransport for backwards compatibility
+		return StreamableHTTPTransport, nil
+	case "streamable-http":
+		return StreamableHTTPTransport, nil
 	default:
 		return UndefinedTransport, ErrInvalidTransport
 	}
@@ -35,7 +39,9 @@ func (t Transport) String() string {
 	case StdioTransport:
 		return "stdio"
 	case HTTPWithSSETransport:
-		return "http-with-sse"
+		return "http-with-sse" // Deprecated
+	case StreamableHTTPTransport:
+		return "streamable-http"
 	default:
 		return "undefined"
 	}
