@@ -9,10 +9,16 @@ Feature: Transport Parsing
     Then the result should be StdioTransport
     And there should be no error
 
-  Scenario: Parsing HTTP with SSE transport
+  Scenario: Parsing HTTP with SSE transport (deprecated, maps to streamable-http)
     Given I have a transport string "http-with-sse"
     When I parse it using ParseTransport
-    Then the result should be HttpWithSSETransport
+    Then the result should be StreamableHTTPTransport
+    And there should be no error
+
+  Scenario: Parsing Streamable HTTP transport
+    Given I have a transport string "streamable-http"
+    When I parse it using ParseTransport
+    Then the result should be StreamableHTTPTransport
     And there should be no error
 
   Scenario: Parsing invalid transport string
@@ -34,10 +40,11 @@ Feature: Transport Parsing
     And the error state should be <has_error>
 
     Examples:
-      | input         | expected_transport    | has_error |
-      | stdio         | StdioTransport        | false     |
-      | http-with-sse | HttpWithSSETransport  | false     |
-      | invalid       | UndefinedTransport    | true      |
-      |               | UndefinedTransport    | true      |
-      | STDIO         | UndefinedTransport    | true      |
-      | http          | UndefinedTransport    | true      |
+      | input           | expected_transport      | has_error |
+      | stdio           | StdioTransport          | false     |
+      | http-with-sse   | StreamableHTTPTransport | false     |
+      | streamable-http | StreamableHTTPTransport | false     |
+      | invalid         | UndefinedTransport      | true      |
+      |                 | UndefinedTransport      | true      |
+      | STDIO           | UndefinedTransport      | true      |
+      | http            | UndefinedTransport      | true      |

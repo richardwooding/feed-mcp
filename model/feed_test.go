@@ -155,6 +155,13 @@ func (t *transportParsingTest) theResultShouldBeHTTPWithSSETransport() error {
 	return nil
 }
 
+func (t *transportParsingTest) theResultShouldBeStreamableHTTPTransport() error {
+	if t.outputTransport != StreamableHTTPTransport {
+		return fmt.Errorf("expected StreamableHTTPTransport, got %v", t.outputTransport)
+	}
+	return nil
+}
+
 func (t *transportParsingTest) theResultShouldBeUndefinedTransport() error {
 	if t.outputTransport != UndefinedTransport {
 		return fmt.Errorf("expected UndefinedTransport, got %v", t.outputTransport)
@@ -199,6 +206,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I parse it using ParseTransport$`, transportTest.iParseItUsingParseTransport)
 	ctx.Step(`^the result should be StdioTransport$`, transportTest.theResultShouldBeStdioTransport)
 	ctx.Step(`^the result should be HttpWithSSETransport$`, transportTest.theResultShouldBeHTTPWithSSETransport)
+	ctx.Step(`^the result should be StreamableHTTPTransport$`, transportTest.theResultShouldBeStreamableHTTPTransport)
 	ctx.Step(`^the result should be UndefinedTransport$`, transportTest.theResultShouldBeUndefinedTransport)
 	ctx.Step(`^there should be no error$`, transportTest.thereShouldBeNoError)
 	ctx.Step(`^there should be an error$`, transportTest.thereShouldBeAnError)

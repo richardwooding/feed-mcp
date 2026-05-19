@@ -83,7 +83,7 @@ func TestServerRunMethod(t *testing.T) {
 				FeedAndItemsGetter: mockFeedItems,
 			}
 
-			server, err := NewServer(config)
+			server, err := NewServer(&config)
 			if err != nil && !tt.expectErr {
 				t.Fatalf("NewServer() failed: %v", err)
 			}
@@ -173,7 +173,7 @@ func TestServerConfigValidation(t *testing.T) {
 	// Test various configuration edge cases
 	t.Run("all nil configuration", func(t *testing.T) {
 		config := Config{}
-		_, err := NewServer(config)
+		_, err := NewServer(&config)
 		if err == nil {
 			t.Error("NewServer() should fail with empty config")
 		}
@@ -183,7 +183,7 @@ func TestServerConfigValidation(t *testing.T) {
 		config := Config{
 			Transport: model.StdioTransport,
 		}
-		_, err := NewServer(config)
+		_, err := NewServer(&config)
 		if err == nil {
 			t.Error("NewServer() should fail with partial config")
 		}

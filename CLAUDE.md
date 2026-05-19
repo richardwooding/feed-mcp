@@ -157,13 +157,13 @@ The architecture follows clean Go patterns with strong separation of concerns:
 2. **Store Initialization** → Creates feed store with caching layer
 3. **Feed Fetching** → Concurrent fetching of all configured feeds
 4. **MCP Server** → Exposes feeds via MCP protocol tools
-5. **Transport Layer** → Handles stdio or HTTP-SSE communication
+5. **Transport Layer** → Handles stdio or Streamable HTTP communication
 
 ### Package Structure
 
 **`model/` - Data Structures and Types**
 - Core domain models (`Feed`, `Item`, `Author`)
-- Transport enums (stdio, http-with-sse)
+- Transport enums (stdio, streamable-http; http-with-sse is deprecated)
 - Adapter functions (`FromGoFeed()` converts external → internal types)
 - Global configuration and constants
 
@@ -538,6 +538,48 @@ go run main.go run <feed-urls>
 - Comprehensive tests verify graceful shutdown behavior
 - Tests ensure server shuts down within expected timeouts
 - Context cancellation is properly tested across all components
+
+### Streamable HTTP Transport
+
+The feed-mcp server supports Streamable HTTP transport per the MCP specification, enabling HTTP-based communication with MCP clients.
+
+**Transport Options:**
+- `stdio` (default): Standard input/output for local CLI usage
+- `streamable-http`: HTTP server using Streamable HTTP protocol (recommended for HTTP)
+- `http-with-sse`: Deprecated, maps to `streamable-http` for backwards compatibility
+
+**Streamable HTTP Features:**
+- Uses `mcp.NewStreamableHTTPHandler()` from the official MCP Go SDK
+- Supports both stateful (session-based) and stateless modes
+- Configurable session timeouts for idle connection cleanup
+- Built-in DNS rebinding and cross-origin protection
+- Compatible with distributed/load-balanced deployments in stateless mode
+
+**CLI Configuration:**
+```bash
+# Start with Streamable HTTP transport (recommended)
+go run main.go run --transport=streamable-http <feed-urls>
+
+# Custom port (default: 8080, also reads PORT env var)
+go run main.go run --transport=streamable-http --http-port=3000 <feed-urls>
+
+# Stateless mode for distributed deployments
+go run main.go run --transport=streamable-http --http-stateless <feed-urls>
+
+# Custom session timeout (default: 30m)
+go run main.go run --transport=streamable-http --http-session-timeout=1h <feed-urls>
+
+# Backwards compatible (deprecated)
+go run main.go run --transport=http-with-sse <feed-urls>
+```
+
+**Docker Usage:**
+```bash
+# Run with Streamable HTTP transport
+docker run -p 8080:8080 -e PORT=8080 ghcr.io/richardwooding/feed-mcp:latest run --transport=streamable-http <feed-urls>
+```
+
+**Note:** The SSE-based transport (`http-with-sse`) is deprecated per the MCP specification (2024-11-05). Use `streamable-http` for all new deployments.
 
 ### URL Security and Validation
 
