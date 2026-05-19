@@ -197,6 +197,55 @@ Claude will:
 - 🔒 **Secure** — URL validation and private IP blocking
 - 🐳 **Easy deployment** — Docker and Podman support
 
+## Transport Modes
+
+feed-mcp supports two transport modes for communication with MCP clients:
+
+### Stdio Transport (Default)
+
+Standard input/output transport, used for direct integration with Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "feed-mcp": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/richardwooding/feed-mcp:latest", "run", "https://techcrunch.com/feed/"]
+    }
+  }
+}
+```
+
+### Streamable HTTP Transport
+
+HTTP-based transport following the MCP specification, ideal for:
+- IDE integrations (Cursor, VS Code, etc.)
+- Remote/networked deployments
+- Containerized environments with HTTP endpoints
+
+```bash
+# Start server with HTTP transport (listens on port 8080 by default)
+docker run -p 8080:8080 ghcr.io/richardwooding/feed-mcp:latest run --transport=http-with-sse https://techcrunch.com/feed/
+
+# Or with Go
+go run main.go run --transport=http-with-sse https://techcrunch.com/feed/
+```
+
+**Configuration options:**
+- `--transport=http-with-sse` — Enable HTTP transport
+- `PORT` environment variable — Set the listening port (default: 8080)
+
+**Example: Cursor IDE configuration:**
+```json
+{
+  "mcpServers": {
+    "feed-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
 ## Advanced Features
 
 For power users, feed-mcp includes:
