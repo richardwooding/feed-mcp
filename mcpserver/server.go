@@ -102,6 +102,11 @@ func generateSessionID() string {
 
 // NewServer creates a new MCP server with the given configuration
 func NewServer(config *Config) (*Server, error) {
+	if config == nil {
+		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "config cannot be nil").
+			WithOperation("create_server").
+			WithComponent("mcp_server")
+	}
 	if config.Transport == model.UndefinedTransport {
 		return nil, model.NewFeedError(model.ErrorTypeTransport, "transport must be specified").
 			WithOperation("create_server").

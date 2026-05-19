@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mmcdole/gofeed"
 
@@ -87,6 +88,15 @@ func TestNewServer(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "FeedAndItemsGetter is required",
+		},
+		{
+			name: "streamable http transport",
+			config: Config{
+				Transport:          model.StreamableHTTPTransport,
+				AllFeedsGetter:     &mockAllFeedsGetter{},
+				FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+			},
+			wantErr: false,
 		},
 	}
 
@@ -456,5 +466,122 @@ func BenchmarkGetAllFeeds(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestNewServerNilConfig(t *testing.T) {
+	server, err := NewServer(nil)
+	if err == nil {
+		t.Error("NewServer(nil) should return error")
+	}
+	if server != nil {
+		t.Error("NewServer(nil) should return nil server")
+	}
+	if !strings.Contains(err.Error(), "config cannot be nil") {
+		t.Errorf("NewServer(nil) error = %v, want to contain 'config cannot be nil'", err)
+	}
+}
+
+func TestServerStreamableHTTPTransport(t *testing.T) {
+	t.Run("creates server with streamable http transport", func(t *testing.T) {
+		config := Config{
+			Transport:          model.StreamableHTTPTransport,
+			AllFeedsGetter:     &mockAllFeedsGetter{},
+			FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+			HTTPPort:           "9999",
+		}
+
+		server, err := NewServer(&config)
+		if err != nil {
+			t.Fatalf("NewServer() error = %v", err)
+		}
+
+		if server.transport != model.StreamableHTTPTransport {
+			t.Errorf("server.transport = %v, want %v", server.transport, model.StreamableHTTPTransport)
+		}
+		if server.httpPort != "9999" {
+			t.Errorf("server.httpPort = %v, want 9999", server.httpPort)
+		}
+	})
+
+	t.Run("legacy http-with-sse maps to streamable http", func(t *testing.T) {
+		config := Config{
+			Transport:          model.HTTPWithSSETransport,
+			AllFeedsGetter:     &mockAllFeedsGetter{},
+			FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+		}
+
+		server, err := NewServer(&config)
+		if err != nil {
+			t.Fatalf("NewServer() error = %v", err)
+		}
+
+		if server.transport != model.HTTPWithSSETransport {
+			t.Errorf("server.transport = %v, want %v", server.transport, model.HTTPWithSSETransport)
+		}
+	})
+
+	t.Run("uses default port when not specified", func(t *testing.T) {
+		config := Config{
+			Transport:          model.StreamableHTTPTransport,
+			AllFeedsGetter:     &mockAllFeedsGetter{},
+			FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+		}
+
+		server, err := NewServer(&config)
+		if err != nil {
+			t.Fatalf("NewServer() error = %v", err)
+		}
+
+		if server.httpPort != "8080" {
+			t.Errorf("server.httpPort = %v, want 8080 (default)", server.httpPort)
+		}
+	})
+
+	t.Run("respects stateless and session timeout config", func(t *testing.T) {
+		config := Config{
+			Transport:          model.StreamableHTTPTransport,
+			AllFeedsGetter:     &mockAllFeedsGetter{},
+			FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+			HTTPStateless:      true,
+			HTTPSessionTimeout: 15 * time.Minute,
+		}
+
+		server, err := NewServer(&config)
+		if err != nil {
+			t.Fatalf("NewServer() error = %v", err)
+		}
+
+		if !server.httpStateless {
+			t.Error("server.httpStateless = false, want true")
+		}
+		if server.httpSessionTimeout != 15*time.Minute {
+			t.Errorf("server.httpSessionTimeout = %v, want 15m", server.httpSessionTimeout)
+		}
+	})
+}
+
+func TestRunTransportReturnsErrorForUnsupportedTransport(t *testing.T) {
+	config := Config{
+		Transport:          model.StdioTransport,
+		AllFeedsGetter:     &mockAllFeedsGetter{},
+		FeedAndItemsGetter: &mockFeedAndItemsGetter{},
+	}
+
+	server, err := NewServer(&config)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	// Set an invalid transport to test error handling
+	server.transport = model.Transport(99)
+
+	ctx := context.Background()
+	err = server.runTransport(ctx, nil)
+	if err == nil {
+		t.Error("runTransport() should return error for unsupported transport")
+	}
+	if !strings.Contains(err.Error(), "unsupported transport") {
+		t.Errorf("runTransport() error = %v, want to contain 'unsupported transport'", err)
 	}
 }
