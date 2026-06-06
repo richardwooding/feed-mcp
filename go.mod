@@ -15,6 +15,7 @@ require (
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/richardwooding/hostrate v0.1.0
 	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/time v0.15.0
