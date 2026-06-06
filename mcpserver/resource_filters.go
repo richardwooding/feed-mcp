@@ -192,24 +192,24 @@ func parseEnhancedStringParams(query url.Values, params *FilterParams) {
 		params.SortBy = sortBy
 	}
 
-	if format := query.Get("format"); isValidFormat(format) {
+	if format := query.Get(keyFormat); isValidFormat(format) {
 		params.Format = format
 	}
 }
 
 // isValidSentiment checks if sentiment value is valid
 func isValidSentiment(sentiment string) bool {
-	return sentiment == "positive" || sentiment == "negative" || sentiment == "neutral"
+	return sentiment == sentimentPositive || sentiment == sentimentNegative || sentiment == sentimentNeutral
 }
 
 // isValidSortBy checks if sort_by value is valid
 func isValidSortBy(sortBy string) bool {
-	return sortBy == "date" || sortBy == "relevance" || sortBy == "popularity"
+	return sortBy == sortByDate || sortBy == sortByRelevance || sortBy == sortByPopularity
 }
 
 // isValidFormat checks if format value is valid
 func isValidFormat(format string) bool {
-	return format == "json" || format == "xml" || format == "html" || format == "markdown"
+	return format == formatJSON || format == formatXML || format == formatHTML || format == formatMarkdown
 }
 
 // parseBooleanParameters handles has_media and duplicates parameter parsing
@@ -540,7 +540,7 @@ func addEnhancedFiltersToMap(appliedFilters map[string]any, filters *FilterParam
 		appliedFilters["sort_by"] = filters.SortBy
 	}
 	if filters.Format != "" {
-		appliedFilters["format"] = filters.Format
+		appliedFilters[keyFormat] = filters.Format
 	}
 }
 
@@ -676,7 +676,7 @@ func matchesSentiment(item *gofeed.Item, sentiment string) bool {
 	content := strings.ToLower(item.Title + " " + item.Description + " " + item.Content)
 
 	switch sentiment {
-	case "positive":
+	case sentimentPositive:
 		positiveWords := []string{
 			"good", "great", "excellent", "amazing", "wonderful", "fantastic",
 			"success", "win", "love", "best", "awesome", "brilliant",
@@ -690,7 +690,7 @@ func matchesSentiment(item *gofeed.Item, sentiment string) bool {
 		}
 		return positiveCount >= 2
 
-	case "negative":
+	case sentimentNegative:
 		negativeWords := []string{
 			"bad", "terrible", "awful", "horrible", "worst", "hate",
 			"fail", "failure", "problem", "issue", "crisis", "disaster",
@@ -704,10 +704,10 @@ func matchesSentiment(item *gofeed.Item, sentiment string) bool {
 		}
 		return negativeCount >= 2
 
-	case "neutral":
+	case sentimentNeutral:
 		// Neutral is default if not clearly positive or negative
 		// Check for absence of strong sentiment indicators
-		return !matchesSentiment(item, "positive") && !matchesSentiment(item, "negative")
+		return !matchesSentiment(item, sentimentPositive) && !matchesSentiment(item, sentimentNegative)
 
 	default:
 		return false

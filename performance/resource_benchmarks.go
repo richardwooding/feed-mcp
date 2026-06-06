@@ -322,7 +322,9 @@ func generateFeedID(url string) string {
 	// Simple hash function for testing (matches the one in resources.go)
 	hash := uint32(0)
 	for _, c := range url {
-		hash = hash*31 + uint32(c)
+		// G115 false positive: a rune is a non-negative Unicode code point, and the
+		// wraparound in this non-cryptographic hash is intentional.
+		hash = hash*31 + uint32(c) //nolint:gosec
 	}
 	return fmt.Sprintf("%x", hash)
 }

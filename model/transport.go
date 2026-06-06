@@ -7,6 +7,15 @@ import (
 // ErrInvalidTransport is returned when an invalid transport type is specified.
 var ErrInvalidTransport = errors.New("invalid transport")
 
+// Transport name strings used for parsing and string representation.
+const (
+	transportNameStdio = "stdio"
+	// transportNameHTTPWithSSE is a transport identifier, not a credential.
+	transportNameHTTPWithSSE    = "http-with-sse" //nolint:gosec // G101 false positive: transport name, not a secret
+	transportNameStreamableHTTP = "streamable-http"
+	transportNameUndefined      = "undefined"
+)
+
 // Transport represents the communication transport method for the MCP server
 type Transport uint8
 
@@ -21,12 +30,12 @@ const (
 // ParseTransport converts a string to a Transport type
 func ParseTransport(transport string) (Transport, error) {
 	switch transport {
-	case "stdio":
+	case transportNameStdio:
 		return StdioTransport, nil
-	case "http-with-sse":
+	case transportNameHTTPWithSSE:
 		// Deprecated: maps to StreamableHTTPTransport for backwards compatibility
 		return StreamableHTTPTransport, nil
-	case "streamable-http":
+	case transportNameStreamableHTTP:
 		return StreamableHTTPTransport, nil
 	default:
 		return UndefinedTransport, ErrInvalidTransport
@@ -37,12 +46,12 @@ func ParseTransport(transport string) (Transport, error) {
 func (t Transport) String() string {
 	switch t {
 	case StdioTransport:
-		return "stdio"
+		return transportNameStdio
 	case HTTPWithSSETransport:
-		return "http-with-sse" // Deprecated
+		return transportNameHTTPWithSSE // Deprecated
 	case StreamableHTTPTransport:
-		return "streamable-http"
+		return transportNameStreamableHTTP
 	default:
-		return "undefined"
+		return transportNameUndefined
 	}
 }

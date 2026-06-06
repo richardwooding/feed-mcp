@@ -13,6 +13,12 @@ import (
 	"time"
 )
 
+// Repeated error/format message strings.
+const (
+	msgConnectionFailed = "Connection failed"
+	feedFormatRSS       = "RSS"
+)
+
 // CreateNetworkError creates a FeedError for network-related issues
 func CreateNetworkError(err error, feedURL string) *FeedError {
 	errorType := ErrorTypeNetwork
@@ -29,7 +35,7 @@ func CreateNetworkError(err error, feedURL string) *FeedError {
 			message = "DNS resolution failed"
 		} else if isConnectionError(err) {
 			errorType = ErrorTypeConnectionFailed
-			message = "Connection failed"
+			message = msgConnectionFailed
 		}
 	}
 
@@ -315,7 +321,7 @@ func determineFeedFormat(content string) string {
 	}
 	if strings.HasPrefix(contentLower, "<") {
 		if strings.Contains(contentLower, "<rss") {
-			return "RSS"
+			return feedFormatRSS
 		}
 		if strings.Contains(contentLower, "<feed") {
 			return "Atom"

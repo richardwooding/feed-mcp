@@ -73,7 +73,7 @@ func (s *Server) getFeedsForPrompt(ctx context.Context, feedIDs string) ([]*mode
 // handleAnalyzeFeedTrends analyzes trends and patterns across multiple feeds
 func (s *Server) handleAnalyzeFeedTrends(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	// Parse arguments
-	timeframe := getStringArg(req.Params.Arguments, "timeframe", "24h")
+	timeframe := getStringArg(req.Params.Arguments, keyTimeframe, timeframe24h)
 	categories := getStringArg(req.Params.Arguments, "categories", "")
 
 	// Parse timeframe
@@ -144,7 +144,7 @@ Use this analysis to understand content trends, optimize feed monitoring, and id
 		Description: "Feed trend analysis with insights and patterns",
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role: roleUser,
 				Content: &mcp.TextContent{
 					Text: promptContent,
 				},
@@ -189,7 +189,7 @@ func (s *Server) handleSummarizeFeeds(ctx context.Context, req *mcp.GetPromptReq
 		Description: fmt.Sprintf("Feed content summary (%s)", summaryType),
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role: roleUser,
 				Content: &mcp.TextContent{
 					Text: promptContent,
 				},
@@ -205,7 +205,7 @@ func (s *Server) handleMonitorKeywords(ctx context.Context, req *mcp.GetPromptRe
 		return createErrorPromptResult("Keywords parameter is required"), nil
 	}
 
-	timeframe := getStringArg(req.Params.Arguments, "timeframe", "24h")
+	timeframe := getStringArg(req.Params.Arguments, keyTimeframe, timeframe24h)
 	alertThreshold := getIntArg(req.Params.Arguments, "alert_threshold", 1)
 
 	// Parse keywords
@@ -264,7 +264,7 @@ func (s *Server) handleMonitorKeywords(ctx context.Context, req *mcp.GetPromptRe
 		Description: fmt.Sprintf("Keyword monitoring report for: %s", keywords),
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role: roleUser,
 				Content: &mcp.TextContent{
 					Text: promptContent,
 				},
@@ -325,7 +325,7 @@ func (s *Server) handleCompareSources(ctx context.Context, req *mcp.GetPromptReq
 		Description: fmt.Sprintf("Source comparison for topic: %s", topic),
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role: roleUser,
 				Content: &mcp.TextContent{
 					Text: promptContent,
 				},
@@ -337,7 +337,7 @@ func (s *Server) handleCompareSources(ctx context.Context, req *mcp.GetPromptReq
 // handleGenerateFeedReport generates detailed feed reports
 func (s *Server) handleGenerateFeedReport(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	reportType := getStringArg(req.Params.Arguments, "report_type", "comprehensive")
-	timeframe := getStringArg(req.Params.Arguments, "timeframe", "7d")
+	timeframe := getStringArg(req.Params.Arguments, keyTimeframe, timeframe7d)
 
 	// Parse timeframe
 	duration, err := parseDuration(timeframe)
@@ -377,7 +377,7 @@ func (s *Server) handleGenerateFeedReport(ctx context.Context, req *mcp.GetPromp
 		Description: fmt.Sprintf("Feed %s report", reportType),
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role: roleUser,
 				Content: &mcp.TextContent{
 					Text: promptContent,
 				},
@@ -393,7 +393,7 @@ func createErrorPromptResult(errorMsg string) *mcp.GetPromptResult {
 		Description: "Error in prompt execution",
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role: roleUser,
 				Content: &mcp.TextContent{
 					Text: fmt.Sprintf("Error: %s\n\nPlease check your parameters and try again.", errorMsg),
 				},
@@ -423,9 +423,9 @@ func parseDuration(timeframe string) (time.Duration, error) {
 	switch strings.ToLower(timeframe) {
 	case "1h", "hour":
 		return time.Hour, nil
-	case "24h", "day", "1d":
+	case timeframe24h, "day", "1d":
 		return 24 * time.Hour, nil
-	case "7d", "week", "1w":
+	case timeframe7d, "week", "1w":
 		return 7 * 24 * time.Hour, nil
 	case "30d", "month", "1m":
 		return 30 * 24 * time.Hour, nil

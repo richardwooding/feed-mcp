@@ -84,7 +84,7 @@ type FeedSource string
 
 // Feed source constants indicate how a feed was added to the system
 const (
-	FeedSourceStartup FeedSource = "startup" // From CLI args
-	FeedSourceOPML    FeedSource = "opml"    // From OPML file
-	FeedSourceRuntime FeedSource = "runtime" // Added via tools
+	FeedSourceStartup FeedSource = "startup"  // From CLI args
+	FeedSourceOPML    FeedSource = formatOPML // From OPML file
+	FeedSourceRuntime FeedSource = "runtime"  // Added via tools
 )

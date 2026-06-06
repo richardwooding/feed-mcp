@@ -24,6 +24,9 @@ import (
 	"github.com/richardwooding/feed-mcp/model"
 )
 
+// keyAttempt is the structured-log field key for the current retry attempt.
+const keyAttempt = "attempt"
+
 // HTTPPoolConfig holds HTTP connection pool configuration
 type HTTPPoolConfig struct {
 	MaxIdleConns        int
@@ -258,7 +261,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 			}
 			msg := "Successfully fetched feed"
 			if attempt > 1 {
-				extra["attempt"] = attempt
+				extra[keyAttempt] = attempt
 				extra["max_attempts"] = maxAttempts
 				msg = fmt.Sprintf("Successfully fetched feed after %d attempts", attempt)
 			}
@@ -278,9 +281,9 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 			fmt.Sprintf("Feed fetch attempt %d failed", attempt),
 			"feed_fetcher", "retryable_fetch", url,
 			map[string]any{
-				"attempt":      attempt,
+				keyAttempt:     attempt,
 				"max_attempts": maxAttempts,
-				"error":        err.Error(),
+				statusError:    err.Error(),
 				"retryable":    isRetryableError(err),
 			},
 		)
@@ -292,8 +295,8 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 					"Error is not retryable, stopping retry attempts",
 					"feed_fetcher", "retryable_fetch", url,
 					map[string]any{
-						"attempt": attempt,
-						"error":   err.Error(),
+						keyAttempt:  attempt,
+						statusError: err.Error(),
 					},
 				)
 			}
@@ -307,7 +310,7 @@ func retryableFeedFetch(ctx context.Context, url string, parser *gofeed.Parser, 
 			fmt.Sprintf("Retrying in %v", delay),
 			"feed_fetcher", "retryable_fetch", url,
 			map[string]any{
-				"attempt":      attempt,
+				keyAttempt:     attempt,
 				"next_attempt": attempt + 1,
 				"delay_ms":     delay.Milliseconds(),
 			},

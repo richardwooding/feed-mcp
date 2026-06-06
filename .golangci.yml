@@ -123,6 +123,7 @@ linters:
           - dupl
           - gosec
           - gocritic
+          - goconst # tests legitimately repeat literal fixtures
       
       # Exclude shadow warnings for short variable names
       - linters:
