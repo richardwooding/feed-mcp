@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/richardwooding/hostrate"
 )
 
 func mockFeedServer(t *testing.T, title string) *httptest.Server {
@@ -178,9 +180,9 @@ func TestNewRateLimitedHTTPClient(t *testing.T) {
 		t.Errorf("expected timeout to be 30s, got %v", client.Timeout)
 	}
 
-	// Verify it's our custom transport
-	if _, ok := client.Transport.(*RateLimitedTransport); !ok {
-		t.Error("expected RateLimitedTransport")
+	// Verify it's the per-host rate-limiting transport
+	if _, ok := client.Transport.(*hostrate.Transport); !ok {
+		t.Errorf("expected *hostrate.Transport, got %T", client.Transport)
 	}
 }
 
@@ -799,23 +801,9 @@ func TestNewRateLimitedHTTPClient_ConnectionPoolSettings(t *testing.T) {
 		IdleConnTimeout:     120 * time.Second,
 	}
 
-	client := NewRateLimitedHTTPClient(2.0, 3, poolConfig)
-
-	if client == nil {
-		t.Fatal("expected client to be non-nil")
-	}
-
-	// Verify it's our custom transport
-	rateLimitedTransport, ok := client.Transport.(*RateLimitedTransport)
-	if !ok {
-		t.Fatal("expected RateLimitedTransport")
-	}
-
-	// Verify the underlying transport is our custom HTTP transport
-	httpTransport, ok := rateLimitedTransport.transport.(*http.Transport)
-	if !ok {
-		t.Fatal("expected underlying transport to be *http.Transport")
-	}
+	// The pooled base transport is wrapped by hostrate (whose base field is
+	// unexported), so verify the pool settings on the builder directly.
+	httpTransport := newPooledTransport(poolConfig)
 
 	// Verify connection pool settings
 	if httpTransport.MaxIdleConns != 75 {
@@ -1573,87 +1561,6 @@ func TestNewStore_LazyStartup(t *testing.T) {
 	}
 }
 
-// fakeRoundTripper returns an empty 200 response without making a network call,
-// so RateLimitedTransport tests measure only the limiter's wait time.
-type fakeRoundTripper struct{}
-
-func (f *fakeRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       http.NoBody,
-		Header:     make(http.Header),
-	}, nil
-}
-
-// newTestRequest builds a GET request for the given hostname (no real network use).
-func newTestRequest(t *testing.T, host string) *http.Request {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://"+host+"/", nil)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-	return req
-}
-
-// TestRateLimitedTransport_PerHost verifies that requests to different hosts
-// proceed in parallel rather than serializing through a global limiter.
-func TestRateLimitedTransport_PerHost(t *testing.T) {
-	rt := &RateLimitedTransport{
-		transport:         &fakeRoundTripper{},
-		requestsPerSecond: 1.0, // very restrictive: a global limiter would force ~1s wait
-		burstCapacity:     1,
-	}
-
-	start := time.Now()
-	done := make(chan error, 2)
-	for _, host := range []string{"host-a.example", "host-b.example"} {
-		go func(h string) {
-			resp, err := rt.RoundTrip(newTestRequest(t, h))
-			if err == nil {
-				_ = resp.Body.Close()
-			}
-			done <- err
-		}(host)
-	}
-	for range 2 {
-		if err := <-done; err != nil {
-			t.Fatalf("RoundTrip failed: %v", err)
-		}
-	}
-	elapsed := time.Since(start)
-
-	// With per-host limiters each host has its own burst token, so both calls
-	// proceed immediately. A global limiter at burst 1 would force the second
-	// caller to wait ~1 second.
-	if elapsed > 200*time.Millisecond {
-		t.Fatalf("parallel cross-host requests took %v; expected <200ms with per-host limiting", elapsed)
-	}
-}
-
-// TestRateLimitedTransport_SameHostStillLimited verifies the per-host limiter
-// still throttles repeated requests to the same host.
-func TestRateLimitedTransport_SameHostStillLimited(t *testing.T) {
-	rt := &RateLimitedTransport{
-		transport:         &fakeRoundTripper{},
-		requestsPerSecond: 5.0, // 200ms per token after burst is spent
-		burstCapacity:     1,
-	}
-
-	start := time.Now()
-	for i := range 2 {
-		resp, err := rt.RoundTrip(newTestRequest(t, "host-c.example"))
-		if err != nil {
-			t.Fatalf("RoundTrip %d failed: %v", i, err)
-		}
-		_ = resp.Body.Close()
-	}
-	elapsed := time.Since(start)
-
-	// First request consumes the burst token; second waits ~200ms for a refill.
-	if elapsed < 150*time.Millisecond {
-		t.Fatalf("two same-host requests took only %v; expected ~200ms throttle", elapsed)
-	}
-	if elapsed > 1*time.Second {
-		t.Fatalf("two same-host requests took %v; throttling too aggressive", elapsed)
-	}
-}
+// Per-host rate-limiting behavior (cross-host parallelism and same-host
+// throttling) is now provided and tested by github.com/richardwooding/hostrate.
+// See TestPerHostIsolation in that module.

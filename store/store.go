@@ -18,6 +18,7 @@ import (
 	"github.com/eko/gocache/lib/v4/store"
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
 	"github.com/mmcdole/gofeed"
+	"github.com/richardwooding/hostrate"
 	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
 
@@ -79,40 +80,10 @@ type Store struct {
 	metricsMutex     sync.RWMutex
 }
 
-// RateLimitedTransport wraps an http.RoundTripper with per-host rate limiting.
-// A separate token bucket is maintained for each remote host so that fetches
-// against many distinct hosts are not artificially serialized, while requests
-// to any single host remain bounded by the configured rate and burst.
-type RateLimitedTransport struct {
-	transport         http.RoundTripper
-	requestsPerSecond rate.Limit
-	burstCapacity     int
-	limiters          sync.Map // host (string) -> *rate.Limiter
-}
-
-// limiterForHost returns the limiter associated with host, creating one on first use.
-func (r *RateLimitedTransport) limiterForHost(host string) *rate.Limiter {
-	if v, ok := r.limiters.Load(host); ok {
-		return v.(*rate.Limiter)
-	}
-	v, _ := r.limiters.LoadOrStore(host, rate.NewLimiter(r.requestsPerSecond, r.burstCapacity))
-	return v.(*rate.Limiter)
-}
-
-// RoundTrip implements the http.RoundTripper interface with per-host rate limiting.
-func (r *RateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	host := strings.ToLower(req.URL.Hostname())
-	if err := r.limiterForHost(host).Wait(req.Context()); err != nil {
-		return nil, err
-	}
-	return r.transport.RoundTrip(req)
-}
-
-// NewRateLimitedHTTPClient creates an HTTP client with per-host rate limiting and connection pooling.
-// The requestsPerSecond and burstCapacity arguments configure each host's token bucket independently.
-func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig) *http.Client {
-	// Create a custom transport with connection pooling settings
-	baseTransport := &http.Transport{
+// newPooledTransport builds an *http.Transport with the given connection pool
+// settings, otherwise mirroring http.DefaultTransport's defaults.
+func newPooledTransport(poolConfig HTTPPoolConfig) *http.Transport {
+	return &http.Transport{
 		MaxIdleConns:        poolConfig.MaxIdleConns,
 		MaxConnsPerHost:     poolConfig.MaxConnsPerHost,
 		MaxIdleConnsPerHost: poolConfig.MaxIdleConnsPerHost,
@@ -127,12 +98,13 @@ func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, pool
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
+}
 
-	transport := &RateLimitedTransport{
-		transport:         baseTransport,
-		requestsPerSecond: rate.Limit(requestsPerSecond),
-		burstCapacity:     burstCapacity,
-	}
+// NewRateLimitedHTTPClient creates an HTTP client with per-host rate limiting and connection pooling.
+// The requestsPerSecond and burstCapacity arguments configure each host's token bucket independently.
+// Per-host rate limiting is provided by github.com/richardwooding/hostrate.
+func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig) *http.Client {
+	transport := hostrate.New(newPooledTransport(poolConfig), rate.Limit(requestsPerSecond), burstCapacity)
 
 	return &http.Client{
 		Transport: transport,
