@@ -9,6 +9,13 @@ import (
 	"strings"
 )
 
+// Loopback host/address values used for localhost detection.
+const (
+	loopbackHostname = "localhost"
+	loopbackIPv4     = "127.0.0.1"
+	loopbackIPv6     = "::1"
+)
+
 // URL validation errors
 var (
 	ErrInvalidURL        = errors.New("invalid URL format")
@@ -102,9 +109,9 @@ func isLocalhost(hostname string) bool {
 	hostname = strings.ToLower(hostname)
 
 	localhostPatterns := []string{
-		"localhost",
-		"127.0.0.1",
-		"::1",
+		loopbackHostname,
+		loopbackIPv4,
+		loopbackIPv6,
 		"[::1]", // IPv6 with brackets
 	}
 

@@ -240,7 +240,7 @@ func (s *Server) buildMCPServer() *mcp.Server {
 func (s *Server) createMCPServer() *mcp.Server {
 	return mcp.NewServer(
 		&mcp.Implementation{
-			Name:    "RSS, Atom, and JSON Feed Server",
+			Name:    serverName,
 			Version: version.GetVersion(),
 		},
 		&mcp.ServerOptions{
@@ -261,15 +261,15 @@ func (s *Server) registerCoreTools(srv *mcp.Server) {
 // addFetchLinkTool adds the fetch_link tool
 func (s *Server) addFetchLinkTool(srv *mcp.Server) {
 	fetchLinkTool := &mcp.Tool{
-		Name:        "fetch_link",
-		Description: "Fetch link URL",
+		Name:        toolFetchLink,
+		Description: fetchLinkDescription,
 		InputSchema: &jsonschema.Schema{
-			Type:     "object",
-			Required: []string{"URL"},
+			Type:     typeObject,
+			Required: []string{keyURL},
 			Properties: map[string]*jsonschema.Schema{
-				"URL": {
-					Type:        "string",
-					Description: "Link URL",
+				keyURL: {
+					Type:        typeString,
+					Description: linkURLDescription,
 				},
 			},
 		},
@@ -293,9 +293,9 @@ func (s *Server) addFetchLinkTool(srv *mcp.Server) {
 // addAllFeedsTool adds the all_syndication_feeds tool
 func (s *Server) addAllFeedsTool(srv *mcp.Server) {
 	allFeedsTool := &mcp.Tool{
-		Name:        "all_syndication_feeds",
+		Name:        toolAllSyndicationFeeds,
 		Description: "list available feedItem resources",
-		InputSchema: &jsonschema.Schema{Type: "object"},
+		InputSchema: &jsonschema.Schema{Type: typeObject},
 	}
 	mcp.AddTool(srv, allFeedsTool, func(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
 		feedResults, err := s.allFeedsGetter.GetAllFeeds(ctx)
@@ -319,42 +319,42 @@ func (s *Server) addAllFeedsTool(srv *mcp.Server) {
 // addGetFeedItemsTool adds the get_syndication_feed_items tool to the server
 func (s *Server) addGetFeedItemsTool(srv *mcp.Server) {
 	getSyndicationFeedTool := &mcp.Tool{
-		Name:        "get_syndication_feed_items",
+		Name:        toolGetSyndicationFeedItems,
 		Description: "Get feed items with metadata-only by default (title, link, date). Use two-pass workflow: 1) Browse with defaults to see available items, 2) Read specific items with includeContent=true. Prevents conversation length errors by excluding large content/description fields unless explicitly requested.",
 		InputSchema: &jsonschema.Schema{
-			Type:     "object",
-			Required: []string{"ID"},
+			Type:     typeObject,
+			Required: []string{keyID},
 			Properties: map[string]*jsonschema.Schema{
-				"ID": {
-					Type:        "string",
+				keyID: {
+					Type:        typeString,
 					Description: "Feed ID from all_syndication_feeds tool",
 				},
 				"limit": {
-					Type:        "integer",
+					Type:        typeInteger,
 					Description: fmt.Sprintf("Maximum items to return (default: %d, max: %d). Use smaller values when includeContent=true to avoid conversation length errors.", DefaultItemLimit, MaxItemLimit),
 					Minimum:     &[]float64{0}[0],
 					Maximum:     &[]float64{float64(MaxItemLimit)}[0],
 				},
 				"offset": {
-					Type:        "integer",
+					Type:        typeInteger,
 					Description: "Number of items to skip for pagination (default: 0). Use with limit to navigate pages of results.",
 					Minimum:     &[]float64{0}[0],
 				},
 				"includeContent": {
-					Type:        "boolean",
+					Type:        typeBoolean,
 					Description: "Whether to include content/description fields (default: false). Leave false for browsing (metadata only: title, link, date, author). Set true only when reading specific items to avoid large responses.",
 				},
 				"maxContentLength": {
-					Type:        "integer",
+					Type:        typeInteger,
 					Description: fmt.Sprintf("Maximum characters for content/description fields (default: %d when includeContent=true, 0 for unlimited). Use to preview content without full articles.", DefaultContentLength),
 					Minimum:     &[]float64{0}[0],
 				},
 				"includeImages": {
-					Type:        "boolean",
+					Type:        typeBoolean,
 					Description: "Whether to include images from feed items (default: false). When false: no images. When true with embedImages=false: returns ResourceLinks (~100 bytes each, URLs only). When true with embedImages=true: returns ImageContent (base64-encoded, displays inline in Claude Desktop). All images include Meta: {\"itemIndex\": N} for association with feed item at position N.",
 				},
 				"embedImages": {
-					Type:        "boolean",
+					Type:        typeBoolean,
 					Description: "Fetch and embed images as base64 ImageContent for inline display (default: false). Requires includeImages=true. Images are cached, rate-limited, and subject to: 1MB size limit per image (Claude Desktop constraint), circuit breaker protection (3 failures = skip host), 5s timeout per fetch. Failed fetches are skipped gracefully.",
 				},
 			},
@@ -512,14 +512,14 @@ func (s *Server) buildFeedContent(ctx context.Context, feedResult *model.FeedAnd
 					if err != nil {
 						// Log error but continue with other images (graceful degradation)
 						// Fall back to ResourceLink on failure
-						link.Meta = mcp.Meta{"itemIndex": i}
+						link.Meta = mcp.Meta{keyItemIndex: i}
 						content = append(content, link)
 						continue
 					}
 					content = append(content, imageContent)
 				} else {
 					// Return as ResourceLink (lightweight URL reference)
-					link.Meta = mcp.Meta{"itemIndex": i}
+					link.Meta = mcp.Meta{keyItemIndex: i}
 					content = append(content, link)
 				}
 			}
@@ -590,32 +590,32 @@ func (s *Server) addAggregationTools(srv *mcp.Server) {
 		Name:        "merge_feeds",
 		Description: "Merge multiple feeds into a single aggregated feed with deduplication and sorting",
 		InputSchema: &jsonschema.Schema{
-			Type:     "object",
-			Required: []string{"feedIds"},
+			Type:     typeObject,
+			Required: []string{keyFeedIDs},
 			Properties: map[string]*jsonschema.Schema{
-				"feedIds": {
+				keyFeedIDs: {
 					Type:        "array",
 					Description: "Array of feed IDs to merge",
 					Items: &jsonschema.Schema{
-						Type: "string",
+						Type: typeString,
 					},
 				},
-				"title": {
-					Type:        "string",
+				keyTitle: {
+					Type:        typeString,
 					Description: "Title for the merged feed",
 				},
 				"maxItems": {
-					Type:        "integer",
+					Type:        typeInteger,
 					Description: "Maximum number of items to include (0 for no limit)",
 					Minimum:     &[]float64{0}[0],
 				},
 				"sortBy": {
-					Type:        "string",
+					Type:        typeString,
 					Description: "Sort order: date (default), title, source",
-					Enum:        []any{"date", "title", "source"},
+					Enum:        []any{sortByDate, keyTitle, valueSource},
 				},
 				"deduplicate": {
-					Type:        "boolean",
+					Type:        typeBoolean,
 					Description: "Remove duplicate items based on title and link",
 				},
 			},
@@ -642,36 +642,36 @@ func (s *Server) addAggregationTools(srv *mcp.Server) {
 		Name:        "export_feed_data",
 		Description: "Export feed data in various formats (JSON, CSV, OPML, RSS, Atom)",
 		InputSchema: &jsonschema.Schema{
-			Type:     "object",
-			Required: []string{"format"},
+			Type:     typeObject,
+			Required: []string{keyFormat},
 			Properties: map[string]*jsonschema.Schema{
-				"feedIds": {
+				keyFeedIDs: {
 					Type:        "array",
 					Description: "Feed IDs to export (empty for all feeds)",
 					Items: &jsonschema.Schema{
-						Type: "string",
+						Type: typeString,
 					},
 				},
-				"format": {
-					Type:        "string",
+				keyFormat: {
+					Type:        typeString,
 					Description: "Export format",
-					Enum:        []any{"json", "csv", "opml", "rss", "atom"},
+					Enum:        []any{formatJSON, formatCSV, formatOPML, formatRSS, formatAtom},
 				},
 				"since": {
-					Type:        "string",
+					Type:        typeString,
 					Description: "Include items published after this date (ISO 8601)",
 				},
 				"until": {
-					Type:        "string",
+					Type:        typeString,
 					Description: "Include items published before this date (ISO 8601)",
 				},
 				"maxItems": {
-					Type:        "integer",
+					Type:        typeInteger,
 					Description: "Maximum number of items per feed (0 for no limit)",
 					Minimum:     &[]float64{0}[0],
 				},
 				"includeAll": {
-					Type:        "boolean",
+					Type:        typeBoolean,
 					Description: "Include all feed metadata and statistics",
 				},
 			},
@@ -708,23 +708,23 @@ func (s *Server) addAddFeedTool(srv *mcp.Server) {
 		Name:        "add_feed",
 		Description: "Add a new RSS/Atom/JSON feed at runtime",
 		InputSchema: &jsonschema.Schema{
-			Type:     "object",
-			Required: []string{"url"},
+			Type:     typeObject,
+			Required: []string{keyURLLower},
 			Properties: map[string]*jsonschema.Schema{
-				"url": {
-					Type:        "string",
+				keyURLLower: {
+					Type:        typeString,
 					Description: "RSS/Atom/JSON feed URL",
 				},
-				"title": {
-					Type:        "string",
+				keyTitle: {
+					Type:        typeString,
 					Description: "Optional human-readable title",
 				},
 				"category": {
-					Type:        "string",
+					Type:        typeString,
 					Description: "Optional category for organization",
 				},
-				"description": {
-					Type:        "string",
+				keyDescription: {
+					Type:        typeString,
 					Description: "Optional description",
 				},
 			},
@@ -755,20 +755,20 @@ func (s *Server) addRemoveFeedTool(srv *mcp.Server) {
 		Name:        "remove_feed",
 		Description: "Remove a feed by ID or URL",
 		InputSchema: &jsonschema.Schema{
-			Type: "object",
+			Type: typeObject,
 			Properties: map[string]*jsonschema.Schema{
-				"feedId": {
-					Type:        "string",
+				keyFeedID: {
+					Type:        typeString,
 					Description: "Feed ID to remove",
 				},
-				"url": {
-					Type:        "string",
+				keyURLLower: {
+					Type:        typeString,
 					Description: "Feed URL to remove",
 				},
 			},
 			OneOf: []*jsonschema.Schema{
-				{Required: []string{"feedId"}},
-				{Required: []string{"url"}},
+				{Required: []string{keyFeedID}},
+				{Required: []string{keyURLLower}},
 			},
 		},
 	}
@@ -806,7 +806,7 @@ func (s *Server) addListManagedFeedsTool(srv *mcp.Server) {
 	listManagedFeedsTool := &mcp.Tool{
 		Name:        "list_managed_feeds",
 		Description: "List all managed feeds with metadata and status",
-		InputSchema: &jsonschema.Schema{Type: "object"}, // No parameters needed
+		InputSchema: &jsonschema.Schema{Type: typeObject}, // No parameters needed
 	}
 	mcp.AddTool(srv, listManagedFeedsTool, func(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
 		feeds, err := s.dynamicFeedManager.ListManagedFeeds(ctx)
@@ -831,11 +831,11 @@ func (s *Server) addRefreshFeedTool(srv *mcp.Server) {
 		Name:        "refresh_feed",
 		Description: "Force refresh a specific feed to get latest content",
 		InputSchema: &jsonschema.Schema{
-			Type:     "object",
-			Required: []string{"feedId"},
+			Type:     typeObject,
+			Required: []string{keyFeedID},
 			Properties: map[string]*jsonschema.Schema{
-				"feedId": {
-					Type:        "string",
+				keyFeedID: {
+					Type:        typeString,
 					Description: "Feed ID to refresh",
 				},
 			},
@@ -1007,7 +1007,7 @@ func (s *Server) addPrompts(srv *mcp.Server) {
 			Description: "Analyze trends and patterns across multiple feeds over time",
 			Arguments: []*mcp.PromptArgument{
 				{
-					Name:        "timeframe",
+					Name:        keyTimeframe,
 					Description: "Time period to analyze (e.g., '24h', '7d', '30d')",
 					Required:    false,
 				},
@@ -1052,7 +1052,7 @@ func (s *Server) addPrompts(srv *mcp.Server) {
 					Required:    true,
 				},
 				{
-					Name:        "timeframe",
+					Name:        keyTimeframe,
 					Description: "Time period to monitor (e.g., '24h', '7d') - defaults to '24h'",
 					Required:    false,
 				},
@@ -1097,7 +1097,7 @@ func (s *Server) addPrompts(srv *mcp.Server) {
 					Required:    false,
 				},
 				{
-					Name:        "timeframe",
+					Name:        keyTimeframe,
 					Description: "Time period for the report (e.g., '7d', '30d', '90d')",
 					Required:    false,
 				},
@@ -1114,7 +1114,7 @@ func (s *Server) mergeFeeds(ctx context.Context, args MergeFeedsParams) (*Merged
 
 	// Default values
 	if args.SortBy == "" {
-		args.SortBy = "date"
+		args.SortBy = sortByDate
 	}
 
 	// Fetch all specified feeds
@@ -1138,9 +1138,9 @@ func (s *Server) mergeFeeds(ctx context.Context, args MergeFeedsParams) (*Merged
 
 	// Sort items based on sortBy parameter
 	switch args.SortBy {
-	case "title":
+	case keyTitle:
 		sortItemsByTitle(allItems)
-	case "source":
+	case valueSource:
 		sortItemsBySource(allItems)
 	default: // "date"
 		sortItemsByDate(allItems)
@@ -1248,15 +1248,15 @@ func (s *Server) applyExportFilters(feedResults []*FeedAndItemsResult, args *Exp
 // exportInFormat exports the feed results in the requested format
 func (s *Server) exportInFormat(feedResults []*FeedAndItemsResult, args *ExportFeedDataParams) (string, error) {
 	switch args.Format {
-	case "json":
+	case formatJSON:
 		return exportAsJSON(feedResults, args.IncludeAll)
-	case "csv":
+	case formatCSV:
 		return exportAsCSV(feedResults)
-	case "opml":
+	case formatOPML:
 		return exportAsOPML(feedResults)
-	case "rss":
+	case formatRSS:
 		return exportAsRSS(feedResults)
-	case "atom":
+	case formatAtom:
 		return exportAsAtom(feedResults)
 	default:
 		return "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("unsupported export format: %s", args.Format)).
@@ -1455,7 +1455,7 @@ func (s *Server) fetchAndEmbedImage(ctx context.Context, imageURL, mimeType stri
 		return &mcp.ImageContent{
 			Data:     cachedData,
 			MIMEType: mimeType,
-			Meta:     mcp.Meta{"itemIndex": itemIndex},
+			Meta:     mcp.Meta{keyItemIndex: itemIndex},
 		}, nil
 	}
 
@@ -1517,7 +1517,7 @@ func (s *Server) fetchAndEmbedImage(ctx context.Context, imageURL, mimeType stri
 	return &mcp.ImageContent{
 		Data:     encodedData,
 		MIMEType: mimeType,
-		Meta:     mcp.Meta{"itemIndex": itemIndex},
+		Meta:     mcp.Meta{keyItemIndex: itemIndex},
 	}, nil
 }
 
@@ -1575,8 +1575,8 @@ func sortItemsBySource(items []*gofeed.Item) {
 
 // getItemSource extracts source information from a feed item
 func getItemSource(item *gofeed.Item) string {
-	if item.Custom != nil && item.Custom["source"] != "" {
-		return item.Custom["source"]
+	if item.Custom != nil && item.Custom[valueSource] != "" {
+		return item.Custom[valueSource]
 	}
 	return ""
 }

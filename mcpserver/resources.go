@@ -202,7 +202,7 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 	resources = append(resources,
 		&mcp.Resource{
 			URI:         FeedListURI,
-			Name:        "All Feeds",
+			Name:        nameAllFeeds,
 			Description: "List of all available syndication feeds",
 			MIMEType:    JSONMIMEType,
 		},
@@ -229,19 +229,19 @@ func (rm *ResourceManager) ListResources(ctx context.Context) ([]*mcp.Resource, 
 		// Add all three feed resources at once
 		resources = append(resources,
 			&mcp.Resource{
-				URI:         expandURITemplate(FeedURI, map[string]string{"feedId": feedID}),
+				URI:         expandURITemplate(FeedURI, map[string]string{keyFeedID: feedID}),
 				Name:        fmt.Sprintf("Feed: %s", feed.Title),
 				Description: fmt.Sprintf("Complete feed data for %s. %s", feed.Title, ParameterDocsSummary),
 				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
-				URI:         expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID}),
+				URI:         expandURITemplate(FeedItemsURI, map[string]string{keyFeedID: feedID}),
 				Name:        fmt.Sprintf("Items: %s", feed.Title),
 				Description: fmt.Sprintf("Feed items only for %s. %s", feed.Title, ParameterDocsSummary),
 				MIMEType:    JSONMIMEType,
 			},
 			&mcp.Resource{
-				URI:         expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID}),
+				URI:         expandURITemplate(FeedMetaURI, map[string]string{keyFeedID: feedID}),
 				Name:        fmt.Sprintf("Metadata: %s", feed.Title),
 				Description: fmt.Sprintf("Feed metadata for %s", feed.Title),
 				MIMEType:    JSONMIMEType,
@@ -303,7 +303,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 		feedID := model.GenerateFeedID(feed.PublicURL)
 		feedList = append(feedList, map[string]any{
 			"id":                   feedID,
-			"title":                feed.Title,
+			keyTitle:               feed.Title,
 			"public_url":           feed.PublicURL,
 			"has_error":            feed.FetchError != "",
 			"circuit_breaker_open": feed.CircuitBreakerOpen,
@@ -313,7 +313,7 @@ func (rm *ResourceManager) readFeedList(ctx context.Context) (*mcp.ReadResourceR
 	content := map[string]any{
 		"feeds":      feedList,
 		"count":      len(feedList),
-		"updated_at": time.Now().UTC(),
+		keyUpdatedAt: time.Now().UTC(),
 	}
 
 	contentJSON, err := marshalJSONContent(content, FeedListURI)
@@ -341,126 +341,126 @@ func (rm *ResourceManager) readParameterDocs(ctx context.Context) (*mcp.ReadReso
 	// Create comprehensive parameter documentation
 	parameterDocs := map[string]any{
 		"uri_parameters": map[string]any{
-			"description": "Complete documentation for URI parameters supported by feed resources",
+			keyDescription: "Complete documentation for URI parameters supported by feed resources",
 			"base_parameters": map[string]any{
 				"since": map[string]any{
-					"description": "Filter items published after this date",
-					"format":      "ISO 8601 datetime (e.g., 2023-01-01T00:00:00Z)",
-					"required":    false,
-					"example":     "since=2023-01-01T00:00:00Z",
+					keyDescription: "Filter items published after this date",
+					keyFormat:      "ISO 8601 datetime (e.g., 2023-01-01T00:00:00Z)",
+					keyRequired:    false,
+					keyExample:     "since=2023-01-01T00:00:00Z",
 				},
 				"until": map[string]any{
-					"description": "Filter items published before this date",
-					"format":      "ISO 8601 datetime (e.g., 2023-12-31T23:59:59Z)",
-					"required":    false,
-					"example":     "until=2023-12-31T23:59:59Z",
+					keyDescription: "Filter items published before this date",
+					keyFormat:      "ISO 8601 datetime (e.g., 2023-12-31T23:59:59Z)",
+					keyRequired:    false,
+					keyExample:     "until=2023-12-31T23:59:59Z",
 				},
 				"limit": map[string]any{
-					"description": "Maximum number of items to return",
-					"format":      "Integer",
-					"range":       "0-1000 (0 means no limit, values >1000 are capped)",
-					"required":    false,
-					"example":     "limit=10",
+					keyDescription: "Maximum number of items to return",
+					keyFormat:      formatInteger,
+					keyRange:       "0-1000 (0 means no limit, values >1000 are capped)",
+					keyRequired:    false,
+					keyExample:     "limit=10",
 				},
 				"offset": map[string]any{
-					"description": "Number of items to skip (for pagination)",
-					"format":      "Integer",
-					"range":       "0 or positive integers",
-					"required":    false,
-					"example":     "offset=20",
+					keyDescription: "Number of items to skip (for pagination)",
+					keyFormat:      formatInteger,
+					keyRange:       docNonNegativeInts,
+					keyRequired:    false,
+					keyExample:     "offset=20",
 				},
 				"category": map[string]any{
-					"description": "Filter items by category or tag (case-insensitive)",
-					"format":      "Text string",
-					"required":    false,
-					"example":     "category=technology",
+					keyDescription: "Filter items by category or tag (case-insensitive)",
+					keyFormat:      docTextString,
+					keyRequired:    false,
+					keyExample:     "category=technology",
 				},
 				"author": map[string]any{
-					"description": "Filter items by author name (case-insensitive)",
-					"format":      "Text string",
-					"required":    false,
-					"example":     "author=john%20smith",
+					keyDescription: "Filter items by author name (case-insensitive)",
+					keyFormat:      docTextString,
+					keyRequired:    false,
+					keyExample:     "author=john%20smith",
 				},
 				"search": map[string]any{
-					"description": "Full-text search across title, description, and content (case-insensitive)",
-					"format":      "Text string",
-					"required":    false,
-					"example":     "search=golang%20programming",
+					keyDescription: "Full-text search across title, description, and content (case-insensitive)",
+					keyFormat:      docTextString,
+					keyRequired:    false,
+					keyExample:     "search=golang%20programming",
 				},
 			},
 			"enhanced_parameters": map[string]any{
 				"language": map[string]any{
-					"description": "Filter items by language",
-					"format":      "ISO 639-1 language code",
-					"examples":    []string{"en", "es", "fr", "de", "ja", "zh"},
-					"required":    false,
-					"example":     "language=en",
+					keyDescription: "Filter items by language",
+					keyFormat:      "ISO 639-1 language code",
+					"examples":     []string{"en", "es", "fr", "de", "ja", "zh"},
+					keyRequired:    false,
+					keyExample:     "language=en",
 				},
 				"min_length": map[string]any{
-					"description": "Minimum content length in characters",
-					"format":      "Integer",
-					"range":       "0 or positive integers",
-					"required":    false,
-					"example":     "min_length=100",
+					keyDescription: "Minimum content length in characters",
+					keyFormat:      formatInteger,
+					keyRange:       docNonNegativeInts,
+					keyRequired:    false,
+					keyExample:     "min_length=100",
 				},
 				"max_length": map[string]any{
-					"description": "Maximum content length in characters",
-					"format":      "Integer",
-					"range":       "0 or positive integers",
-					"required":    false,
-					"example":     "max_length=5000",
+					keyDescription: "Maximum content length in characters",
+					keyFormat:      formatInteger,
+					keyRange:       docNonNegativeInts,
+					keyRequired:    false,
+					keyExample:     "max_length=5000",
 				},
 				"has_media": map[string]any{
-					"description": "Filter items that contain media (images, videos)",
-					"format":      "Boolean",
-					"values":      []string{"true", "false"},
-					"required":    false,
-					"example":     "has_media=true",
+					keyDescription: "Filter items that contain media (images, videos)",
+					keyFormat:      "Boolean",
+					keyValues:      []string{"true", "false"},
+					keyRequired:    false,
+					keyExample:     "has_media=true",
 				},
 				"sentiment": map[string]any{
-					"description": "Filter items by sentiment analysis result",
-					"format":      "String",
-					"values":      []string{"positive", "negative", "neutral"},
-					"required":    false,
-					"example":     "sentiment=positive",
+					keyDescription: "Filter items by sentiment analysis result",
+					keyFormat:      formatStringDoc,
+					keyValues:      []string{sentimentPositive, sentimentNegative, sentimentNeutral},
+					keyRequired:    false,
+					keyExample:     "sentiment=positive",
 				},
 				"duplicates": map[string]any{
-					"description": "Include or exclude duplicate content",
-					"format":      "Boolean",
-					"values":      []string{"true", "false"},
-					"default":     "true (include duplicates)",
-					"required":    false,
-					"example":     "duplicates=false",
+					keyDescription: "Include or exclude duplicate content",
+					keyFormat:      "Boolean",
+					keyValues:      []string{"true", "false"},
+					keyDefault:     "true (include duplicates)",
+					keyRequired:    false,
+					keyExample:     "duplicates=false",
 				},
 				"sort_by": map[string]any{
-					"description": "Sort order for results",
-					"format":      "String",
-					"values":      []string{"date", "relevance", "popularity"},
-					"default":     "date (newest first)",
-					"required":    false,
-					"example":     "sort_by=relevance",
+					keyDescription: "Sort order for results",
+					keyFormat:      formatStringDoc,
+					keyValues:      []string{sortByDate, sortByRelevance, sortByPopularity},
+					keyDefault:     "date (newest first)",
+					keyRequired:    false,
+					keyExample:     "sort_by=relevance",
 				},
-				"format": map[string]any{
-					"description": "Output format preference",
-					"format":      "String",
-					"values":      []string{"json", "xml", "html", "markdown"},
-					"default":     "json",
-					"required":    false,
-					"example":     "format=markdown",
+				keyFormat: map[string]any{
+					keyDescription: "Output format preference",
+					keyFormat:      formatStringDoc,
+					keyValues:      []string{formatJSON, formatXML, formatHTML, formatMarkdown},
+					keyDefault:     formatJSON,
+					keyRequired:    false,
+					keyExample:     "format=markdown",
 				},
 			},
 			"usage_examples": []map[string]any{
 				{
-					"description": "Get recent tech articles with media",
-					"uri":         "feeds://feed/{feedId}/items?since=2023-01-01T00:00:00Z&category=technology&has_media=true&limit=10",
+					keyDescription: "Get recent tech articles with media",
+					keyURI:         "feeds://feed/{feedId}/items?since=2023-01-01T00:00:00Z&category=technology&has_media=true&limit=10",
 				},
 				{
-					"description": "Search for specific content in a date range",
-					"uri":         "feeds://feed/{feedId}/items?search=golang&since=2023-01-01T00:00:00Z&until=2023-12-31T23:59:59Z",
+					keyDescription: "Search for specific content in a date range",
+					keyURI:         "feeds://feed/{feedId}/items?search=golang&since=2023-01-01T00:00:00Z&until=2023-12-31T23:59:59Z",
 				},
 				{
-					"description": "Get paginated results without duplicates",
-					"uri":         "feeds://feed/{feedId}/items?limit=20&offset=40&duplicates=false",
+					keyDescription: "Get paginated results without duplicates",
+					keyURI:         "feeds://feed/{feedId}/items?limit=20&offset=40&duplicates=false",
 				},
 			},
 			"combination_notes": []string{
@@ -550,7 +550,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 		content := map[string]any{
 			"feed_result": &filteredResult,
 			"filter_info": filterSummary,
-			"updated_at":  time.Now().UTC(),
+			keyUpdatedAt:  time.Now().UTC(),
 		}
 
 		contentJSON, err := marshalJSONContent(content, uri)
@@ -655,7 +655,7 @@ func (rm *ResourceManager) readFeedItems(ctx context.Context, uri string) (*mcp.
 		"items":       filteredItems,
 		"count":       filteredCount,
 		"filter_info": filterSummary,
-		"updated_at":  time.Now().UTC(),
+		keyUpdatedAt:  time.Now().UTC(),
 	}
 
 	contentJSON, err := marshalJSONContent(content, uri)
@@ -721,17 +721,17 @@ func (rm *ResourceManager) readFeedMeta(ctx context.Context, uri string) (*mcp.R
 	// Extract only metadata fields from FeedResult and its nested Feed
 	metadata := map[string]any{
 		"id":                   feedID,
-		"title":                feedResult.Title,
+		keyTitle:               feedResult.Title,
 		"public_url":           feedResult.PublicURL,
 		"has_error":            feedResult.FetchError != "",
 		"fetch_error":          feedResult.FetchError,
 		"circuit_breaker_open": feedResult.CircuitBreakerOpen,
-		"updated_at":           time.Now().UTC(),
+		keyUpdatedAt:           time.Now().UTC(),
 	}
 
 	// Add Feed-specific metadata if available
 	if feedResult.Feed != nil {
-		metadata["description"] = feedResult.Feed.Description
+		metadata[keyDescription] = feedResult.Feed.Description
 		metadata["link"] = feedResult.Feed.Link
 		metadata["feed_link"] = feedResult.Feed.FeedLink
 		metadata["language"] = feedResult.Feed.Language
@@ -1129,9 +1129,9 @@ func (rm *ResourceManager) DetectResourceChanges(ctx context.Context) ([]string,
 		// For each feed, assume all its resources might have changed
 		// In a real implementation, you'd check timestamps, content hashes, etc.
 		changedURIs = append(changedURIs,
-			expandURITemplate(FeedURI, map[string]string{"feedId": feedID}),
-			expandURITemplate(FeedItemsURI, map[string]string{"feedId": feedID}),
-			expandURITemplate(FeedMetaURI, map[string]string{"feedId": feedID}),
+			expandURITemplate(FeedURI, map[string]string{keyFeedID: feedID}),
+			expandURITemplate(FeedItemsURI, map[string]string{keyFeedID: feedID}),
+			expandURITemplate(FeedMetaURI, map[string]string{keyFeedID: feedID}),
 		)
 	}
 

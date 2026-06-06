@@ -397,7 +397,7 @@ func (ds *DynamicStore) RefreshFeed(ctx context.Context, feedID string) (*mcpser
 	}
 
 	if err != nil {
-		refreshInfo.Status = "error"
+		refreshInfo.Status = statusError
 		refreshInfo.Error = err.Error()
 
 		// Update metadata
