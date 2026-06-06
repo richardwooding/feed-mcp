@@ -1615,7 +1615,7 @@ func TestRateLimitedTransport_PerHost(t *testing.T) {
 			done <- err
 		}(host)
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if err := <-done; err != nil {
 			t.Fatalf("RoundTrip failed: %v", err)
 		}
@@ -1640,7 +1640,7 @@ func TestRateLimitedTransport_SameHostStillLimited(t *testing.T) {
 	}
 
 	start := time.Now()
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		resp, err := rt.RoundTrip(newTestRequest(t, "host-c.example"))
 		if err != nil {
 			t.Fatalf("RoundTrip %d failed: %v", i, err)

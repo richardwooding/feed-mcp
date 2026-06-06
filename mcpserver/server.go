@@ -2,6 +2,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -10,7 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -389,10 +390,7 @@ func (s *Server) parsePaginationParams(args GetSyndicationFeedParams) ParsedFeed
 
 	// Parse limit
 	if args.Limit != nil {
-		params.Limit = min(*args.Limit, MaxItemLimit)
-		if params.Limit < 0 {
-			params.Limit = 0
-		}
+		params.Limit = max(min(*args.Limit, MaxItemLimit), 0)
 	}
 
 	// Parse offset
@@ -1544,27 +1542,34 @@ func deduplicateItems(items []*gofeed.Item) []*gofeed.Item {
 
 // sortItemsByDate sorts items by published date (newest first)
 func sortItemsByDate(items []*gofeed.Item) {
-	sort.Slice(items, func(i, j int) bool {
-		// Handle nil PublishedParsed dates
-		if items[i].PublishedParsed == nil || items[j].PublishedParsed == nil {
-			return items[i].PublishedParsed != nil
+	slices.SortFunc(items, func(a, b *gofeed.Item) int {
+		// Handle nil PublishedParsed dates: non-nil sorts before nil
+		if a.PublishedParsed == nil || b.PublishedParsed == nil {
+			switch {
+			case a.PublishedParsed != nil:
+				return -1
+			case b.PublishedParsed != nil:
+				return 1
+			default:
+				return 0
+			}
 		}
-		// Sort newest first (i > j means i is newer)
-		return items[i].PublishedParsed.After(*items[j].PublishedParsed)
+		// Sort newest first
+		return b.PublishedParsed.Compare(*a.PublishedParsed)
 	})
 }
 
 // sortItemsByTitle sorts items alphabetically by title
 func sortItemsByTitle(items []*gofeed.Item) {
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].Title < items[j].Title
+	slices.SortFunc(items, func(a, b *gofeed.Item) int {
+		return cmp.Compare(a.Title, b.Title)
 	})
 }
 
 // sortItemsBySource sorts items by source feed title
 func sortItemsBySource(items []*gofeed.Item) {
-	sort.Slice(items, func(i, j int) bool {
-		return getItemSource(items[i]) < getItemSource(items[j])
+	slices.SortFunc(items, func(a, b *gofeed.Item) int {
+		return cmp.Compare(getItemSource(a), getItemSource(b))
 	})
 }
 
@@ -1682,8 +1687,8 @@ func exportAsCSV(feedResults []*FeedAndItemsResult) (string, error) {
 			}
 			description := escapeCSVField(item.Description)
 
-			result.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s\n",
-				feedTitle, feedURL, itemTitle, itemLink, publishedDate, description))
+			fmt.Fprintf(&result, "%s,%s,%s,%s,%s,%s\n",
+				feedTitle, feedURL, itemTitle, itemLink, publishedDate, description)
 		}
 	}
 
@@ -1703,8 +1708,8 @@ func exportAsOPML(feedResults []*FeedAndItemsResult) (string, error) {
 `)
 
 	for _, feedResult := range feedResults {
-		result.WriteString(fmt.Sprintf(`<outline text=%q title=%q type="rss" xmlUrl=%q htmlUrl=%q/>`,
-			escapeXML(feedResult.Title), escapeXML(feedResult.Title), escapeXML(feedResult.PublicURL), escapeXML(feedResult.PublicURL)))
+		fmt.Fprintf(&result, `<outline text=%q title=%q type="rss" xmlUrl=%q htmlUrl=%q/>`,
+			escapeXML(feedResult.Title), escapeXML(feedResult.Title), escapeXML(feedResult.PublicURL), escapeXML(feedResult.PublicURL))
 		result.WriteString("\n")
 	}
 

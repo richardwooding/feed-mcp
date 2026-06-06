@@ -72,7 +72,7 @@ func buildTestServerSession(t *testing.T, feedID, publicURL string, items []*gof
 func makeTestItems(n int) []*gofeed.Item {
 	items := make([]*gofeed.Item, 0, n)
 	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		pub := base.AddDate(0, 0, i)
 		items = append(items, &gofeed.Item{
 			Title:           "Item",
