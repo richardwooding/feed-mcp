@@ -217,14 +217,22 @@ type MergedFeedResult struct {
 
 // Run starts the MCP server and handles client connections until context is canceled
 func (s *Server) Run(ctx context.Context) (err error) {
+	srv := s.buildMCPServer()
+	return s.runTransport(ctx, srv)
+}
+
+// buildMCPServer creates the MCP server and registers all tools, resources,
+// and prompts. It is separated from Run so tests can exercise the fully wired
+// server over an in-memory transport (rather than only calling handlers
+// directly, which bypasses the SDK's resources/read dispatch and URI matching).
+func (s *Server) buildMCPServer() *mcp.Server {
 	srv := s.createMCPServer()
 	s.registerCoreTools(srv)
 	s.addAggregationTools(srv)
 	s.addDynamicFeedTools(srv)
 	s.addResourceHandlers(srv)
 	s.addPrompts(srv)
-
-	return s.runTransport(ctx, srv)
+	return srv
 }
 
 // createMCPServer creates and configures the MCP server instance
@@ -868,6 +876,27 @@ func (s *Server) addResourceHandlers(srv *mcp.Server) {
 			return s.resourceManager.ReadResource(ctx, req.Params.URI)
 		})
 	}
+
+	// Register a resource template so templated and query-parameterized reads
+	// (e.g. feeds://feed/{id}/items?limit=10&since=2024-01-01T00:00:00Z) are
+	// routed to ReadResource. resources/read is matched first against the
+	// concrete URIs registered above (exact match), then against resource
+	// templates; without a template, any URI carrying a query string fails with
+	// "Resource not found" before ReadResource — and its filter handling — is
+	// ever reached. A single reserved-expansion template ({+path}) matches every
+	// feeds://feed/... URI, including query values containing reserved characters
+	// such as the ':' in RFC 3339 timestamps, which the standard {?query} form
+	// cannot match. ReadResource dispatches to the correct handler by path.
+	feedTemplate := &mcp.ResourceTemplate{
+		Name:        "feed",
+		Title:       "Feed, items, or metadata (with filters)",
+		Description: "Read a feed (feeds://feed/{id}), its items (feeds://feed/{id}/items), or its metadata (feeds://feed/{id}/meta). The items resource supports query filters: since, until, limit, offset, category, author, search.",
+		MIMEType:    JSONMIMEType,
+		URITemplate: "feeds://feed/{+path}",
+	}
+	srv.AddResourceTemplate(feedTemplate, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		return s.resourceManager.ReadResource(ctx, req.Params.URI)
+	})
 }
 
 // Resource operations are handled automatically by the MCP SDK v0.3.0
