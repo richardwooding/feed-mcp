@@ -11,10 +11,7 @@ func applyPaginationParams(totalItems int, limit *int, offset *int) (returnedIte
 	// Apply limit
 	effectiveLimit := DefaultItemLimit
 	if limit != nil {
-		effectiveLimit = min(*limit, MaxItemLimit)
-		if effectiveLimit < 0 {
-			effectiveLimit = 0
-		}
+		effectiveLimit = max(min(*limit, MaxItemLimit), 0)
 	}
 
 	// Apply offset

@@ -309,8 +309,8 @@ func BenchmarkRunCmd_OPML_Parsing(b *testing.B) {
 	<body>`)
 
 	for i := range 100 {
-		opmlContent.WriteString(fmt.Sprintf(`
-		<outline text="Feed %d" xmlUrl="https://example%d.com/feed.xml" />`, i, i))
+		fmt.Fprintf(&opmlContent, `
+		<outline text="Feed %d" xmlUrl="https://example%d.com/feed.xml" />`, i, i)
 	}
 
 	opmlContent.WriteString(`

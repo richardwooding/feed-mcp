@@ -1,10 +1,11 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"hash/fnv"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -767,8 +768,8 @@ func formatCoverageAnalysis(comparison *sourceComparison) string {
 		sorted = append(sorted, sourceCoverage{source, cov})
 	}
 
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].coverage > sorted[j].coverage
+	slices.SortFunc(sorted, func(a, b sourceCoverage) int {
+		return cmp.Compare(b.coverage, a.coverage)
 	})
 
 	for _, sc := range sorted {
@@ -1096,7 +1097,7 @@ func generateErrorAnalysis(feeds []*model.FeedResult) string {
 	var analysis strings.Builder
 	analysis.WriteString("**Error Breakdown:**\n")
 	for errorType, count := range errorTypes {
-		analysis.WriteString(fmt.Sprintf("- %s: %d occurrences\n", errorType, count))
+		fmt.Fprintf(&analysis, "- %s: %d occurrences\n", errorType, count)
 	}
 
 	analysis.WriteString("\n**Failed Feeds:**\n" + strings.Join(errorFeeds, "\n"))
