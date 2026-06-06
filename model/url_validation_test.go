@@ -1,7 +1,6 @@
 package model
 
 import (
-	"net"
 	"strings"
 	"testing"
 )
@@ -143,117 +142,10 @@ func TestSanitizeFeedURLs(t *testing.T) {
 	}
 }
 
-func TestValidateScheme(t *testing.T) {
-	validSchemes := []string{"http", "https", "HTTP", "HTTPS", "Http", "Https"}
-	for _, scheme := range validSchemes {
-		t.Run("valid scheme: "+scheme, func(t *testing.T) {
-			if err := validateScheme(scheme); err != nil {
-				t.Errorf("scheme %q should be valid, got error: %v", scheme, err)
-			}
-		})
-	}
-
-	invalidSchemes := []string{"file", "ftp", "javascript", "data", "ldap", "gopher", "telnet", "ssh", ""}
-	for _, scheme := range invalidSchemes {
-		t.Run("invalid scheme: "+scheme, func(t *testing.T) {
-			if err := validateScheme(scheme); err == nil {
-				t.Errorf("scheme %q should be invalid", scheme)
-			}
-		})
-	}
-}
-
-func TestIsLocalhost(t *testing.T) {
-	localhosts := []string{"localhost", "LOCALHOST", "127.0.0.1", "127.1.1.1", "127.255.255.255", "::1"}
-	for _, host := range localhosts {
-		t.Run("localhost: "+host, func(t *testing.T) {
-			if !isLocalhost(host) {
-				t.Errorf("host %q should be detected as localhost", host)
-			}
-		})
-	}
-
-	nonLocalhosts := []string{"example.com", "192.168.1.1", "10.0.0.1", "google.com", "1.1.1.1"}
-	for _, host := range nonLocalhosts {
-		t.Run("not localhost: "+host, func(t *testing.T) {
-			if isLocalhost(host) {
-				t.Errorf("host %q should not be detected as localhost", host)
-			}
-		})
-	}
-}
-
-func TestIsPrivateIP(t *testing.T) {
-	tests := []struct {
-		name      string
-		ip        string
-		isPrivate bool
-	}{
-		// IPv4 private ranges
-		{"10.0.0.1", "10.0.0.1", true},
-		{"10.255.255.255", "10.255.255.255", true},
-		{"172.16.0.1", "172.16.0.1", true},
-		{"172.31.255.255", "172.31.255.255", true},
-		{"192.168.1.1", "192.168.1.1", true},
-		{"192.168.255.255", "192.168.255.255", true},
-		{"127.0.0.1", "127.0.0.1", true},
-		{"127.255.255.254", "127.255.255.254", true},
-		{"169.254.1.1", "169.254.1.1", true},
-
-		// IPv4 public ranges
-		{"8.8.8.8", "8.8.8.8", false},
-		{"1.1.1.1", "1.1.1.1", false},
-		{"173.0.0.1", "173.0.0.1", false},           // Just outside 172.16-31 range
-		{"172.15.255.255", "172.15.255.255", false}, // Just before 172.16-31 range
-		{"172.32.0.1", "172.32.0.1", false},         // Just after 172.16-31 range
-
-		// IPv6 addresses
-		{"::1", "::1", true},                  // IPv6 loopback
-		{"fe80::1", "fe80::1", true},          // IPv6 link-local
-		{"fc00::1", "fc00::1", true},          // IPv6 unique local
-		{"2001:db8::1", "2001:db8::1", false}, // IPv6 public
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ip := parseIP(tt.ip)
-			if ip == nil {
-				t.Fatalf("failed to parse IP %q", tt.ip)
-			}
-
-			result := isPrivateIP(ip)
-			if result != tt.isPrivate {
-				t.Errorf("isPrivateIP(%q) = %v, want %v", tt.ip, result, tt.isPrivate)
-			}
-		})
-	}
-}
-
-// Helper function for tests
-func parseIP(s string) net.IP {
-	if ip := net.ParseIP(s); ip != nil {
-		return ip
-	}
-	return nil
-}
-
-// Integration test with actual network resolution
-func TestValidateHostIntegration(t *testing.T) {
-	// Test with a known public domain
-	if err := validateHost("example.com"); err != nil {
-		t.Errorf("example.com should be valid: %v", err)
-	}
-
-	// Test with localhost - should be blocked
-	if err := validateHost("localhost"); err == nil {
-		t.Error("localhost should be blocked")
-	}
-
-	// Test with invalid domain - should not error (let HTTP client handle it)
-	if err := validateHost("this-domain-definitely-does-not-exist-12345.invalid"); err != nil {
-		t.Errorf("unresolvable domains should be allowed for HTTP client to handle: %v", err)
-	}
-}
+// Scheme validation, localhost/private-IP classification, and host resolution
+// are now provided and unit-tested by github.com/richardwooding/ssrfguard. The
+// table tests above (TestValidateFeedURL, TestSanitizeFeedURLs) and the
+// bypass-attempt test below exercise the delegated behavior end-to-end.
 
 // Security test for potential bypass attempts
 func TestSecurityBypassAttempts(t *testing.T) {

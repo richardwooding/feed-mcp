@@ -3,20 +3,14 @@ package model
 import (
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
-	"slices"
 	"strings"
+
+	"github.com/richardwooding/ssrfguard"
 )
 
-// Loopback host/address values used for localhost detection.
-const (
-	loopbackHostname = "localhost"
-	loopbackIPv4     = "127.0.0.1"
-	loopbackIPv6     = "::1"
-)
-
-// URL validation errors
+// URL validation errors. These remain the package's public sentinels (matched
+// with errors.Is by enhanced error reporting) and are mapped from the
+// equivalent github.com/richardwooding/ssrfguard errors.
 var (
 	ErrInvalidURL        = errors.New("invalid URL format")
 	ErrUnsupportedScheme = errors.New("unsupported URL scheme - only HTTP and HTTPS are allowed")
@@ -26,144 +20,37 @@ var (
 )
 
 // ValidateFeedURL validates a feed URL for security and format correctness.
-// Performs comprehensive security checks including scheme validation, host verification,
-// and optional private IP/localhost blocking to prevent SSRF attacks.
-// Returns an error if the URL fails any security or format validation checks.
+// It performs SSRF-focused checks — scheme validation, host verification, and
+// (unless allowPrivateIPs is set) blocking of private, loopback, link-local, and
+// metadata addresses — via github.com/richardwooding/ssrfguard, returning this
+// package's sentinel errors so callers can match them with errors.Is.
 func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
-	if rawURL == "" {
+	guard := ssrfguard.New(ssrfguard.WithAllowPrivate(allowPrivateIPs))
+	return mapSSRFError(guard.ValidateURL(rawURL))
+}
+
+// mapSSRFError translates ssrfguard sentinel errors into this package's
+// equivalents, preserving the existing public error API.
+func mapSSRFError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ssrfguard.ErrEmptyURL):
 		return ErrEmptyURL
-	}
-
-	// Parse the URL
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidURL, err)
-	}
-
-	// Validate scheme
-	if err := validateScheme(u.Scheme); err != nil {
+	case errors.Is(err, ssrfguard.ErrUnsupportedScheme):
+		return ErrUnsupportedScheme
+	case errors.Is(err, ssrfguard.ErrMissingHost):
+		return ErrMissingHost
+	case errors.Is(err, ssrfguard.ErrBlockedAddress):
+		return ErrPrivateIPBlocked
+	case errors.Is(err, ssrfguard.ErrInvalidURL):
+		return ErrInvalidURL
+	default:
 		return err
 	}
-
-	// Validate host
-	if u.Host == "" {
-		return ErrMissingHost
-	}
-
-	// Check for private IPs if not allowed
-	if !allowPrivateIPs {
-		if err := validateHost(u.Host); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-// validateScheme ensures only HTTP and HTTPS schemes are allowed.
-// Blocks potentially dangerous schemes like file://, ftp://, and data:// to prevent
-// various attack vectors including local file inclusion and data exfiltration.
-func validateScheme(scheme string) error {
-	scheme = strings.ToLower(scheme)
-	if scheme != "http" && scheme != "https" {
-		return ErrUnsupportedScheme
-	}
-	return nil
-}
-
-// validateHost checks if the host resolves to private IP ranges or localhost.
-// Performs DNS resolution and validates resolved IPs against private ranges (RFC 1918)
-// and localhost patterns to prevent SSRF attacks against internal services.
-// Allows temporarily unresolvable hosts to fail at HTTP request time.
-func validateHost(host string) error {
-	// Remove port if present
-	hostname, _, err := net.SplitHostPort(host)
-	if err != nil {
-		// If SplitHostPort fails, assume no port and use the whole host
-		hostname = host
-	}
-
-	// Check for localhost patterns
-	if isLocalhost(hostname) {
-		return ErrPrivateIPBlocked
-	}
-
-	// Try to resolve the hostname to IP addresses
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		// If we can't resolve, let the HTTP client handle it later
-		// This avoids blocking valid URLs that might be temporarily unresolvable
-		return nil
-	}
-
-	// Check if any resolved IP is private
-	if slices.ContainsFunc(ips, isPrivateIP) {
-		return ErrPrivateIPBlocked
-	}
-
-	return nil
-}
-
-// isLocalhost checks for common localhost patterns
-func isLocalhost(hostname string) bool {
-	hostname = strings.ToLower(hostname)
-
-	localhostPatterns := []string{
-		loopbackHostname,
-		loopbackIPv4,
-		loopbackIPv6,
-		"[::1]", // IPv6 with brackets
-	}
-
-	if slices.Contains(localhostPatterns, hostname) {
-		return true
-	}
-
-	return strings.HasPrefix(hostname, "127.")
-}
-
-// isPrivateIP checks if an IP address is in a private range
-//
-//nolint:gocyclo // Function complexity is necessary for comprehensive private IP range validation (security requirement)
-func isPrivateIP(ip net.IP) bool {
-	// Check for IPv4 private ranges
-	if ip4 := ip.To4(); ip4 != nil {
-		// 10.0.0.0/8
-		if ip4[0] == 10 {
-			return true
-		}
-		// 172.16.0.0/12
-		if ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
-			return true
-		}
-		// 192.168.0.0/16
-		if ip4[0] == 192 && ip4[1] == 168 {
-			return true
-		}
-		// 169.254.0.0/16 (link-local)
-		if ip4[0] == 169 && ip4[1] == 254 {
-			return true
-		}
-		// 127.0.0.0/8 (loopback)
-		if ip4[0] == 127 {
-			return true
-		}
-	}
-
-	// Check for IPv6 private ranges
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for IPv6 unique local addresses (fc00::/7)
-	if len(ip) == 16 && (ip[0]&0xfe) == 0xfc {
-		return true
-	}
-
-	return false
-}
-
-// SanitizeFeedURLs validates a slice of feed URLs
+// SanitizeFeedURLs validates a slice of feed URLs.
 func SanitizeFeedURLs(urls []string, allowPrivateIPs bool) error {
 	if len(urls) == 0 {
 		return errors.New("no feed URLs provided")
