@@ -7,16 +7,13 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"syscall"
-	"time"
 )
 
 // Repeated error/format message strings.
 const (
 	msgConnectionFailed = "Connection failed"
-	feedFormatRSS       = "RSS"
 )
 
 // CreateNetworkError creates a FeedError for network-related issues
@@ -72,40 +69,6 @@ func CreateHTTPError(resp *http.Response, feedURL string) *FeedError {
 		WithOperation("fetch_feed").
 		WithComponent("http_client").
 		WithHTTP(status, resp.Header)
-}
-
-// CreateParsingError creates a FeedError for feed parsing issues
-func CreateParsingError(err error, feedURL, content string) *FeedError {
-	errorType := ErrorTypeParsing
-	message := "Failed to parse feed"
-
-	// Categorize parsing errors based on content
-	if err != nil {
-		errStr := strings.ToLower(err.Error())
-
-		if strings.Contains(errStr, "xml") {
-			errorType = ErrorTypeMalformedXML
-			message = "Feed contains malformed XML"
-		} else if strings.Contains(errStr, "json") {
-			errorType = ErrorTypeMalformedJSON
-			message = "Feed contains malformed JSON"
-		} else if strings.Contains(errStr, "empty") || strings.Contains(errStr, "no content") {
-			errorType = ErrorTypeEmptyFeed
-			message = "Feed is empty or contains no content"
-		}
-	}
-
-	fe := NewFeedErrorWithCause(errorType, message, err).
-		WithURL(feedURL).
-		WithOperation("parse_feed").
-		WithComponent("feed_parser")
-
-	// Try to extract parsing context from error
-	if parseCtx := extractParseContext(err, content); parseCtx != nil {
-		fe = fe.WithParseContext(parseCtx)
-	}
-
-	return fe
 }
 
 // CreateValidationError creates a FeedError for URL validation issues
@@ -166,17 +129,6 @@ func CreateRetryError(lastErr error, feedURL string, attempt, maxAttempts int) *
 		WithOperation("retry_fetch").
 		WithComponent("retry_manager").
 		WithRetryContext(attempt, maxAttempts, 0)
-}
-
-// CreateRateLimitError creates a FeedError for rate limiting
-func CreateRateLimitError(feedURL string, retryAfter time.Duration) *FeedError {
-	message := "Request rate limit exceeded"
-
-	return NewFeedError(ErrorTypeRateLimit, message).
-		WithURL(feedURL).
-		WithOperation("fetch_feed").
-		WithComponent("rate_limiter").
-		WithRetryContext(0, 0, retryAfter)
 }
 
 // Helper functions to categorize network errors
@@ -269,85 +221,6 @@ func isConnectionError(err error) bool {
 	}
 
 	return false
-}
-
-// extractParseContext attempts to extract parsing context from error messages
-func extractParseContext(err error, content string) *ParseContext {
-	if err == nil {
-		return nil
-	}
-
-	ctx := &ParseContext{}
-
-	// Extract line number from error message
-	ctx.LineNumber = extractLineNumber(err.Error())
-
-	// Determine feed format from content
-	ctx.FeedFormat = determineFeedFormat(content)
-
-	// Extract content snippet around error location
-	ctx.ContentSnippet = extractContentSnippet(content, ctx.LineNumber)
-
-	// Only return context if we found useful information
-	if ctx.LineNumber > 0 || ctx.FeedFormat != "" || ctx.ContentSnippet != "" {
-		return ctx
-	}
-
-	return nil
-}
-
-// extractLineNumber extracts line number from error message
-func extractLineNumber(errStr string) int {
-	if !strings.Contains(errStr, "line") {
-		return 0
-	}
-
-	parts := strings.Split(errStr, " ")
-	for i, part := range parts {
-		if part == "line" && i+1 < len(parts) {
-			if lineNum, parseErr := strconv.Atoi(parts[i+1]); parseErr == nil {
-				return lineNum
-			}
-		}
-	}
-	return 0
-}
-
-// determineFeedFormat determines feed format from content
-func determineFeedFormat(content string) string {
-	contentLower := strings.TrimSpace(strings.ToLower(content))
-	if strings.HasPrefix(contentLower, "{") {
-		return "JSON"
-	}
-	if strings.HasPrefix(contentLower, "<") {
-		if strings.Contains(contentLower, "<rss") {
-			return feedFormatRSS
-		}
-		if strings.Contains(contentLower, "<feed") {
-			return "Atom"
-		}
-		return "XML"
-	}
-	return ""
-}
-
-// extractContentSnippet extracts content snippet around error location
-func extractContentSnippet(content string, lineNumber int) string {
-	if lineNumber <= 0 || content == "" {
-		return ""
-	}
-
-	lines := strings.Split(content, "\n")
-	if lineNumber > len(lines) {
-		return ""
-	}
-
-	// Get a few lines around the error for context
-	start := max(0, lineNumber-3)
-	end := min(len(lines), lineNumber+2)
-
-	contextLines := lines[start:end]
-	return strings.Join(contextLines, "\n")
 }
 
 // Resource-specific error helpers for MCP Resources
