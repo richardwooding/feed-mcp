@@ -17,6 +17,10 @@ func GenerateFeedID(feedURL string) string {
 	if parsedURL, err := url.Parse(feedURL); err == nil {
 		// Create a slug-like ID from the host and path
 		slug := strings.ToLower(parsedURL.Host)
+		// Sanitize the host: keep only characters that are safe in an identifier.
+		// Hosts legitimately contain dots, hyphens, underscores, colons (ports),
+		// and brackets (IPv6); anything else (e.g. non-ASCII, "!") is replaced.
+		slug = regexp.MustCompile(`[^a-z0-9.\-_:\[\]]`).ReplaceAllString(slug, "-")
 		if parsedURL.Path != "" && parsedURL.Path != "/" {
 			// Clean the path and append to host
 			path := strings.Trim(parsedURL.Path, "/")
