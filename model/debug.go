@@ -91,21 +91,6 @@ func (d *DebugLogger) SetLevel(level LogLevel) {
 	d.level = level
 }
 
-// SetEnabled enables or disables debug logging
-func (d *DebugLogger) SetEnabled(enabled bool) {
-	d.enabled = enabled
-}
-
-// SetJSONMode enables or disables JSON formatted logs
-func (d *DebugLogger) SetJSONMode(jsonMode bool) {
-	d.jsonMode = jsonMode
-}
-
-// IsEnabled returns whether debug logging is enabled
-func (d *DebugLogger) IsEnabled() bool {
-	return d.enabled
-}
-
 // ShouldLog returns whether a message at the given level should be logged
 func (d *DebugLogger) ShouldLog(level LogLevel) bool {
 	return d.enabled && level <= d.level
@@ -199,128 +184,14 @@ func (d *DebugLogger) logText(msg *LogMessage) {
 	d.logger.Println(strings.Join(parts, " "))
 }
 
-// Debug logs a debug-level message
-func (d *DebugLogger) Debug(message string) {
-	d.log(LogLevelDebug, message, "", "", "", nil, nil)
-}
-
 // DebugWithContext logs a debug-level message with context
 func (d *DebugLogger) DebugWithContext(message, component, operation, url string, extra map[string]any) {
 	d.log(LogLevelDebug, message, component, operation, url, nil, extra)
 }
 
-// Info logs an info-level message
-func (d *DebugLogger) Info(message string) {
-	d.log(LogLevelInfo, message, "", "", "", nil, nil)
-}
-
-// InfoWithContext logs an info-level message with context
-func (d *DebugLogger) InfoWithContext(message, component, operation, url string, extra map[string]any) {
-	d.log(LogLevelInfo, message, component, operation, url, nil, extra)
-}
-
-// Warn logs a warning-level message
-func (d *DebugLogger) Warn(message string) {
-	d.log(LogLevelWarn, message, "", "", "", nil, nil)
-}
-
-// WarnWithContext logs a warning-level message with context
-func (d *DebugLogger) WarnWithContext(message, component, operation, url string, err error, extra map[string]any) {
-	d.log(LogLevelWarn, message, component, operation, url, err, extra)
-}
-
-// Error logs an error-level message
-func (d *DebugLogger) Error(message string, err error) {
-	d.log(LogLevelError, message, "", "", "", err, nil)
-}
-
-// ErrorWithContext logs an error-level message with context
-func (d *DebugLogger) ErrorWithContext(message, component, operation, url string, err error, extra map[string]any) {
-	d.log(LogLevelError, message, component, operation, url, err, extra)
-}
-
-// LogFeedError logs a FeedError with full context
-func (d *DebugLogger) LogFeedError(feedErr *FeedError) {
-	if feedErr == nil {
-		return
-	}
-
-	extra := make(map[string]any)
-	extra["error_id"] = feedErr.ID
-	extra["error_type"] = feedErr.ErrorType
-	extra["suggestion"] = feedErr.Suggestion
-
-	if feedErr.HTTPStatus != 0 {
-		extra["http_status"] = feedErr.HTTPStatus
-	}
-
-	if len(feedErr.HTTPHeaders) > 0 {
-		extra["http_headers"] = feedErr.HTTPHeaders
-	}
-
-	if feedErr.Attempt != 0 {
-		extra["retry_attempt"] = feedErr.Attempt
-		extra["max_attempts"] = feedErr.MaxAttempts
-	}
-
-	if feedErr.ParseContext != nil {
-		extra["parse_line"] = feedErr.ParseContext.LineNumber
-		extra["feed_format"] = feedErr.ParseContext.FeedFormat
-	}
-
-	d.log(LogLevelError, feedErr.Message, feedErr.Component, feedErr.Operation, feedErr.URL, feedErr.Cause, extra)
-}
-
-// Package-level convenience functions using the default logger
-
-// SetDebugMode enables or disables debug mode for the default logger
-func SetDebugMode(enabled bool) {
-	defaultLogger.SetEnabled(enabled)
-}
-
-// SetLogLevel sets the log level for the default logger
-func SetLogLevel(level LogLevel) {
-	defaultLogger.SetLevel(level)
-}
-
-// IsDebugEnabled returns whether debug logging is enabled
-func IsDebugEnabled() bool {
-	return defaultLogger.IsEnabled()
-}
-
-// DebugLog logs a debug message if debug mode is enabled
-func DebugLog(message string) {
-	defaultLogger.Debug(message)
-}
-
-// DebugLogWithContext logs a debug message with context
+// DebugLogWithContext logs a debug message with context using the default logger
 func DebugLogWithContext(message, component, operation, url string, extra map[string]any) {
 	defaultLogger.DebugWithContext(message, component, operation, url, extra)
-}
-
-// InfoLog logs an info message
-func InfoLog(message string) {
-	defaultLogger.Info(message)
-}
-
-// InfoLogWithContext logs an info message with context
-func InfoLogWithContext(message, component, operation, url string, extra map[string]any) {
-	defaultLogger.InfoWithContext(message, component, operation, url, extra)
-}
-
-// WarnLog logs a warning message
-func WarnLog(message string, err error) {
-	defaultLogger.WarnWithContext(message, "", "", "", err, nil)
-}
-
-// ErrorLog logs an error message
-func ErrorLog(message string, err error) {
-	defaultLogger.Error(message, err)
-}
-
-// LogFeedError logs a FeedError using the default logger
-func LogFeedError(feedErr *FeedError) {
-	defaultLogger.LogFeedError(feedErr)
 }
 
 // Helper function to parse log level from string
