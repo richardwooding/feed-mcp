@@ -93,12 +93,3 @@ func updateBuildDate(info *Info, value string) {
 func GetVersion() string {
 	return Get().Version
 }
-
-// GetFullVersion returns a full version string with commit info
-func GetFullVersion() string {
-	info := Get()
-	if info.GitCommit != unknownValue {
-		return info.Version + "-" + info.GitCommit
-	}
-	return info.Version
-}
