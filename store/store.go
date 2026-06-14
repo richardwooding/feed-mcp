@@ -324,66 +324,11 @@ func NewStore(config *Config) (*Store, error) {
 	return newStoreInternal(*config)
 }
 
-// newStoreInternal contains the core store initialization logic
+// newStoreInternal contains the core store initialization logic.
 //
-//nolint:gocognit,gocyclo,gocritic // Function complexity is necessary for comprehensive store initialization with caching, circuit breakers, and connection pooling
+//nolint:gocritic // takes Config by value to apply defaults to a local mutable copy
 func newStoreInternal(config Config) (*Store, error) {
-	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
-	}
-
-	if config.ExpireAfter == 0 {
-		config.ExpireAfter = 1 * time.Hour
-	}
-
-	// Set default rate limiting values
-	if config.RequestsPerSecond <= 0 {
-		config.RequestsPerSecond = 2.0 // 2 requests per second by default
-	}
-
-	if config.BurstCapacity <= 0 {
-		config.BurstCapacity = 5 // Allow burst of 5 requests by default
-	}
-
-	// Set default circuit breaker values - enabled by default
-	if config.CircuitBreakerMaxRequests <= 0 {
-		config.CircuitBreakerMaxRequests = 3 // Allow 3 half-open requests
-	}
-	if config.CircuitBreakerInterval <= 0 {
-		config.CircuitBreakerInterval = 60 * time.Second // Check for recovery every 60s
-	}
-	if config.CircuitBreakerTimeout <= 0 {
-		config.CircuitBreakerTimeout = 30 * time.Second // Open circuit for 30s before trying half-open
-	}
-	if config.CircuitBreakerFailureThreshold <= 0 {
-		config.CircuitBreakerFailureThreshold = 3 // Open circuit after 3 consecutive failures
-	}
-
-	// Set default HTTP connection pool values
-	if config.MaxIdleConns <= 0 {
-		config.MaxIdleConns = 100 // Default to 100 idle connections total
-	}
-	if config.MaxConnsPerHost <= 0 {
-		config.MaxConnsPerHost = 10 // Default to 10 connections per host
-	}
-	if config.MaxIdleConnsPerHost <= 0 {
-		config.MaxIdleConnsPerHost = 5 // Default to 5 idle connections per host
-	}
-	if config.IdleConnTimeout <= 0 {
-		config.IdleConnTimeout = 90 * time.Second // Default to 90 seconds idle timeout
-	}
-
-	// Set default retry values
-	if config.RetryMaxAttempts <= 0 {
-		config.RetryMaxAttempts = 3 // Default to 3 retry attempts
-	}
-	if config.RetryBaseDelay <= 0 {
-		config.RetryBaseDelay = 1 * time.Second // Default to 1 second base delay
-	}
-	if config.RetryMaxDelay <= 0 {
-		config.RetryMaxDelay = 30 * time.Second // Default to 30 seconds max delay
-	}
-	// RetryJitter defaults to true (handled by CLI flag default: "true")
+	applyConfigDefaults(&config)
 
 	// Create rate-limited HTTP client with connection pooling if not provided
 	if config.HTTPClient == nil {
@@ -407,27 +352,10 @@ func newStoreInternal(config Config) (*Store, error) {
 
 	ristrettoStore := ristretto_store.NewRistretto(ristrettoCache)
 
-	// Initialize circuit breakers map - enabled by default unless explicitly disabled
-	var circuitBreakers map[string]*gobreaker.CircuitBreaker
+	// Circuit breakers are enabled by default unless explicitly disabled.
 	circuitBreakerEnabled := config.CircuitBreakerEnabled == nil || *config.CircuitBreakerEnabled
+	circuitBreakers := buildCircuitBreakers(&config, circuitBreakerEnabled)
 
-	if circuitBreakerEnabled {
-		circuitBreakers = make(map[string]*gobreaker.CircuitBreaker)
-		for _, feedURL := range config.Feeds {
-			settings := gobreaker.Settings{
-				Name:        fmt.Sprintf("feed-%s", feedURL),
-				MaxRequests: config.CircuitBreakerMaxRequests,
-				Interval:    config.CircuitBreakerInterval,
-				Timeout:     config.CircuitBreakerTimeout,
-				ReadyToTrip: func(counts gobreaker.Counts) bool {
-					return counts.ConsecutiveFailures >= config.CircuitBreakerFailureThreshold
-				},
-			}
-			circuitBreakers[feedURL] = gobreaker.NewCircuitBreaker(settings)
-		}
-	}
-
-	// Create the store first
 	s := &Store{
 		feeds:           make(map[string]string, len(config.Feeds)),
 		circuitBreakers: circuitBreakers,
@@ -435,59 +363,10 @@ func newStoreInternal(config Config) (*Store, error) {
 		metricsMutex:    sync.RWMutex{},
 	}
 
-	loadFunction := func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
-		if url, ok := key.(string); ok {
-			// Create parser with HTTP client
-			fp := gofeed.NewParser()
-			if config.HTTPClient != nil {
-				fp.Client = config.HTTPClient
-			}
-
-			// Use circuit breaker if enabled
-			if circuitBreakerEnabled {
-				if cb, exists := circuitBreakers[url]; exists {
-					result, err := cb.Execute(func() (any, error) {
-						return retryableFeedFetch(ctx, url, fp, config, s.retryMetrics, &s.metricsMutex)
-					})
-					if err != nil {
-						// Check if this is a circuit breaker error
-						if errors.Is(err, gobreaker.ErrOpenState) {
-							return nil, nil, model.CreateCircuitBreakerError(url, "open")
-						}
-						if errors.Is(err, gobreaker.ErrTooManyRequests) {
-							return nil, nil, model.CreateCircuitBreakerError(url, "half-open")
-						}
-						// Return the original error (likely from retryableFeedFetch)
-						return nil, nil, err
-					}
-					if feed, ok := result.(*gofeed.Feed); ok {
-						return feed, []store.Option{store.WithExpiration(config.ExpireAfter)}, nil
-					}
-					return nil, nil, model.NewFeedError(model.ErrorTypeSystem, "unexpected result type from circuit breaker").
-						WithURL(url).
-						WithOperation("load_feed").
-						WithComponent("circuit_breaker")
-				}
-			}
-
-			// Fallback to direct retryable parsing if circuit breaker not enabled or URL not found
-			feed, err := retryableFeedFetch(ctx, url, fp, config, s.retryMetrics, &s.metricsMutex)
-			if err != nil {
-				return nil, nil, err
-			}
-			return feed, []store.Option{store.WithExpiration(config.ExpireAfter)}, nil
-		} else {
-			return nil, nil, model.NewFeedError(model.ErrorTypeSystem, "invalid key type for cache loader").
-				WithOperation("load_feed").
-				WithComponent("cache_manager")
-		}
-	}
-
-	cacheManager := cache.NewLoadable[*gofeed.Feed](
-		loadFunction,
+	s.feedCacheManager = cache.NewLoadable[*gofeed.Feed](
+		s.makeFeedLoader(&config, circuitBreakers, circuitBreakerEnabled),
 		cache.New[*gofeed.Feed](ristrettoStore),
 	)
-	s.feedCacheManager = cacheManager
 
 	// Build the ID-to-URL map synchronously without fetching. The cache populates
 	// lazily on the first GetAllFeeds / GetFeedAndItems call via the LoadableCache
@@ -501,6 +380,172 @@ func newStoreInternal(config Config) (*Store, error) {
 
 	s.feeds = feeds
 	return s, nil
+}
+
+// applyConfigDefaults fills in zero-valued configuration fields with their defaults.
+func applyConfigDefaults(config *Config) {
+	if config.Timeout == 0 {
+		config.Timeout = 30 * time.Second
+	}
+	if config.ExpireAfter == 0 {
+		config.ExpireAfter = 1 * time.Hour
+	}
+
+	// Rate limiting
+	if config.RequestsPerSecond <= 0 {
+		config.RequestsPerSecond = 2.0 // 2 requests per second by default
+	}
+	if config.BurstCapacity <= 0 {
+		config.BurstCapacity = 5 // Allow burst of 5 requests by default
+	}
+
+	applyCircuitBreakerDefaults(config)
+	applyHTTPPoolDefaults(config)
+	applyRetryDefaults(config)
+}
+
+// applyCircuitBreakerDefaults sets circuit breaker defaults (enabled by default).
+func applyCircuitBreakerDefaults(config *Config) {
+	if config.CircuitBreakerMaxRequests <= 0 {
+		config.CircuitBreakerMaxRequests = 3 // Allow 3 half-open requests
+	}
+	if config.CircuitBreakerInterval <= 0 {
+		config.CircuitBreakerInterval = 60 * time.Second // Check for recovery every 60s
+	}
+	if config.CircuitBreakerTimeout <= 0 {
+		config.CircuitBreakerTimeout = 30 * time.Second // Open circuit for 30s before trying half-open
+	}
+	if config.CircuitBreakerFailureThreshold <= 0 {
+		config.CircuitBreakerFailureThreshold = 3 // Open circuit after 3 consecutive failures
+	}
+}
+
+// applyHTTPPoolDefaults sets HTTP connection pool defaults.
+func applyHTTPPoolDefaults(config *Config) {
+	if config.MaxIdleConns <= 0 {
+		config.MaxIdleConns = 100 // Default to 100 idle connections total
+	}
+	if config.MaxConnsPerHost <= 0 {
+		config.MaxConnsPerHost = 10 // Default to 10 connections per host
+	}
+	if config.MaxIdleConnsPerHost <= 0 {
+		config.MaxIdleConnsPerHost = 5 // Default to 5 idle connections per host
+	}
+	if config.IdleConnTimeout <= 0 {
+		config.IdleConnTimeout = 90 * time.Second // Default to 90 seconds idle timeout
+	}
+}
+
+// applyRetryDefaults sets retry defaults. RetryJitter defaults to true (handled
+// by the CLI flag default: "true").
+func applyRetryDefaults(config *Config) {
+	if config.RetryMaxAttempts <= 0 {
+		config.RetryMaxAttempts = 3 // Default to 3 retry attempts
+	}
+	if config.RetryBaseDelay <= 0 {
+		config.RetryBaseDelay = 1 * time.Second // Default to 1 second base delay
+	}
+	if config.RetryMaxDelay <= 0 {
+		config.RetryMaxDelay = 30 * time.Second // Default to 30 seconds max delay
+	}
+}
+
+// buildCircuitBreakers creates one circuit breaker per configured feed URL.
+// Returns nil when circuit breaking is disabled.
+func buildCircuitBreakers(config *Config, enabled bool) map[string]*gobreaker.CircuitBreaker {
+	if !enabled {
+		return nil
+	}
+
+	circuitBreakers := make(map[string]*gobreaker.CircuitBreaker, len(config.Feeds))
+	for _, feedURL := range config.Feeds {
+		settings := gobreaker.Settings{
+			Name:        fmt.Sprintf("feed-%s", feedURL),
+			MaxRequests: config.CircuitBreakerMaxRequests,
+			Interval:    config.CircuitBreakerInterval,
+			Timeout:     config.CircuitBreakerTimeout,
+			ReadyToTrip: func(counts gobreaker.Counts) bool {
+				return counts.ConsecutiveFailures >= config.CircuitBreakerFailureThreshold
+			},
+		}
+		circuitBreakers[feedURL] = gobreaker.NewCircuitBreaker(settings)
+	}
+	return circuitBreakers
+}
+
+// makeFeedLoader returns the LoadableCache loader that fetches and parses a feed
+// on demand, optionally guarded by a per-feed circuit breaker.
+func (s *Store) makeFeedLoader(
+	config *Config,
+	circuitBreakers map[string]*gobreaker.CircuitBreaker,
+	circuitBreakerEnabled bool,
+) func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
+	return func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
+		url, ok := key.(string)
+		if !ok {
+			return nil, nil, model.NewFeedError(model.ErrorTypeSystem, "invalid key type for cache loader").
+				WithOperation("load_feed").
+				WithComponent("cache_manager")
+		}
+
+		// Create parser with HTTP client
+		fp := gofeed.NewParser()
+		if config.HTTPClient != nil {
+			fp.Client = config.HTTPClient
+		}
+
+		opts := []store.Option{store.WithExpiration(config.ExpireAfter)}
+
+		// Use circuit breaker if enabled and configured for this URL.
+		if circuitBreakerEnabled {
+			if cb, exists := circuitBreakers[url]; exists {
+				feed, err := s.fetchWithCircuitBreaker(ctx, url, fp, config, cb)
+				if err != nil {
+					return nil, nil, err
+				}
+				return feed, opts, nil
+			}
+		}
+
+		// Fallback to direct retryable parsing if circuit breaker not enabled or URL not found
+		feed, err := retryableFeedFetch(ctx, url, fp, *config, s.retryMetrics, &s.metricsMutex)
+		if err != nil {
+			return nil, nil, err
+		}
+		return feed, opts, nil
+	}
+}
+
+// fetchWithCircuitBreaker executes a retryable feed fetch through the given circuit
+// breaker, translating breaker-state errors into structured FeedErrors.
+func (s *Store) fetchWithCircuitBreaker(
+	ctx context.Context,
+	url string,
+	fp *gofeed.Parser,
+	config *Config,
+	cb *gobreaker.CircuitBreaker,
+) (*gofeed.Feed, error) {
+	result, err := cb.Execute(func() (any, error) {
+		return retryableFeedFetch(ctx, url, fp, *config, s.retryMetrics, &s.metricsMutex)
+	})
+	if err != nil {
+		// Check if this is a circuit breaker error
+		if errors.Is(err, gobreaker.ErrOpenState) {
+			return nil, model.CreateCircuitBreakerError(url, "open")
+		}
+		if errors.Is(err, gobreaker.ErrTooManyRequests) {
+			return nil, model.CreateCircuitBreakerError(url, "half-open")
+		}
+		// Return the original error (likely from retryableFeedFetch)
+		return nil, err
+	}
+	if feed, ok := result.(*gofeed.Feed); ok {
+		return feed, nil
+	}
+	return nil, model.NewFeedError(model.ErrorTypeSystem, "unexpected result type from circuit breaker").
+		WithURL(url).
+		WithOperation("load_feed").
+		WithComponent("circuit_breaker")
 }
 
 // GetAllFeeds returns all configured feeds with their current status
