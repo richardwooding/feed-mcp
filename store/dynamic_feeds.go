@@ -15,8 +15,9 @@ import (
 
 // Feed status constants
 const (
-	statusActive = "active"
-	statusError  = "error"
+	statusActive    = "active"
+	statusError     = "error"
+	statusRefreshed = "refreshed"
 )
 
 // feedCacheInfo holds the result of a feed cache check
@@ -408,7 +409,7 @@ func (ds *DynamicStore) RefreshFeed(ctx context.Context, feedID string) (*mcpser
 		}
 		ds.dynamicMutex.Unlock()
 	} else {
-		refreshInfo.Status = "refreshed"
+		refreshInfo.Status = statusRefreshed
 		refreshInfo.ItemsAdded = len(feed.Items)
 
 		// Update metadata
