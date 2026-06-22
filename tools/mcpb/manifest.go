@@ -59,7 +59,7 @@ type Compatibility struct {
 
 // validate checks the fields the MCP Bundle spec marks as required. The Node
 // CLI would do this against a JSON schema; here we fail fast on empties.
-func (m Manifest) validate() error {
+func (m *Manifest) validate() error {
 	missing := func(name, val string) error {
 		if val == "" {
 			return fmt.Errorf("manifest: %s is required", name)
@@ -83,7 +83,7 @@ func (m Manifest) validate() error {
 	return nil
 }
 
-func (m Manifest) writeJSON(w io.Writer) error {
+func (m *Manifest) writeJSON(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(m)

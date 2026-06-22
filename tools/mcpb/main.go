@@ -28,6 +28,15 @@ const (
 	displayName = "Feed MCP"
 	authorName  = "Richard Wooding"
 	description = "MCP server that fetches RSS/Atom/JSON feeds and serves them to AI assistants"
+
+	// osWindows is the Go GOOS value for Windows; platformWin32 is the
+	// corresponding manifest platform token (Node's process.platform).
+	osWindows     = "windows"
+	platformWin32 = "win32"
+
+	// userConfigTypeString is the MCP Bundle user_config field type used for
+	// every field this packer emits.
+	userConfigTypeString = "string"
 )
 
 func main() {
@@ -44,7 +53,7 @@ func main() {
 func pack(argv []string) error {
 	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
 	defaultBinary := "./" + projectName
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		defaultBinary += ".exe"
 	}
 	var (
@@ -68,7 +77,7 @@ func pack(argv []string) error {
 	if err := m.validate(); err != nil {
 		return err
 	}
-	if err := writeBundle(outPath, m, *binary, binaryName(*goos)); err != nil {
+	if err := writeBundle(outPath, &m, *binary, binaryName(*goos)); err != nil {
 		return err
 	}
 	fmt.Printf("mcpb: wrote %s\n", outPath)
@@ -77,7 +86,7 @@ func pack(argv []string) error {
 
 // binaryName is the server binary's name inside the bundle for the target OS.
 func binaryName(goos string) string {
-	if goos == "windows" {
+	if goos == osWindows {
 		return projectName + ".exe"
 	}
 	return projectName
@@ -86,8 +95,8 @@ func binaryName(goos string) string {
 // manifestPlatform maps a Go GOOS to the manifest platform token (Node's
 // process.platform): windows -> win32, others unchanged.
 func manifestPlatform(goos string) string {
-	if goos == "windows" {
-		return "win32"
+	if goos == osWindows {
+		return platformWin32
 	}
 	return goos
 }
@@ -129,20 +138,20 @@ func buildManifest(goos, version string) Manifest {
 		},
 		UserConfig: map[string]UserConfigField{
 			"feeds": {
-				Type:        "string",
+				Type:        userConfigTypeString,
 				Title:       "Feed URLs",
 				Description: "RSS/Atom/JSON feed URLs to load at startup (you can also add feeds at runtime)",
 				Multiple:    true,
 				Required:    false,
 			},
 			"timeout": {
-				Type:        "string",
+				Type:        userConfigTypeString,
 				Title:       "Request timeout",
 				Description: "Per-feed fetch timeout (Go duration, e.g. 30s)",
 				Default:     "30s",
 			},
 			"expire_after": {
-				Type:        "string",
+				Type:        userConfigTypeString,
 				Title:       "Cache expiration",
 				Description: "How long feeds stay cached (Go duration, e.g. 1h)",
 				Default:     "1h",
@@ -152,9 +161,9 @@ func buildManifest(goos, version string) Manifest {
 	}
 	// On Windows the whole bundle already targets .exe; a win32 override makes
 	// the intent explicit and matches the manifest spec's binary example.
-	if goos == "windows" {
+	if goos == osWindows {
 		m.Server.PlatformOverrides = map[string]PlatformOverride{
-			"win32": {Command: cmd},
+			platformWin32: {Command: cmd},
 		}
 	}
 	return m
@@ -162,10 +171,12 @@ func buildManifest(goos, version string) Manifest {
 
 // writeBundle creates the .mcpb zip: manifest.json at the root and the binary at
 // server/<binName> with an executable mode bit.
-func writeBundle(outPath string, m Manifest, binarySrc, binName string) error {
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+func writeBundle(outPath string, m *Manifest, binarySrc, binName string) error {
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o750); err != nil {
 		return err
 	}
+	// #nosec G304 -- outPath is a build-tool output path supplied on the command
+	// line by the release pipeline, not untrusted input.
 	f, err := os.Create(outPath)
 	if err != nil {
 		return err
@@ -191,6 +202,8 @@ func writeBundle(outPath string, m Manifest, binarySrc, binName string) error {
 	if err != nil {
 		return err
 	}
+	// #nosec G304 -- binarySrc is the compiled binary path passed by the release
+	// pipeline, not untrusted input.
 	src, err := os.Open(binarySrc)
 	if err != nil {
 		return fmt.Errorf("open binary: %w", err)

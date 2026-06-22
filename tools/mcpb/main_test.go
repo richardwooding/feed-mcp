@@ -66,7 +66,7 @@ func TestWriteBundle(t *testing.T) {
 	out := filepath.Join(dir, "out.mcpb")
 
 	m := buildManifest("linux", "1.0.0")
-	if err := writeBundle(out, m, binSrc, binaryName("linux")); err != nil {
+	if err := writeBundle(out, &m, binSrc, binaryName("linux")); err != nil {
 		t.Fatalf("writeBundle: %v", err)
 	}
 
