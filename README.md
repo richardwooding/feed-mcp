@@ -211,6 +211,34 @@ See [docs/ADVANCED.md](docs/ADVANCED.md) for details.
 
 ## Alternative Installation Methods
 
+### MCP Bundle (Claude Desktop, one-click)
+
+Every [release](https://github.com/richardwooding/feed-mcp/releases) attaches **MCP Bundles**
+(`.mcpb`) — one per platform. Download the bundle matching your OS and architecture (e.g.
+`feed-mcp_<version>_darwin_arm64.mcpb`) and open it with Claude Desktop to install — no Docker
+or Go toolchain required. The bundle's settings screen lets you set feed URLs, the per-feed
+request timeout, and the cache expiration. Feeds are optional at install time: runtime feed
+management is enabled, so you can also add feeds later with the `add_feed` tool.
+
+### Homebrew
+
+```bash
+brew install richardwooding/tap/feed-mcp
+```
+
+Then configure Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "feed-mcp": {
+      "command": "feed-mcp",
+      "args": ["run", "https://techcrunch.com/feed/"]
+    }
+  }
+}
+```
+
 ### Go Install
 
 If you have Go installed:
@@ -341,6 +369,34 @@ By default, localhost and private IP feeds are blocked for security. To enable:
 - **[ADVANCED.md](docs/ADVANCED.md)** — Dynamic feed management, MCP Resources, intelligent prompts
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Technical details, architecture, development guide
 - **[CLAUDE.md](CLAUDE.md)** — Instructions for Claude Code when working with this codebase
+
+## Releasing
+
+Pushing a `vX.Y.Z` tag triggers the release workflow, which uses GoReleaser to:
+
+- build binaries for linux/darwin/windows (amd64 + arm64),
+- pack each binary into an **MCP Bundle** (`.mcpb`) and attach all six to the release,
+- build and push a multi-arch OCI image to GHCR with ko,
+- publish a Homebrew cask to [richardwooding/homebrew-tap](https://github.com/richardwooding/homebrew-tap).
+
+The Homebrew step needs a `HOMEBREW_TAP_GITHUB_TOKEN` repo secret with write access to the tap.
+
+### MCP Bundles
+
+`tools/mcpb` is a small, dependency-free (Go stdlib) packer that zips the server binary and a
+generated `manifest.json` into a `.mcpb`. GoReleaser invokes it per build target, but you can
+build a bundle for your current platform locally (no Node required):
+
+```bash
+go build -o feed-mcp .
+go run ./tools/mcpb pack -version dev   # writes dist/feed-mcp_dev_<os>_<arch>.mcpb
+```
+
+A full local dry run of the release pipeline (skips publishing):
+
+```bash
+goreleaser release --snapshot --clean
+```
 
 ## Contributing
 
