@@ -1,0 +1,22 @@
+# Diff-scoped review gate via the file-search-on Marketplace action.
+# Runs complexity / cognitive-complexity / dead-code analysis scoped to the
+# files changed in a pull request and uploads findings to Code Scanning as
+# SARIF. Fails the PR on a fail verdict.
+name: review
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+  security-events: write   # required for SARIF upload (Code Scanning)
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0     # required — the PR gate needs the merge base
+      - name: file-search-on review gate
+        uses: richardwooding/file-search-on@main
+        with:
+          base: origin/${{ github.base_ref }}
