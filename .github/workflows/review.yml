@@ -20,3 +20,4 @@ jobs:
         uses: richardwooding/file-search-on@main
         with:
           base: origin/${{ github.base_ref }}
+          baseline: "true"
