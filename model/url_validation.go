@@ -11,17 +11,11 @@ import (
 	"github.com/richardwooding/ssrfguard"
 )
 
-// resolver resolves named feed hosts during URL validation. It is a package
-// variable so tests can substitute a hermetic resolver that fails fast instead
-// of performing real DNS lookups; production leaves it as net.DefaultResolver.
-var resolver = net.DefaultResolver
-
-// validateResolveTimeout bounds DNS resolution during URL validation. ssrfguard
+// defaultResolveTimeout bounds DNS resolution during URL validation. ssrfguard
 // resolves named hosts to check them against blocked ranges; without a deadline
 // a slow or unreachable resolver would stall validation — notably at startup,
-// when every configured feed URL is sanitized. It is a var (not a const) so
-// tests can shorten it.
-var validateResolveTimeout = 5 * time.Second
+// when every configured feed URL is sanitized.
+const defaultResolveTimeout = 5 * time.Second
 
 // URL validation errors. These remain the package's public sentinels (matched
 // with errors.Is by enhanced error reporting) and are mapped from the
@@ -33,6 +27,46 @@ var (
 	ErrMissingHost       = errors.New("URL must have a valid host")
 	ErrEmptyURL          = errors.New("URL cannot be empty")
 )
+
+// validator performs SSRF-focused feed URL validation. Holding the resolver and
+// resolve timeout as fields (rather than package globals) keeps validation
+// configurable and lets tests substitute a hermetic resolver without mutating
+// shared state, so the package's tests stay parallel-safe.
+type validator struct {
+	resolver       *net.Resolver
+	resolveTimeout time.Duration
+}
+
+// newValidator builds a validator, applying defaults for a nil resolver or a
+// non-positive timeout.
+func newValidator(resolver *net.Resolver, resolveTimeout time.Duration) *validator {
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
+	if resolveTimeout <= 0 {
+		resolveTimeout = defaultResolveTimeout
+	}
+	return &validator{resolver: resolver, resolveTimeout: resolveTimeout}
+}
+
+// defaultValidator backs the package-level functions. It is constructed once and
+// never mutated, so it is safe for concurrent use.
+var defaultValidator = newValidator(net.DefaultResolver, defaultResolveTimeout)
+
+// validateURL validates a single URL, failing closed: a canceled context or an
+// elapsed resolve deadline returns the context error rather than allowing the
+// URL. Callers that want to tolerate a resolve timeout (for example, so slow DNS
+// doesn't block startup) must decide that explicitly — see SanitizeURLs and the
+// startup path in cmd. The dial-time guard remains a second layer of defense.
+func (v *validator) validateURL(ctx context.Context, rawURL string, allowPrivateIPs bool) error {
+	cctx, cancel := context.WithTimeout(ctx, v.resolveTimeout)
+	defer cancel()
+	guard := ssrfguard.New(
+		ssrfguard.WithAllowPrivate(allowPrivateIPs),
+		ssrfguard.WithResolver(v.resolver),
+	)
+	return mapSSRFError(guard.ValidateURLContext(cctx, rawURL))
+}
 
 // ValidateFeedURL validates a feed URL for security and format correctness.
 // It performs SSRF-focused checks — scheme validation, host verification, and
@@ -47,26 +81,11 @@ func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
 	return ValidateFeedURLContext(context.Background(), rawURL, allowPrivateIPs)
 }
 
-// ValidateFeedURLContext is ValidateFeedURL with a caller-supplied context.
-//
-// DNS resolution of named hosts is bounded by validateResolveTimeout (derived
-// from ctx) so a slow or unreachable resolver cannot stall validation. The two
-// timeout sources are treated differently: if only that internal budget elapses
-// while ctx itself is still live, the URL is allowed — the host was merely slow
-// to resolve, and the dial-time guard re-checks the destination at connect time.
-// Genuine cancellation or a deadline on ctx propagates to the caller.
+// ValidateFeedURLContext is ValidateFeedURL with a caller-supplied context that
+// governs DNS resolution. It fails closed: a canceled context or an elapsed
+// resolve deadline returns the context error.
 func ValidateFeedURLContext(ctx context.Context, rawURL string, allowPrivateIPs bool) error {
-	cctx, cancel := context.WithTimeout(ctx, validateResolveTimeout)
-	defer cancel()
-	guard := ssrfguard.New(
-		ssrfguard.WithAllowPrivate(allowPrivateIPs),
-		ssrfguard.WithResolver(resolver),
-	)
-	err := mapSSRFError(guard.ValidateURLContext(cctx, rawURL))
-	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-		return nil
-	}
-	return err
+	return defaultValidator.validateURL(ctx, rawURL, allowPrivateIPs)
 }
 
 // mapSSRFError translates ssrfguard sentinel errors into this package's
@@ -90,16 +109,11 @@ func mapSSRFError(err error) error {
 	}
 }
 
-// SanitizeFeedURLs validates a slice of feed URLs. It is a convenience wrapper
-// around SanitizeFeedURLsContext using a background context.
-func SanitizeFeedURLs(urls []string, allowPrivateIPs bool) error {
-	return SanitizeFeedURLsContext(context.Background(), urls, allowPrivateIPs)
-}
-
-// SanitizeFeedURLsContext is SanitizeFeedURLs with a caller-supplied context.
-// If ctx is canceled (or its deadline elapses) mid-batch, it returns ctx.Err()
-// promptly rather than continuing to validate the remaining URLs.
-func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs bool) error {
+// sanitizeURLs validates a slice of URLs, failing closed. A context error
+// (cancellation, or an elapsed resolve deadline on any URL) is returned directly
+// so callers can match it with errors.Is rather than having it folded into the
+// formatted "invalid feed URLs" message.
+func (v *validator) sanitizeURLs(ctx context.Context, urls []string, allowPrivateIPs bool) error {
 	if len(urls) == 0 {
 		return errors.New("no feed URLs provided")
 	}
@@ -109,10 +123,7 @@ func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := ValidateFeedURLContext(ctx, rawURL, allowPrivateIPs); err != nil {
-			// A context error (e.g. cancellation during the final URL) must
-			// propagate so callers can match it with errors.Is, not be folded
-			// into the formatted "invalid feed URLs" message.
+		if err := v.validateURL(ctx, rawURL, allowPrivateIPs); err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
@@ -125,4 +136,19 @@ func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs
 	}
 
 	return nil
+}
+
+// SanitizeFeedURLs validates a slice of feed URLs. It is a convenience wrapper
+// around SanitizeFeedURLsContext using a background context.
+func SanitizeFeedURLs(urls []string, allowPrivateIPs bool) error {
+	return SanitizeFeedURLsContext(context.Background(), urls, allowPrivateIPs)
+}
+
+// SanitizeFeedURLsContext is SanitizeFeedURLs with a caller-supplied context. It
+// fails closed: a context error (cancellation or an elapsed resolve deadline on
+// any URL) is returned directly. Callers that want to tolerate a resolve timeout
+// (e.g. so slow DNS doesn't block startup) should check for context.DeadlineExceeded
+// themselves — see the startup path in cmd.
+func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs bool) error {
+	return defaultValidator.sanitizeURLs(ctx, urls, allowPrivateIPs)
 }

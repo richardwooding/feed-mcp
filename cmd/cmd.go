@@ -3,6 +3,8 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"log"
 	"time"
 
 	"github.com/richardwooding/feed-mcp/mcpserver"
@@ -39,6 +41,26 @@ type RunCmd struct {
 	HTTPPort           string        `name:"http-port" default:"8080" env:"PORT" help:"Port for HTTP server (streamable-http transport)."`
 	HTTPStateless      bool          `name:"http-stateless" default:"false" help:"Run HTTP server in stateless mode (no session tracking)."`
 	HTTPSessionTimeout time.Duration `name:"http-session-timeout" default:"30m" help:"Timeout for idle HTTP sessions."`
+}
+
+// validateStartupFeedURLs runs up-front SSRF validation over the configured feed
+// URLs. It tolerates a DNS resolve-timeout — the dial-time guard re-checks every
+// destination at fetch time, so slow DNS must not block startup — but fails on a
+// genuine validation error or real cancellation/shutdown. With no URLs (runtime
+// feed management enabled) it is a no-op.
+func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivateIPs bool) error {
+	if len(feedURLs) == 0 {
+		return nil
+	}
+	err := model.SanitizeFeedURLsContext(ctx, feedURLs, allowPrivateIPs)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		log.Printf("warning: feed URL validation timed out resolving DNS; continuing (URLs are re-checked at fetch time): %v", err)
+		return nil
+	}
+	return err
 }
 
 // Run executes the feed MCP server with the given configuration
@@ -78,10 +100,8 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	}
 
 	// Validate feed URLs for security (skip validation if no URLs and runtime feeds are allowed)
-	if len(feedURLs) > 0 {
-		if err := model.SanitizeFeedURLsContext(ctx, feedURLs, c.AllowPrivateIPs); err != nil {
-			return err
-		}
+	if err := validateStartupFeedURLs(ctx, feedURLs, c.AllowPrivateIPs); err != nil {
+		return err
 	}
 
 	storeConfig := store.Config{

@@ -1,9 +1,26 @@
 package model
 
 import (
+	"context"
+	"errors"
+	"net"
 	"strings"
 	"testing"
 )
+
+// hermeticValidator returns a validator whose resolver fails fast instead of
+// performing real DNS lookups, keeping these tests off the network. A failed
+// lookup leaves a named host unresolvable, which ssrfguard allows — matching the
+// table cases that expect named hosts (example.com, etc.) to validate cleanly.
+func hermeticValidator() *validator {
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("dns disabled in tests")
+		},
+	}
+	return newValidator(r, defaultResolveTimeout)
+}
 
 func TestValidateFeedURL(t *testing.T) {
 	tests := []struct {
@@ -57,9 +74,10 @@ func TestValidateFeedURL(t *testing.T) {
 		{nil, "URL with authentication", "https://user:pass@example.com/feed", false, false},
 	}
 
+	v := hermeticValidator()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateFeedURL(tt.url, tt.allowPrivateIP)
+			err := v.validateURL(context.Background(), tt.url, tt.allowPrivateIP)
 
 			if tt.expectError {
 				if err == nil {
@@ -121,9 +139,10 @@ func TestSanitizeFeedURLs(t *testing.T) {
 		},
 	}
 
+	v := hermeticValidator()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := SanitizeFeedURLs(tt.urls, tt.allowPrivateIP)
+			err := v.sanitizeURLs(context.Background(), tt.urls, tt.allowPrivateIP)
 
 			if tt.expectError {
 				if err == nil {
@@ -159,10 +178,11 @@ func TestSecurityBypassAttempts(t *testing.T) {
 		"http://[::ffff:127.0.0.1]/",               // IPv4-mapped IPv6
 	}
 
+	v := hermeticValidator()
 	for _, url := range bypassAttempts {
 		t.Run("bypass attempt: "+url, func(t *testing.T) {
 			// Most of these should either be blocked or handled safely
-			err := ValidateFeedURL(url, false)
+			err := v.validateURL(context.Background(), url, false)
 			if err == nil {
 				// If not blocked, it should at least be a valid URL that doesn't resolve to localhost
 				// The actual blocking might happen during host validation

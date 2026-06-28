@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"testing"
 )
 
@@ -55,10 +56,13 @@ func FuzzValidateFeedURL(f *testing.F) {
 	f.Add("http://localhost/feed", true)
 	f.Add("http://192.168.1.1/feed", true)
 
+	// A hermetic validator keeps the fuzzer off the network: arbitrary generated
+	// hostnames must not trigger real DNS lookups that could stall a worker.
+	v := hermeticValidator()
 	f.Fuzz(func(t *testing.T, url string, allowPrivateIPs bool) {
 		// The function should never panic, regardless of input
 		// We're testing for robustness and security, not correctness
-		_ = ValidateFeedURL(url, allowPrivateIPs)
+		_ = v.validateURL(context.Background(), url, allowPrivateIPs)
 	})
 }
 
@@ -70,13 +74,14 @@ func FuzzSanitizeFeedURLs(f *testing.F) {
 	f.Add("", false)
 	f.Add("file:///etc/passwd", false)
 
+	v := hermeticValidator()
 	f.Fuzz(func(t *testing.T, url string, allowPrivateIPs bool) {
 		// Test with single URL
 		urls := []string{url}
-		_ = SanitizeFeedURLs(urls, allowPrivateIPs)
+		_ = v.sanitizeURLs(context.Background(), urls, allowPrivateIPs)
 
 		// Test with multiple URLs (duplicate)
 		urls = []string{url, url}
-		_ = SanitizeFeedURLs(urls, allowPrivateIPs)
+		_ = v.sanitizeURLs(context.Background(), urls, allowPrivateIPs)
 	})
 }

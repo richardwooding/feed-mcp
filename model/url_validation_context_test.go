@@ -21,61 +21,56 @@ func blockingResolver() *net.Resolver {
 	}
 }
 
-// withResolver swaps the package resolver and resolve timeout for the duration of
-// a test, restoring them afterwards. (TestMain installs a fail-fast resolver; the
-// context tests need a blocking one.)
-func withResolver(t *testing.T, r *net.Resolver, timeout time.Duration) {
-	t.Helper()
-	origR, origT := resolver, validateResolveTimeout
-	resolver, validateResolveTimeout = r, timeout
-	t.Cleanup(func() { resolver, validateResolveTimeout = origR, origT })
-}
+func TestValidator_FailsClosedOnResolveTimeout(t *testing.T) {
+	t.Parallel()
+	v := newValidator(blockingResolver(), 50*time.Millisecond)
 
-func TestValidateFeedURLContext_LenientOnInternalTimeout(t *testing.T) {
-	withResolver(t, blockingResolver(), 50*time.Millisecond)
-
-	// A named host needs resolution; the internal budget elapses while the parent
-	// context stays live. The URL should be allowed (dial-time guard re-checks).
-	if err := ValidateFeedURLContext(context.Background(), "http://named-host.example/feed", false); err != nil {
-		t.Fatalf("ValidateFeedURLContext on internal resolve timeout = %v, want nil", err)
+	// A named host needs resolution; the resolve budget elapses. The validator
+	// fails closed, surfacing the deadline error rather than allowing the URL.
+	err := v.validateURL(context.Background(), "http://named-host.example/feed", false)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("validateURL on resolve timeout = %v, want context.DeadlineExceeded", err)
 	}
 }
 
-func TestValidateFeedURLContext_PropagatesCancellation(t *testing.T) {
-	withResolver(t, blockingResolver(), 5*time.Second)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // canceled by the caller, not our internal budget
-
-	err := ValidateFeedURLContext(ctx, "http://named-host.example/feed", false)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("ValidateFeedURLContext with canceled ctx = %v, want context.Canceled", err)
-	}
-}
-
-func TestSanitizeFeedURLsContext_StopsOnCancellation(t *testing.T) {
-	withResolver(t, blockingResolver(), 5*time.Second)
+func TestValidator_PropagatesCancellation(t *testing.T) {
+	t.Parallel()
+	v := newValidator(blockingResolver(), 5*time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := SanitizeFeedURLsContext(ctx, []string{"http://a.example/feed", "http://b.example/feed"}, false)
+	err := v.validateURL(ctx, "http://named-host.example/feed", false)
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("SanitizeFeedURLsContext with canceled ctx = %v, want context.Canceled", err)
+		t.Fatalf("validateURL with canceled ctx = %v, want context.Canceled", err)
 	}
 }
 
-func TestSanitizeFeedURLsContext_PropagatesDeadlineOnLastURL(t *testing.T) {
+func TestValidator_SanitizeURLsPropagatesContextError(t *testing.T) {
+	t.Parallel()
+	v := newValidator(blockingResolver(), 5*time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := v.sanitizeURLs(ctx, []string{"http://a.example/feed", "http://b.example/feed"}, false)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("sanitizeURLs with canceled ctx = %v, want context.Canceled", err)
+	}
+}
+
+func TestValidator_SanitizeURLsPropagatesDeadlineOnLastURL(t *testing.T) {
+	t.Parallel()
 	// The deadline elapses while validating the only/last URL (so the loop-top
 	// ctx.Err() check passes first). The context error must propagate, not be
 	// folded into the formatted "invalid feed URLs" message.
-	withResolver(t, blockingResolver(), 5*time.Second)
+	v := newValidator(blockingResolver(), 5*time.Second)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 
-	err := SanitizeFeedURLsContext(ctx, []string{"http://only-host.example/feed"}, false)
+	err := v.sanitizeURLs(ctx, []string{"http://only-host.example/feed"}, false)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("SanitizeFeedURLsContext = %v, want context.DeadlineExceeded", err)
+		t.Fatalf("sanitizeURLs = %v, want context.DeadlineExceeded", err)
 	}
 }
