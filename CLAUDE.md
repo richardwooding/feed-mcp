@@ -54,7 +54,7 @@ Resources: `feeds://all`, `feeds://feed/{id}`, `feeds://feed/{id}/items` (suppor
 - **Circuit breaker** (sony/gobreaker) — enabled; opens after 3 consecutive failures, 30s timeout. Disable with `CircuitBreakerEnabled: &false`.
 - **Retry** — exponential backoff + jitter, 3 attempts; retries 5xx/DNS/timeout, not 4xx.
 - **Connection pooling** — tuned `http.Transport` (100 idle conns, 10/host).
-- **URL security** — SSRF protection: HTTP(S) only, private IPs blocked by default (`--allow-private-ips` to override).
+- **URL security** — SSRF protection via `ssrfguard`: HTTP(S) only, private IPs blocked by default (`--allow-private-ips` to override). Enforced both up-front (`model.ValidateFeedURL`) and at dial time (the store's transport `Control` hook, which defeats DNS rebinding).
 - **Graceful shutdown** — SIGINT/SIGTERM, context propagation, `--shutdown-timeout` (default 30s).
 
 Full configuration, CLI flags, and metrics: **[docs/ADVANCED.md](docs/ADVANCED.md)** (Performance Tuning, Security) and **[docs/ENHANCED_ERRORS.md](docs/ENHANCED_ERRORS.md)**.

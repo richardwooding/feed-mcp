@@ -470,6 +470,11 @@ By default, private IPs and localhost are blocked:
 feed-mcp run --allow-private-ips http://192.168.1.100/feed
 ```
 
+Blocking is enforced in two layers (both via [ssrfguard](https://github.com/richardwooding/ssrfguard)):
+
+1. **Up-front validation** — feed URLs are checked when the server starts (scheme, host, and resolved address).
+2. **Dial-time guard** — the HTTP transport inspects the IP it is about to connect to and refuses blocked addresses. This is the backstop against DNS rebinding, where a host passes up-front validation as public but later resolves to an internal address. `--allow-private-ips` relaxes both layers.
+
 ### Best Practices
 
 - Keep `--allow-private-ips` disabled in production

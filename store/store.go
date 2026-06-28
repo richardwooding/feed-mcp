@@ -19,6 +19,7 @@ import (
 	ristretto_store "github.com/eko/gocache/store/ristretto/v4"
 	"github.com/mmcdole/gofeed"
 	"github.com/richardwooding/hostrate"
+	"github.com/richardwooding/ssrfguard"
 	"github.com/sony/gobreaker"
 	"golang.org/x/time/rate"
 
@@ -82,7 +83,14 @@ type Store struct {
 
 // newPooledTransport builds an *http.Transport with the given connection pool
 // settings, otherwise mirroring http.DefaultTransport's defaults.
-func newPooledTransport(poolConfig HTTPPoolConfig) *http.Transport {
+//
+// The dialer carries an ssrfguard Control hook so SSRF protection runs at dial
+// time, after DNS resolution: it inspects the IP actually being connected to and
+// blocks internal addresses. This is the backstop against DNS rebinding, where a
+// host passes up-front model.ValidateFeedURL as public but later resolves to an
+// internal address. When allowPrivateIPs is set, internal ranges are permitted.
+func newPooledTransport(poolConfig HTTPPoolConfig, allowPrivateIPs bool) *http.Transport {
+	guard := ssrfguard.New(ssrfguard.WithAllowPrivate(allowPrivateIPs))
 	return &http.Transport{
 		MaxIdleConns:        poolConfig.MaxIdleConns,
 		MaxConnsPerHost:     poolConfig.MaxConnsPerHost,
@@ -93,6 +101,7 @@ func newPooledTransport(poolConfig HTTPPoolConfig) *http.Transport {
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
+			Control:   guard.Control,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
 		TLSHandshakeTimeout:   10 * time.Second,
@@ -102,9 +111,10 @@ func newPooledTransport(poolConfig HTTPPoolConfig) *http.Transport {
 
 // NewRateLimitedHTTPClient creates an HTTP client with per-host rate limiting and connection pooling.
 // The requestsPerSecond and burstCapacity arguments configure each host's token bucket independently.
-// Per-host rate limiting is provided by github.com/richardwooding/hostrate.
-func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig) *http.Client {
-	transport := hostrate.New(newPooledTransport(poolConfig), rate.Limit(requestsPerSecond), burstCapacity)
+// Per-host rate limiting is provided by github.com/richardwooding/hostrate. When allowPrivateIPs is
+// false, the transport blocks connections to internal addresses at dial time (see newPooledTransport).
+func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig, allowPrivateIPs bool) *http.Client {
+	transport := hostrate.New(newPooledTransport(poolConfig, allowPrivateIPs), rate.Limit(requestsPerSecond), burstCapacity)
 
 	return &http.Client{
 		Transport: transport,
@@ -338,7 +348,7 @@ func newStoreInternal(config Config) (*Store, error) {
 			MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
 			IdleConnTimeout:     config.IdleConnTimeout,
 		}
-		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig)
+		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig, config.AllowPrivateIPs)
 	}
 
 	ristrettoCache, err := ristretto.NewCache[string, *gofeed.Feed](&ristretto.Config[string, *gofeed.Feed]{
