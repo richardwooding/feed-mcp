@@ -62,16 +62,23 @@ func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivat
 	}
 
 	// Each goroutine writes only its own index, so the slice needs no locking.
+	// A bounded semaphore caps in-flight DNS resolutions so a very large feed
+	// list (e.g. a big OPML) can't exhaust file descriptors or overload the
+	// resolver.
 	type urlResult struct {
 		url string
 		err error
 	}
+	const maxConcurrentValidations = 16
 	results := make([]urlResult, len(feedURLs))
+	sem := make(chan struct{}, maxConcurrentValidations)
 	var wg sync.WaitGroup
 	for i, url := range feedURLs {
 		wg.Add(1)
 		go func(i int, url string) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			results[i] = urlResult{url: url, err: model.ValidateFeedURLContext(ctx, url, allowPrivateIPs)}
 		}(i, url)
 	}
