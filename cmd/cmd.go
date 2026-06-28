@@ -49,6 +49,9 @@ type RunCmd struct {
 // genuine validation error or real cancellation/shutdown. With no URLs (runtime
 // feed management enabled) it is a no-op.
 func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivateIPs bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if len(feedURLs) == 0 {
 		return nil
 	}

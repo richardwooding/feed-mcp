@@ -85,6 +85,9 @@ func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
 // governs DNS resolution. It fails closed: a canceled context or an elapsed
 // resolve deadline returns the context error.
 func ValidateFeedURLContext(ctx context.Context, rawURL string, allowPrivateIPs bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return defaultValidator.validateURL(ctx, rawURL, allowPrivateIPs)
 }
 
@@ -150,5 +153,8 @@ func SanitizeFeedURLs(urls []string, allowPrivateIPs bool) error {
 // (e.g. so slow DNS doesn't block startup) should check for context.DeadlineExceeded
 // themselves — see the startup path in cmd.
 func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return defaultValidator.sanitizeURLs(ctx, urls, allowPrivateIPs)
 }
