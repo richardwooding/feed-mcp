@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,6 +57,23 @@ func TestValidator_SanitizeURLsPropagatesContextError(t *testing.T) {
 	err := v.sanitizeURLs(ctx, []string{"http://a.example/feed", "http://b.example/feed"}, false)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("sanitizeURLs with canceled ctx = %v, want context.Canceled", err)
+	}
+}
+
+func TestValidator_SanitizeURLsValidatesAllDespiteResolveTimeout(t *testing.T) {
+	t.Parallel()
+	// A slow first URL (internal resolve timeout, parent still live) must not
+	// cause later URLs to be skipped — otherwise a malicious URL after a slow
+	// one would bypass validation entirely.
+	v := newValidator(blockingResolver(), 30*time.Millisecond)
+
+	err := v.sanitizeURLs(context.Background(),
+		[]string{"http://slow-host.example/feed", "file:///etc/passwd"}, false)
+	if err == nil {
+		t.Fatal("expected an error: the file:// URL must still be validated, not skipped")
+	}
+	if !strings.Contains(err.Error(), "unsupported URL scheme") {
+		t.Fatalf("expected the file:// URL to be reported (proving it was validated), got: %v", err)
 	}
 }
 

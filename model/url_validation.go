@@ -112,10 +112,12 @@ func mapSSRFError(err error) error {
 	}
 }
 
-// sanitizeURLs validates a slice of URLs, failing closed. A context error
-// (cancellation, or an elapsed resolve deadline on any URL) is returned directly
-// so callers can match it with errors.Is rather than having it folded into the
-// formatted "invalid feed URLs" message.
+// sanitizeURLs validates a slice of URLs, failing closed. Only a genuine
+// caller-context error aborts the batch early: cancellation, or a deadline on
+// ctx itself. A per-URL resolve timeout (the validator's internal budget elapsing
+// while ctx is still live) is recorded as an invalid URL and validation
+// continues — so a slow URL can never cause a later, possibly malicious, URL to
+// be skipped.
 func (v *validator) sanitizeURLs(ctx context.Context, urls []string, allowPrivateIPs bool) error {
 	if len(urls) == 0 {
 		return errors.New("no feed URLs provided")
@@ -127,7 +129,9 @@ func (v *validator) sanitizeURLs(ctx context.Context, urls []string, allowPrivat
 			return err
 		}
 		if err := v.validateURL(ctx, rawURL, allowPrivateIPs); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// Abort only on a real caller-context error (cancellation, or ctx's
+			// own deadline). An internal resolve timeout is a per-URL failure.
+			if errors.Is(err, context.Canceled) || (errors.Is(err, context.DeadlineExceeded) && ctx.Err() != nil) {
 				return err
 			}
 			invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", rawURL, err))
@@ -148,10 +152,11 @@ func SanitizeFeedURLs(urls []string, allowPrivateIPs bool) error {
 }
 
 // SanitizeFeedURLsContext is SanitizeFeedURLs with a caller-supplied context. It
-// fails closed: a context error (cancellation or an elapsed resolve deadline on
-// any URL) is returned directly. Callers that want to tolerate a resolve timeout
-// (e.g. so slow DNS doesn't block startup) should check for context.DeadlineExceeded
-// themselves — see the startup path in cmd.
+// fails closed: every URL is validated (a per-URL resolve timeout is reported as
+// an invalid URL, never skipped), and only a genuine caller-context error
+// (cancellation or ctx's own deadline) aborts early. Callers that want to
+// tolerate slow DNS without rejecting the URL must validate per-URL and ignore
+// context.DeadlineExceeded themselves — see the startup path in cmd.
 func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs bool) error {
 	if ctx == nil {
 		ctx = context.Background()

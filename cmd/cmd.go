@@ -4,7 +4,9 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/richardwooding/feed-mcp/mcpserver"
@@ -44,26 +46,41 @@ type RunCmd struct {
 }
 
 // validateStartupFeedURLs runs up-front SSRF validation over the configured feed
-// URLs. It tolerates a DNS resolve-timeout — the dial-time guard re-checks every
-// destination at fetch time, so slow DNS must not block startup — but fails on a
-// genuine validation error or real cancellation/shutdown. With no URLs (runtime
-// feed management enabled) it is a no-op.
+// URLs. Each URL is validated independently so a slow one can't cause a later
+// one to be skipped. A per-URL DNS resolve-timeout is tolerated — the dial-time
+// guard re-checks every destination at fetch time, so slow DNS must not block
+// startup — but genuine validation errors are aggregated and returned, and real
+// cancellation/shutdown aborts immediately.
 func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivateIPs bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if len(feedURLs) == 0 {
-		return nil
+
+	var invalidURLs []string
+	for _, url := range feedURLs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := model.ValidateFeedURLContext(ctx, url, allowPrivateIPs)
+		if err == nil {
+			continue
+		}
+		// Tolerate a resolve timeout while the parent context is still live: the
+		// host was merely slow to resolve, and the dial-time guard re-checks it.
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			log.Printf("warning: feed URL validation timed out resolving DNS for %s; continuing (re-checked at fetch time): %v", url, err)
+			continue
+		}
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", url, err))
 	}
-	err := model.SanitizeFeedURLsContext(ctx, feedURLs, allowPrivateIPs)
-	if err == nil {
-		return nil
+
+	if len(invalidURLs) > 0 {
+		return fmt.Errorf("invalid feed URLs:\n%s", strings.Join(invalidURLs, "\n"))
 	}
-	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-		log.Printf("warning: feed URL validation timed out resolving DNS; continuing (URLs are re-checked at fetch time): %v", err)
-		return nil
-	}
-	return err
+	return nil
 }
 
 // Run executes the feed MCP server with the given configuration
