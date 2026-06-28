@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/richardwooding/hostrate"
+	"github.com/richardwooding/ssrfguard"
 )
 
 func mockFeedServer(t *testing.T, title string) *httptest.Server {
@@ -44,7 +46,7 @@ func TestNewStore_AndGetAllFeeds(t *testing.T) {
 	srv := mockFeedServer(t, "FeedTitle")
 	defer srv.Close()
 
-	store, err := NewStore(&Config{Feeds: []string{srv.URL}})
+	store, err := NewStore(&Config{Feeds: []string{srv.URL}, AllowPrivateIPs: true})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -69,7 +71,7 @@ func TestGetFeedAndItems_Success(t *testing.T) {
 	srv := mockFeedServer(t, "FeedTitle2")
 	defer srv.Close()
 
-	store, err := NewStore(&Config{Feeds: []string{srv.URL}})
+	store, err := NewStore(&Config{Feeds: []string{srv.URL}, AllowPrivateIPs: true})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -104,7 +106,7 @@ func TestGetFeedAndItems_NotFound(t *testing.T) {
 	srv := mockFeedServer(t, "FeedTitle3")
 	defer srv.Close()
 
-	store, err := NewStore(&Config{Feeds: []string{srv.URL}})
+	store, err := NewStore(&Config{Feeds: []string{srv.URL}, AllowPrivateIPs: true})
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -170,7 +172,7 @@ func TestNewRateLimitedHTTPClient(t *testing.T) {
 		MaxIdleConnsPerHost: 5,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	client := NewRateLimitedHTTPClient(1.0, 2, poolConfig)
+	client := NewRateLimitedHTTPClient(1.0, 2, poolConfig, false)
 
 	if client == nil {
 		t.Fatal("expected client to be non-nil")
@@ -183,6 +185,39 @@ func TestNewRateLimitedHTTPClient(t *testing.T) {
 	// Verify it's the per-host rate-limiting transport
 	if _, ok := client.Transport.(*hostrate.Transport); !ok {
 		t.Errorf("expected *hostrate.Transport, got %T", client.Transport)
+	}
+}
+
+func TestRateLimitedHTTPClient_BlocksLoopbackAtDial(t *testing.T) {
+	// httptest servers listen on loopback, so a client built with
+	// allowPrivateIPs=false must refuse to connect — this is the dial-time SSRF
+	// backstop against DNS rebinding.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	poolConfig := HTTPPoolConfig{MaxIdleConns: 10, MaxConnsPerHost: 5, MaxIdleConnsPerHost: 5, IdleConnTimeout: 90 * time.Second}
+
+	blocked := NewRateLimitedHTTPClient(10.0, 10, poolConfig, false)
+	resp, err := blocked.Get(srv.URL)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("expected guarded client to block loopback %s", srv.URL)
+	}
+	if !errors.Is(err, ssrfguard.ErrBlockedAddress) {
+		t.Fatalf("err = %v, want ssrfguard.ErrBlockedAddress", err)
+	}
+
+	// With allowPrivateIPs=true the same request connects.
+	allowed := NewRateLimitedHTTPClient(10.0, 10, poolConfig, true)
+	resp, err = allowed.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("allowPrivateIPs client.Get(%s) = %v, want success", srv.URL, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 }
 
@@ -204,7 +239,9 @@ func TestRateLimitedTransport_RateLimit(t *testing.T) {
 		MaxIdleConnsPerHost: 5,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	client := NewRateLimitedHTTPClient(1.0, 1, poolConfig)
+	// allowPrivateIPs is true so the guarded transport can dial the loopback
+	// httptest server; the test is exercising rate limiting, not SSRF blocking.
+	client := NewRateLimitedHTTPClient(1.0, 1, poolConfig, true)
 
 	start := time.Now()
 
@@ -236,7 +273,8 @@ func TestStore_DefaultRateLimiting(t *testing.T) {
 
 	// Create store without custom HTTP client - should use default rate limiting
 	store, err := NewStore(&Config{
-		Feeds: []string{srv.URL},
+		Feeds:           []string{srv.URL},
+		AllowPrivateIPs: true,
 		// Don't set RequestsPerSecond or BurstCapacity - should use defaults
 	})
 	if err != nil {
@@ -266,6 +304,7 @@ func TestStore_CustomRateLimiting(t *testing.T) {
 	// Create store with custom rate limiting settings
 	store, err := NewStore(&Config{
 		Feeds:             []string{srv.URL},
+		AllowPrivateIPs:   true,
 		RequestsPerSecond: 0.5, // Very slow: 1 request every 2 seconds
 		BurstCapacity:     1,   // No burst
 	})
@@ -299,6 +338,7 @@ func TestStore_CustomHTTPClientPreserved(t *testing.T) {
 	// Create store with custom HTTP client - rate limiting should be skipped
 	store, err := NewStore(&Config{
 		Feeds:             []string{srv.URL},
+		AllowPrivateIPs:   true,
 		HTTPClient:        customClient,
 		RequestsPerSecond: 10.0, // These should be ignored since HTTPClient is provided
 		BurstCapacity:     20,
@@ -331,6 +371,7 @@ func TestStore_CircuitBreakerDisabled(t *testing.T) {
 	disabled := false
 	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
+		AllowPrivateIPs:       true,
 		CircuitBreakerEnabled: &disabled,
 	})
 	if err != nil {
@@ -365,6 +406,7 @@ func TestStore_CircuitBreakerEnabledByDefault(t *testing.T) {
 	// Create store without specifying circuit breaker setting - should be enabled by default
 	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
+		AllowPrivateIPs:       true,
 		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for testing
 	})
 	if err != nil {
@@ -406,6 +448,7 @@ func TestStore_CircuitBreakerExplicitlyEnabled(t *testing.T) {
 	enabled := true
 	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
+		AllowPrivateIPs:       true,
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second, // Short timeout for testing
 	})
@@ -451,6 +494,7 @@ func TestStore_CircuitBreakerFailures(t *testing.T) {
 	enabled := true
 	store, err := NewStore(&Config{
 		Feeds:                 []string{failingServer.URL},
+		AllowPrivateIPs:       true,
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache expiry
@@ -530,6 +574,7 @@ func TestStore_CircuitBreakerRecovery(t *testing.T) {
 	enabled := true
 	store, err := NewStore(&Config{
 		Feeds:                 []string{recoveringServer.URL},
+		AllowPrivateIPs:       true,
 		CircuitBreakerEnabled: &enabled,
 		CircuitBreakerTimeout: 1 * time.Second,      // Short timeout for quick recovery
 		ExpireAfter:           1 * time.Millisecond, // Force cache expiry
@@ -589,6 +634,7 @@ func TestStore_CircuitBreakerCustomSettings(t *testing.T) {
 	enabled := true
 	store, err := NewStore(&Config{
 		Feeds:                          []string{srv.URL},
+		AllowPrivateIPs:                true,
 		CircuitBreakerEnabled:          &enabled,
 		CircuitBreakerMaxRequests:      5,
 		CircuitBreakerInterval:         2 * time.Second,
@@ -631,6 +677,7 @@ func TestStore_CircuitBreakerCustomFailureThreshold(t *testing.T) {
 	enabled := true
 	store, err := NewStore(&Config{
 		Feeds:                          []string{failingServer.URL},
+		AllowPrivateIPs:                true,
 		CircuitBreakerEnabled:          &enabled,
 		CircuitBreakerTimeout:          1 * time.Second,
 		CircuitBreakerFailureThreshold: 2,                    // Should open after 2 failures instead of default 3
@@ -686,6 +733,7 @@ func TestGetFeedAndItems_CircuitBreakerState(t *testing.T) {
 	enabled := true
 	store, err := NewStore(&Config{
 		Feeds:                 []string{srv.URL},
+		AllowPrivateIPs:       true,
 		CircuitBreakerEnabled: &enabled,
 	})
 	if err != nil {
@@ -725,6 +773,7 @@ func TestStore_ConnectionPooling(t *testing.T) {
 	// Test with custom connection pool settings
 	store, err := NewStore(&Config{
 		Feeds:               []string{srv.URL},
+		AllowPrivateIPs:     true,
 		ExpireAfter:         1 * time.Hour,
 		MaxIdleConns:        50,
 		MaxConnsPerHost:     20,
@@ -766,8 +815,9 @@ func TestHTTPPoolConfig_DefaultValues(t *testing.T) {
 
 	// Test with default values (should be set automatically)
 	store, err := NewStore(&Config{
-		Feeds:       []string{srv.URL},
-		ExpireAfter: 1 * time.Hour,
+		Feeds:           []string{srv.URL},
+		AllowPrivateIPs: true,
+		ExpireAfter:     1 * time.Hour,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -803,7 +853,7 @@ func TestNewRateLimitedHTTPClient_ConnectionPoolSettings(t *testing.T) {
 
 	// The pooled base transport is wrapped by hostrate (whose base field is
 	// unexported), so verify the pool settings on the builder directly.
-	httpTransport := newPooledTransport(poolConfig)
+	httpTransport := newPooledTransport(poolConfig, false)
 
 	// Verify connection pool settings
 	if httpTransport.MaxIdleConns != 75 {
@@ -831,6 +881,7 @@ func TestRetryMechanism_SuccessfulFetch(t *testing.T) {
 
 	config := Config{
 		Feeds:            []string{server.URL},
+		AllowPrivateIPs:  true,
 		Timeout:          5 * time.Second,
 		ExpireAfter:      1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts: 3,
@@ -889,6 +940,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Hour, // Long cache to prevent double requests
 		RetryMaxAttempts:      3,
@@ -957,6 +1009,7 @@ func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts:      3,
@@ -1010,6 +1063,7 @@ func TestRetryMechanism_NonRetryableError(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts:      3,
@@ -1064,6 +1118,7 @@ func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts:      3,
@@ -1130,6 +1185,7 @@ func TestRetryMechanism_MaxDelayRespected(t *testing.T) {
 
 	config := Config{
 		Feeds:            []string{server.URL},
+		AllowPrivateIPs:  true,
 		Timeout:          5 * time.Second,
 		ExpireAfter:      1 * time.Millisecond,
 		RetryMaxAttempts: 4, // More attempts to test max delay
@@ -1266,6 +1322,7 @@ func TestRetryMechanism_DefaultConfiguration(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		CircuitBreakerEnabled: &disabled,
 		// Don't set retry values to test defaults (should be 3 attempts, 1s base delay)
@@ -1306,6 +1363,7 @@ func TestRetryMetrics_SuccessfulFeeds(t *testing.T) {
 
 	config := Config{
 		Feeds:            []string{server.URL},
+		AllowPrivateIPs:  true,
 		Timeout:          5 * time.Second,
 		ExpireAfter:      1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts: 3,
@@ -1381,6 +1439,7 @@ func TestRetryMetrics_WithRetries(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts:      3,
@@ -1435,6 +1494,7 @@ func TestRetryMetrics_FailedFeeds(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{server.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts:      3,
@@ -1489,6 +1549,7 @@ func TestRetryMetrics_MixedResults(t *testing.T) {
 	disabled := false
 	config := Config{
 		Feeds:                 []string{workingServer.URL, failingServer.URL},
+		AllowPrivateIPs:       true,
 		Timeout:               5 * time.Second,
 		ExpireAfter:           1 * time.Millisecond, // Force cache miss
 		RetryMaxAttempts:      3,
