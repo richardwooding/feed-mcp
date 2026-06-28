@@ -79,7 +79,7 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 
 	// Validate feed URLs for security (skip validation if no URLs and runtime feeds are allowed)
 	if len(feedURLs) > 0 {
-		if err := model.SanitizeFeedURLs(feedURLs, c.AllowPrivateIPs); err != nil {
+		if err := model.SanitizeFeedURLsContext(ctx, feedURLs, c.AllowPrivateIPs); err != nil {
 			return err
 		}
 	}

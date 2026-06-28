@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1249,6 +1250,19 @@ func TestIsRetryableError(t *testing.T) {
 				t.Errorf("expected %v, got %v for error: %q", tt.retryable, result, tt.error)
 			}
 		})
+	}
+}
+
+func TestIsRetryableError_SSRFBlockedNotRetryable(t *testing.T) {
+	// A dial-time SSRF block is deterministic and must not be retried, even when
+	// wrapped (as it is when surfaced through the HTTP dialer). errors.Is must
+	// see through the wrapping.
+	wrapped := fmt.Errorf("dial tcp 10.0.0.1:80: %w", ssrfguard.ErrBlockedAddress)
+	if isRetryableError(wrapped) {
+		t.Error("ssrfguard.ErrBlockedAddress should be classified as non-retryable")
+	}
+	if isRetryableError(ssrfguard.ErrBlockedAddress) {
+		t.Error("bare ssrfguard.ErrBlockedAddress should be classified as non-retryable")
 	}
 }
 

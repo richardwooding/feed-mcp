@@ -137,6 +137,13 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
+	// A dial-time SSRF block is deterministic: the destination resolves to a
+	// blocked address and will on every retry. Retrying only adds backoff delay
+	// and can trip the circuit breaker, so treat it as non-retryable.
+	if errors.Is(err, ssrfguard.ErrBlockedAddress) {
+		return false
+	}
+
 	// DNS and network errors are retryable
 	if strings.Contains(errStr, "no such host") ||
 		strings.Contains(errStr, "connection refused") ||
