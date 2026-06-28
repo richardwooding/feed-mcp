@@ -65,14 +65,18 @@ func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivat
 		if err == nil {
 			continue
 		}
-		// Tolerate a resolve timeout while the parent context is still live: the
-		// host was merely slow to resolve, and the dial-time guard re-checks it.
-		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		// A real parent-context error (cancellation, or ctx's own deadline)
+		// propagates immediately — even on the last URL, where it must not be
+		// folded into the aggregated "invalid feed URLs" message.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		// Otherwise a context.DeadlineExceeded here is only our internal resolve
+		// budget: tolerate it, since the host was merely slow to resolve and the
+		// dial-time guard re-checks it at fetch time.
+		if errors.Is(err, context.DeadlineExceeded) {
 			log.Printf("warning: feed URL validation timed out resolving DNS for %s; continuing (re-checked at fetch time): %v", url, err)
 			continue
-		}
-		if errors.Is(err, context.Canceled) {
-			return err
 		}
 		invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", url, err))
 	}
