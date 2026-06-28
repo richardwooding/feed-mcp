@@ -130,9 +130,10 @@ func (v *validator) sanitizeURLs(ctx context.Context, urls []string, allowPrivat
 		}
 		if err := v.validateURL(ctx, rawURL, allowPrivateIPs); err != nil {
 			// Abort only on a real caller-context error (cancellation, or ctx's
-			// own deadline). An internal resolve timeout is a per-URL failure.
-			if errors.Is(err, context.Canceled) || (errors.Is(err, context.DeadlineExceeded) && ctx.Err() != nil) {
-				return err
+			// own deadline). An internal resolve timeout leaves ctx live, so it
+			// is recorded as a per-URL failure and later URLs are still checked.
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 			invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", rawURL, err))
 		}
