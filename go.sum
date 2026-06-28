@@ -115,8 +115,8 @@ github.com/prometheus/procfs v0.19.2 h1:zUMhqEW66Ex7OXIiDkll3tl9a1ZdilUOd/F6ZXw4
 github.com/prometheus/procfs v0.19.2/go.mod h1:M0aotyiemPhBCM0z5w87kL22CxfcH05ZpYlu+b4J7mw=
 github.com/richardwooding/hostrate v0.1.0 h1:oRlKmj+2UVKxV3QhQBhSsGi9cq8uXIqtCGpw6kMWnBI=
 github.com/richardwooding/hostrate v0.1.0/go.mod h1:pwdl6/mK9Cm0+mkJoZYTK1E37Q9OnTfeJD1fY/VBnzc=
-github.com/richardwooding/ssrfguard v0.2.0 h1:pryqh3ebL6BaZSPdWcHWb6A2yzkN+EZn//zhZpPixsM=
-github.com/richardwooding/ssrfguard v0.2.0/go.mod h1:l26en+xGOtuFaRcpYqXkaCC2QdWggOyCw+DM5RzQpJQ=
+github.com/richardwooding/ssrfguard v0.2.1 h1:NmC8xjE+TgcBTDYSS5hsv+LKIYNUEgYiQe6LQhEYK4E=
+github.com/richardwooding/ssrfguard v0.2.1/go.mod h1:l26en+xGOtuFaRcpYqXkaCC2QdWggOyCw+DM5RzQpJQ=
 github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=
 github.com/rogpeppe/go-internal v1.10.0/go.mod h1:UQnix2H7Ngw/k4C5ijL5+65zddjncjaFoBhdsK/akog=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=

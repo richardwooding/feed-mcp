@@ -155,7 +155,10 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	}
 
 	// Validate the URL
-	if err := model.SanitizeFeedURLs([]string{config.URL}, ds.config.AllowPrivateIPs); err != nil {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := model.ValidateFeedURLContext(ctx, config.URL, ds.config.AllowPrivateIPs); err != nil {
 		return nil, err
 	}
 

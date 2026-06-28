@@ -3,6 +3,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/richardwooding/feed-mcp/mcpserver"
@@ -39,6 +44,76 @@ type RunCmd struct {
 	HTTPPort           string        `name:"http-port" default:"8080" env:"PORT" help:"Port for HTTP server (streamable-http transport)."`
 	HTTPStateless      bool          `name:"http-stateless" default:"false" help:"Run HTTP server in stateless mode (no session tracking)."`
 	HTTPSessionTimeout time.Duration `name:"http-session-timeout" default:"30m" help:"Timeout for idle HTTP sessions."`
+}
+
+// validateStartupFeedURLs runs up-front SSRF validation over the configured feed
+// URLs. Each URL is validated independently (and concurrently, so a large feed
+// list with several slow or dead hosts doesn't serialize one DNS resolve-timeout
+// after another and delay startup). A per-URL resolve-timeout is tolerated — the
+// dial-time guard re-checks every destination at fetch time, so slow DNS must not
+// block startup — but genuine validation errors are aggregated and returned, and
+// a real cancellation/shutdown of the parent context aborts startup.
+func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivateIPs bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(feedURLs) == 0 {
+		return nil
+	}
+
+	// Each goroutine writes only its own index, so the slice needs no locking.
+	// A bounded semaphore caps in-flight DNS resolutions so a very large feed
+	// list (e.g. a big OPML) can't exhaust file descriptors or overload the
+	// resolver.
+	type urlResult struct {
+		url string
+		err error
+	}
+	const maxConcurrentValidations = 16
+	results := make([]urlResult, len(feedURLs))
+	sem := make(chan struct{}, maxConcurrentValidations)
+	var wg sync.WaitGroup
+	for i, url := range feedURLs {
+		wg.Add(1)
+		go func(i int, url string) {
+			defer wg.Done()
+			// Don't block on the semaphore if the caller has already given up;
+			// record the context error and return so shutdown isn't delayed.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				results[i] = urlResult{url: url, err: ctx.Err()}
+				return
+			}
+			defer func() { <-sem }()
+			results[i] = urlResult{url: url, err: model.ValidateFeedURLContext(ctx, url, allowPrivateIPs)}
+		}(i, url)
+	}
+	wg.Wait()
+
+	// A real parent-context error (cancellation, or ctx's own deadline) aborts
+	// startup; checking it here means a resolve-timeout below is only our
+	// internal budget.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	var invalidURLs []string
+	for _, r := range results {
+		if r.err == nil {
+			continue
+		}
+		if errors.Is(r.err, context.DeadlineExceeded) {
+			log.Printf("warning: feed URL validation timed out resolving DNS for %s; continuing (re-checked at fetch time): %v", r.url, r.err)
+			continue
+		}
+		invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", r.url, r.err))
+	}
+
+	if len(invalidURLs) > 0 {
+		return fmt.Errorf("invalid feed URLs:\n%s", strings.Join(invalidURLs, "\n"))
+	}
+	return nil
 }
 
 // Run executes the feed MCP server with the given configuration
@@ -78,10 +153,8 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	}
 
 	// Validate feed URLs for security (skip validation if no URLs and runtime feeds are allowed)
-	if len(feedURLs) > 0 {
-		if err := model.SanitizeFeedURLs(feedURLs, c.AllowPrivateIPs); err != nil {
-			return err
-		}
+	if err := validateStartupFeedURLs(ctx, feedURLs, c.AllowPrivateIPs); err != nil {
+		return err
 	}
 
 	storeConfig := store.Config{
