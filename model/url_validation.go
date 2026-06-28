@@ -1,12 +1,26 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
+	"time"
 
 	"github.com/richardwooding/ssrfguard"
 )
+
+// resolver resolves named feed hosts during URL validation. It is a package
+// variable so tests can substitute a hermetic resolver that fails fast instead
+// of performing real DNS lookups; production leaves it as net.DefaultResolver.
+var resolver = net.DefaultResolver
+
+// validateResolveTimeout bounds DNS resolution during URL validation. ssrfguard
+// resolves named hosts to check them against blocked ranges; without a deadline
+// a slow or unreachable resolver would stall validation — notably at startup,
+// when every configured feed URL is sanitized.
+const validateResolveTimeout = 5 * time.Second
 
 // URL validation errors. These remain the package's public sentinels (matched
 // with errors.Is by enhanced error reporting) and are mapped from the
@@ -24,9 +38,17 @@ var (
 // (unless allowPrivateIPs is set) blocking of private, loopback, link-local, and
 // metadata addresses — via github.com/richardwooding/ssrfguard, returning this
 // package's sentinel errors so callers can match them with errors.Is.
+//
+// DNS resolution of named hosts is bounded by validateResolveTimeout so a slow
+// or unreachable resolver cannot stall validation.
 func ValidateFeedURL(rawURL string, allowPrivateIPs bool) error {
-	guard := ssrfguard.New(ssrfguard.WithAllowPrivate(allowPrivateIPs))
-	return mapSSRFError(guard.ValidateURL(rawURL))
+	ctx, cancel := context.WithTimeout(context.Background(), validateResolveTimeout)
+	defer cancel()
+	guard := ssrfguard.New(
+		ssrfguard.WithAllowPrivate(allowPrivateIPs),
+		ssrfguard.WithResolver(resolver),
+	)
+	return mapSSRFError(guard.ValidateURLContext(ctx, rawURL))
 }
 
 // mapSSRFError translates ssrfguard sentinel errors into this package's
