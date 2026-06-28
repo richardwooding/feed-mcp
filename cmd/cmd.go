@@ -81,11 +81,11 @@ func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivat
 			// record the context error and return so shutdown isn't delayed.
 			select {
 			case sem <- struct{}{}:
-				defer func() { <-sem }()
 			case <-ctx.Done():
 				results[i] = urlResult{url: url, err: ctx.Err()}
 				return
 			}
+			defer func() { <-sem }()
 			results[i] = urlResult{url: url, err: model.ValidateFeedURLContext(ctx, url, allowPrivateIPs)}
 		}(i, url)
 	}
