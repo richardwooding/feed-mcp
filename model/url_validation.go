@@ -110,6 +110,12 @@ func SanitizeFeedURLsContext(ctx context.Context, urls []string, allowPrivateIPs
 			return err
 		}
 		if err := ValidateFeedURLContext(ctx, rawURL, allowPrivateIPs); err != nil {
+			// A context error (e.g. cancellation during the final URL) must
+			// propagate so callers can match it with errors.Is, not be folded
+			// into the formatted "invalid feed URLs" message.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
 			invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", rawURL, err))
 		}
 	}

@@ -64,3 +64,18 @@ func TestSanitizeFeedURLsContext_StopsOnCancellation(t *testing.T) {
 		t.Fatalf("SanitizeFeedURLsContext with canceled ctx = %v, want context.Canceled", err)
 	}
 }
+
+func TestSanitizeFeedURLsContext_PropagatesDeadlineOnLastURL(t *testing.T) {
+	// The deadline elapses while validating the only/last URL (so the loop-top
+	// ctx.Err() check passes first). The context error must propagate, not be
+	// folded into the formatted "invalid feed URLs" message.
+	withResolver(t, blockingResolver(), 5*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+
+	err := SanitizeFeedURLsContext(ctx, []string{"http://only-host.example/feed"}, false)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("SanitizeFeedURLsContext = %v, want context.DeadlineExceeded", err)
+	}
+}
