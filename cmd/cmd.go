@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/richardwooding/feed-mcp/mcpserver"
@@ -46,39 +47,53 @@ type RunCmd struct {
 }
 
 // validateStartupFeedURLs runs up-front SSRF validation over the configured feed
-// URLs. Each URL is validated independently so a slow one can't cause a later
-// one to be skipped. A per-URL DNS resolve-timeout is tolerated — the dial-time
-// guard re-checks every destination at fetch time, so slow DNS must not block
-// startup — but genuine validation errors are aggregated and returned, and real
-// cancellation/shutdown aborts immediately.
+// URLs. Each URL is validated independently (and concurrently, so a large feed
+// list with several slow or dead hosts doesn't serialize one DNS resolve-timeout
+// after another and delay startup). A per-URL resolve-timeout is tolerated — the
+// dial-time guard re-checks every destination at fetch time, so slow DNS must not
+// block startup — but genuine validation errors are aggregated and returned, and
+// a real cancellation/shutdown of the parent context aborts startup.
 func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivateIPs bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if len(feedURLs) == 0 {
+		return nil
+	}
+
+	// Each goroutine writes only its own index, so the slice needs no locking.
+	type urlResult struct {
+		url string
+		err error
+	}
+	results := make([]urlResult, len(feedURLs))
+	var wg sync.WaitGroup
+	for i, url := range feedURLs {
+		wg.Add(1)
+		go func(i int, url string) {
+			defer wg.Done()
+			results[i] = urlResult{url: url, err: model.ValidateFeedURLContext(ctx, url, allowPrivateIPs)}
+		}(i, url)
+	}
+	wg.Wait()
+
+	// A real parent-context error (cancellation, or ctx's own deadline) aborts
+	// startup; checking it here means a resolve-timeout below is only our
+	// internal budget.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	var invalidURLs []string
-	for _, url := range feedURLs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		err := model.ValidateFeedURLContext(ctx, url, allowPrivateIPs)
-		if err == nil {
+	for _, r := range results {
+		if r.err == nil {
 			continue
 		}
-		// A real parent-context error (cancellation, or ctx's own deadline)
-		// propagates immediately — even on the last URL, where it must not be
-		// folded into the aggregated "invalid feed URLs" message.
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		// Otherwise a context.DeadlineExceeded here is only our internal resolve
-		// budget: tolerate it, since the host was merely slow to resolve and the
-		// dial-time guard re-checks it at fetch time.
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Printf("warning: feed URL validation timed out resolving DNS for %s; continuing (re-checked at fetch time): %v", url, err)
+		if errors.Is(r.err, context.DeadlineExceeded) {
+			log.Printf("warning: feed URL validation timed out resolving DNS for %s; continuing (re-checked at fetch time): %v", r.url, r.err)
 			continue
 		}
-		invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", url, err))
+		invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %v", r.url, r.err))
 	}
 
 	if len(invalidURLs) > 0 {
