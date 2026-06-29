@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,8 +27,10 @@ func raceReader(ctx context.Context, ds *DynamicStore, stop <-chan struct{}, wg 
 	}
 }
 
-// raceWriter adds, reads, and removes feeds, mutating the shared maps.
-func raceWriter(ctx context.Context, ds *DynamicStore, baseURL string, worker int, wg *sync.WaitGroup) {
+// raceWriter adds, reads, and removes feeds, mutating the shared maps. It counts
+// successful adds so the test can confirm it actually exercised concurrent
+// writes (rather than silently no-op'ing if every AddFeed failed).
+func raceWriter(ctx context.Context, ds *DynamicStore, baseURL string, worker int, wg *sync.WaitGroup, added *atomic.Int64) {
 	defer wg.Done()
 	for j := range 30 {
 		url := fmt.Sprintf("%s/feed-%d-%d", baseURL, worker, j)
@@ -35,6 +38,7 @@ func raceWriter(ctx context.Context, ds *DynamicStore, baseURL string, worker in
 		if err != nil || info == nil {
 			continue
 		}
+		added.Add(1)
 		_, _ = ds.GetFeedAndItems(ctx, info.FeedID)
 		_, _ = ds.RemoveFeed(ctx, info.FeedID)
 	}
@@ -64,9 +68,14 @@ func TestDynamicStore_ConcurrentAccessNoRace(t *testing.T) {
 		t.Fatalf("NewDynamicStore failed: %v", err)
 	}
 
-	ctx := context.Background()
+	// A bounded context so a regression that hangs a fetch fails the test
+	// instead of stalling the whole suite.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	stop := make(chan struct{})
 	var readers, writers sync.WaitGroup
+	var added atomic.Int64
 
 	for range 4 {
 		readers.Add(1)
@@ -74,10 +83,14 @@ func TestDynamicStore_ConcurrentAccessNoRace(t *testing.T) {
 	}
 	for w := range 4 {
 		writers.Add(1)
-		go raceWriter(ctx, ds, srv.URL, w, &writers)
+		go raceWriter(ctx, ds, srv.URL, w, &writers, &added)
 	}
 
 	writers.Wait()
 	close(stop)
 	readers.Wait()
+
+	if added.Load() == 0 {
+		t.Fatal("no AddFeed succeeded; the test did not exercise concurrent map writes")
+	}
 }
