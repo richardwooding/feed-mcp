@@ -46,7 +46,6 @@ type DynamicFeedMetadata struct {
 type DynamicStore struct {
 	*Store
 	config            Config
-	dynamicFeeds      map[string]string               // feedID -> URL for runtime feeds
 	feedMetadata      map[string]*DynamicFeedMetadata // feedID -> metadata
 	dynamicMutex      sync.RWMutex
 	allowRuntimeFeeds bool
@@ -69,7 +68,6 @@ func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, err
 		ds := &DynamicStore{
 			Store:             baseStore,
 			config:            *config,
-			dynamicFeeds:      make(map[string]string),
 			feedMetadata:      make(map[string]*DynamicFeedMetadata),
 			allowRuntimeFeeds: allowRuntimeFeeds,
 		}
@@ -86,7 +84,6 @@ func NewDynamicStore(config *Config, allowRuntimeFeeds bool) (*DynamicStore, err
 	ds := &DynamicStore{
 		Store:             baseStore,
 		config:            *config,
-		dynamicFeeds:      make(map[string]string),
 		feedMetadata:      make(map[string]*DynamicFeedMetadata),
 		allowRuntimeFeeds: allowRuntimeFeeds,
 	}
@@ -222,10 +219,9 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 		cb = gobreaker.NewCircuitBreaker(settings)
 	}
 
-	// Register the feed (and its breaker) in the base store, and record it as a
-	// dynamic feed.
+	// Register the feed (and its breaker) in the base store. Runtime feeds are
+	// identified by their metadata Source, not a separate map.
 	ds.putFeed(feedID, config.URL, cb)
-	ds.dynamicFeeds[feedID] = config.URL
 
 	// Create metadata from the fetch performed above.
 	metadata := &DynamicFeedMetadata{
@@ -304,7 +300,6 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 	itemCount := ds.cachedItemCount(ctx, url)
 
 	ds.deleteFeed(feedID, url)
-	delete(ds.dynamicFeeds, feedID)
 	delete(ds.feedMetadata, feedID)
 	_ = ds.feedCacheManager.Delete(ctx, url) // in-memory; deletion errors are not critical
 

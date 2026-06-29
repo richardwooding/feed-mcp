@@ -122,6 +122,9 @@ func (s *Store) cachedItemCount(ctx context.Context, url string) int {
 	if s.feedCache == nil {
 		return 0
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if feed, err := s.feedCache.Get(ctx, url); err == nil && feed != nil {
 		return len(feed.Items)
 	}
