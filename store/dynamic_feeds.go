@@ -275,13 +275,11 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 		return nil, err
 	}
 
-	// Phase 2: read the item count for the response WITHOUT holding the lock —
-	// a cache miss here triggers a network fetch, and holding dynamicMutex across
-	// it would freeze every other dynamic-store operation (#141).
-	itemCount := 0
-	if feed, err := ds.feedCacheManager.Get(ctx, url); err == nil && feed != nil {
-		itemCount = len(feed.Items)
-	}
+	// Phase 2: read the item count for the response from the cache only — the
+	// feed is being deleted, so a fresh network fetch (which a loadable-cache
+	// miss would trigger, blocking on retries for an offline feed) would be
+	// wasteful. Reports 0 if the feed was never cached.
+	itemCount := ds.cachedItemCount(ctx, url)
 
 	// Phase 3: commit the removal under the lock, re-checking that the feed
 	// wasn't already removed by a concurrent call while we read the count.
@@ -308,24 +306,27 @@ func (ds *DynamicStore) prepareRemoval(feedID string) (url, title string, err er
 	ds.dynamicMutex.RLock()
 	defer ds.dynamicMutex.RUnlock()
 
-	url, exists := ds.feedURL(feedID)
+	feedURL, exists := ds.feedURL(feedID)
 	if !exists {
 		return "", "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with ID %s not found", feedID)).
 			WithOperation("remove_feed").
 			WithComponent("dynamic_store")
 	}
 
+	// Only runtime feeds are removable. Fail safe when metadata is missing:
+	// treat it as non-removable rather than allowing the deletion.
 	metadata := ds.feedMetadata[feedID]
-	if metadata != nil && metadata.Source != mcpserver.FeedSourceRuntime {
-		return "", "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("cannot remove %s feed %s", metadata.Source, feedID)).
+	if metadata == nil || metadata.Source != mcpserver.FeedSourceRuntime {
+		source := "unknown"
+		if metadata != nil {
+			source = string(metadata.Source)
+		}
+		return "", "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("cannot remove %s feed %s", source, feedID)).
 			WithOperation("remove_feed").
 			WithComponent("dynamic_store")
 	}
 
-	if metadata != nil {
-		title = metadata.Title
-	}
-	return url, title, nil
+	return feedURL, metadata.Title, nil
 }
 
 // commitRemoval deletes the feed from the base store and the dynamic maps under

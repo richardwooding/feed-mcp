@@ -76,6 +76,7 @@ type RetryMetrics struct {
 type Store struct {
 	feeds            map[string]string
 	feedCacheManager *cache.LoadableCache[*gofeed.Feed]
+	feedCache        *cache.Cache[*gofeed.Feed]
 	circuitBreakers  map[string]*gobreaker.CircuitBreaker
 	retryMetrics     *RetryMetrics
 	metricsMutex     sync.RWMutex
@@ -111,6 +112,17 @@ func (s *Store) feedURL(id string) (string, bool) {
 	defer s.feedsMu.RUnlock()
 	url, ok := s.feeds[id]
 	return url, ok
+}
+
+// cachedItemCount returns the item count for a feed if it is already in the
+// cache, without triggering the loadable cache's network fetch. It returns 0 on
+// a cache miss — used where a fresh fetch would be wasteful, e.g. removing a
+// feed (which may be offline) just to report how many items it had.
+func (s *Store) cachedItemCount(ctx context.Context, url string) int {
+	if feed, err := s.feedCache.Get(ctx, url); err == nil && feed != nil {
+		return len(feed.Items)
+	}
+	return 0
 }
 
 // urlRegistered reports whether any feed already uses the given URL, under the
@@ -464,9 +476,12 @@ func newStoreInternal(config Config) (*Store, error) {
 		metricsMutex:    sync.RWMutex{},
 	}
 
+	// Keep a reference to the inner (non-loadable) cache so callers can peek it
+	// without triggering the loader's network fetch — see cachedItemCount.
+	s.feedCache = cache.New[*gofeed.Feed](ristrettoStore)
 	s.feedCacheManager = cache.NewLoadable[*gofeed.Feed](
 		s.makeFeedLoader(&config, circuitBreakerEnabled),
-		cache.New[*gofeed.Feed](ristrettoStore),
+		s.feedCache,
 	)
 
 	// Build the ID-to-URL map synchronously without fetching. The cache populates
