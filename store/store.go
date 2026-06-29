@@ -119,6 +119,9 @@ func (s *Store) feedURL(id string) (string, bool) {
 // a cache miss — used where a fresh fetch would be wasteful, e.g. removing a
 // feed (which may be offline) just to report how many items it had.
 func (s *Store) cachedItemCount(ctx context.Context, url string) int {
+	if s.feedCache == nil {
+		return 0
+	}
 	if feed, err := s.feedCache.Get(ctx, url); err == nil && feed != nil {
 		return len(feed.Items)
 	}

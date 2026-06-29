@@ -32,7 +32,6 @@ func TestDynamicStore_AddFeedDoesNotHoldLockAcrossFetch(t *testing.T) {
 	release := make(chan struct{}) // closed to let the slow fetch return
 	var reachedOnce, releaseOnce sync.Once
 	releaseFetch := func() { releaseOnce.Do(func() { close(release) }) }
-	defer releaseFetch()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/slow" {
@@ -42,7 +41,12 @@ func TestDynamicStore_AddFeedDoesNotHoldLockAcrossFetch(t *testing.T) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>t</title></channel></rss>`))
 	}))
+	// Order matters: releaseFetch must run before srv.Close so a blocked handler
+	// is unblocked first — otherwise srv.Close (which waits for in-flight
+	// requests) would deadlock on a test failure. Defers run LIFO, so this
+	// srv.Close is declared first and runs last.
 	defer srv.Close()
+	defer releaseFetch()
 
 	cfg := Config{
 		Feeds:             []string{srv.URL + "/seed"},

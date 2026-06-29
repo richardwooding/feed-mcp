@@ -195,6 +195,12 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	ds.dynamicMutex.Lock()
 	defer ds.dynamicMutex.Unlock()
 
+	// The caller may have given up while we waited for the lock; don't register
+	// the feed in that case.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Re-check under the write lock: a concurrent AddFeed for the same URL may
 	// have registered it while we were fetching.
 	if ds.urlRegistered(config.URL) {
