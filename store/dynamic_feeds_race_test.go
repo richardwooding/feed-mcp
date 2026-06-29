@@ -12,6 +12,34 @@ import (
 	"github.com/richardwooding/feed-mcp/mcpserver"
 )
 
+// raceReader hammers the inherited base-Store read paths until stop is closed.
+func raceReader(ctx context.Context, ds *DynamicStore, stop <-chan struct{}, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		_, _ = ds.GetAllFeeds(ctx)
+		_, _ = ds.ListManagedFeeds(ctx)
+	}
+}
+
+// raceWriter adds, reads, and removes feeds, mutating the shared maps.
+func raceWriter(ctx context.Context, ds *DynamicStore, baseURL string, worker int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for j := range 30 {
+		url := fmt.Sprintf("%s/feed-%d-%d", baseURL, worker, j)
+		info, err := ds.AddFeed(ctx, mcpserver.FeedConfig{URL: url})
+		if err != nil || info == nil {
+			continue
+		}
+		_, _ = ds.GetFeedAndItems(ctx, info.FeedID)
+		_, _ = ds.RemoveFeed(ctx, info.FeedID)
+	}
+}
+
 // TestDynamicStore_ConcurrentAccessNoRace exercises the data race fixed in #142:
 // DynamicStore.AddFeed/RemoveFeed mutate the base Store's feeds and
 // circuitBreakers maps while the (inherited) GetAllFeeds/GetFeedAndItems read
@@ -40,38 +68,13 @@ func TestDynamicStore_ConcurrentAccessNoRace(t *testing.T) {
 	stop := make(chan struct{})
 	var readers, writers sync.WaitGroup
 
-	// Readers: hammer the inherited base-Store read paths.
 	for range 4 {
 		readers.Add(1)
-		go func() {
-			defer readers.Done()
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
-				_, _ = ds.GetAllFeeds(ctx)
-				_, _ = ds.ListManagedFeeds(ctx)
-			}
-		}()
+		go raceReader(ctx, ds, stop, &readers)
 	}
-
-	// Writers: add, read, and remove feeds, mutating the shared maps.
 	for w := range 4 {
 		writers.Add(1)
-		go func(w int) {
-			defer writers.Done()
-			for j := range 30 {
-				url := fmt.Sprintf("%s/feed-%d-%d", srv.URL, w, j)
-				info, err := ds.AddFeed(ctx, mcpserver.FeedConfig{URL: url})
-				if err != nil || info == nil {
-					continue
-				}
-				_, _ = ds.GetFeedAndItems(ctx, info.FeedID)
-				_, _ = ds.RemoveFeed(ctx, info.FeedID)
-			}
-		}(w)
+		go raceWriter(ctx, ds, srv.URL, w, &writers)
 	}
 
 	writers.Wait()
