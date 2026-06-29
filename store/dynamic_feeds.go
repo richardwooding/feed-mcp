@@ -313,61 +313,69 @@ func (ds *DynamicStore) RemoveFeedByURL(ctx context.Context, url string) (*mcpse
 
 // ListManagedFeeds implements DynamicFeedManager.ListManagedFeeds
 func (ds *DynamicStore) ListManagedFeeds(ctx context.Context) ([]mcpserver.ManagedFeedInfo, error) {
+	// Snapshot the feeds and their metadata under the locks, then release them
+	// before the per-feed network fetches below — holding dynamicMutex across
+	// checkFeedCache would block AddFeed/RemoveFeed for the duration of every
+	// cache load. Locks are taken dynamicMutex (outer) → feedsMu (inner, via
+	// feedEntries), matching the ordering used elsewhere.
+	type feedSnapshot struct {
+		id   string
+		url  string
+		meta DynamicFeedMetadata
+	}
 	ds.dynamicMutex.RLock()
-	defer ds.dynamicMutex.RUnlock()
-
 	entries := ds.feedEntries()
-	feeds := make([]mcpserver.ManagedFeedInfo, 0, len(entries))
-
+	snapshots := make([]feedSnapshot, 0, len(entries))
 	for _, entry := range entries {
-		feedID, url := entry.id, entry.url
-		metadata := ds.feedMetadata[feedID]
-		if metadata == nil {
-			// Fallback metadata for missing entries
-			metadata = &DynamicFeedMetadata{
-				AddedAt: time.Now(),
-				Source:  mcpserver.FeedSourceStartup,
-				Status:  "active",
-			}
+		meta := DynamicFeedMetadata{
+			AddedAt: time.Now(),
+			Source:  mcpserver.FeedSourceStartup,
+			Status:  "active",
 		}
+		if m := ds.feedMetadata[entry.id]; m != nil {
+			meta = *m
+		}
+		snapshots = append(snapshots, feedSnapshot{id: entry.id, url: entry.url, meta: meta})
+	}
+	ds.dynamicMutex.RUnlock()
 
-		// Get current item count and update status
-		cacheInfo := ds.checkFeedCache(ctx, url)
+	feeds := make([]mcpserver.ManagedFeedInfo, 0, len(snapshots))
+	for i := range snapshots {
+		snap := &snapshots[i]
+		// Get current item count and status (network fetch; no lock held).
+		cacheInfo := ds.checkFeedCache(ctx, snap.url)
 		itemCount := cacheInfo.ItemCount
-		var status string
+		status := cacheInfo.Status
 		var lastError string
 		var lastFetched time.Time
 
 		if cacheInfo.Found {
-			status = cacheInfo.Status
-			lastError = ""
 			lastFetched = cacheInfo.LastFetched
 		} else {
-			status = cacheInfo.Status
 			lastError = cacheInfo.LastError
-			lastFetched = metadata.LastFetched // Keep original if cache fetch failed
+			lastFetched = snap.meta.LastFetched // Keep original if cache fetch failed
 		}
 
 		// Title falls back to the freshly-fetched cacheInfo.Title when metadata
 		// is blank — startup/OPML feeds seed empty titles (see #114 lazy init)
 		// and rely on the first list_managed_feeds call to surface the real title.
-		title := metadata.Title
+		title := snap.meta.Title
 		if title == "" && cacheInfo.Found {
 			title = cacheInfo.Title
 		}
 
 		feeds = append(feeds, mcpserver.ManagedFeedInfo{
-			FeedID:      feedID,
-			URL:         url,
+			FeedID:      snap.id,
+			URL:         snap.url,
 			Title:       title,
-			Category:    metadata.Category,
-			Description: metadata.Description,
+			Category:    snap.meta.Category,
+			Description: snap.meta.Description,
 			Status:      status,
 			LastFetched: lastFetched,
 			LastError:   lastError,
 			ItemCount:   itemCount,
-			AddedAt:     metadata.AddedAt,
-			Source:      string(metadata.Source),
+			AddedAt:     snap.meta.AddedAt,
+			Source:      string(snap.meta.Source),
 		})
 	}
 
