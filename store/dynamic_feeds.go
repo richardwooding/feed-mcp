@@ -137,8 +137,8 @@ func (ds *DynamicStore) initializeStartupFeedMetadata() {
 		source = mcpserver.FeedSourceOPML
 	}
 
-	for feedID := range ds.feeds {
-		ds.feedMetadata[feedID] = &DynamicFeedMetadata{
+	for _, entry := range ds.feedEntries() {
+		ds.feedMetadata[entry.id] = &DynamicFeedMetadata{
 			AddedAt: time.Now(), // Approximate startup time
 			Source:  source,
 			Status:  statusActive,
@@ -165,9 +165,10 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	ds.dynamicMutex.Lock()
 	defer ds.dynamicMutex.Unlock()
 
-	// Check if feed already exists (ds.feeds contains all feeds including dynamic ones)
-	for _, url := range ds.feeds {
-		if url == config.URL {
+	// Check if feed already exists (the feeds map contains all feeds, including
+	// dynamic ones).
+	for _, entry := range ds.feedEntries() {
+		if entry.url == config.URL {
 			return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with URL %s already exists", config.URL)).
 				WithOperation("add_feed").
 				WithComponent("dynamic_store")
@@ -177,8 +178,9 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	// Generate feed ID
 	feedID := model.GenerateFeedID(config.URL)
 
-	// Add circuit breaker if enabled
-	if ds.circuitBreakers != nil {
+	// Build a circuit breaker if circuit breaking is enabled.
+	var cb *gobreaker.CircuitBreaker
+	if ds.hasCircuitBreakers() {
 		settings := gobreaker.Settings{
 			Name:        fmt.Sprintf("feed-%s", config.URL),
 			MaxRequests: ds.config.CircuitBreakerMaxRequests,
@@ -188,12 +190,13 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 				return counts.ConsecutiveFailures >= ds.config.CircuitBreakerFailureThreshold
 			},
 		}
-		ds.circuitBreakers[config.URL] = gobreaker.NewCircuitBreaker(settings)
+		cb = gobreaker.NewCircuitBreaker(settings)
 	}
 
-	// Add to dynamic feeds
+	// Register the feed (and its breaker) in the base store, and record it as a
+	// dynamic feed.
+	ds.putFeed(feedID, config.URL, cb)
 	ds.dynamicFeeds[feedID] = config.URL
-	ds.feeds[feedID] = config.URL
 
 	// Create metadata
 	metadata := &DynamicFeedMetadata{
@@ -246,7 +249,7 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 	ds.dynamicMutex.Lock()
 	defer ds.dynamicMutex.Unlock()
 
-	url, exists := ds.feeds[feedID]
+	url, exists := ds.feedURL(feedID)
 	if !exists {
 		return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with ID %s not found", feedID)).
 			WithOperation("remove_feed").
@@ -268,15 +271,10 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 		itemCount = len(feed.Items)
 	}
 
-	// Remove from maps
-	delete(ds.feeds, feedID)
+	// Remove from the base store (feed + circuit breaker) and the dynamic maps.
+	ds.deleteFeed(feedID, url)
 	delete(ds.dynamicFeeds, feedID)
 	delete(ds.feedMetadata, feedID)
-
-	// Remove circuit breaker
-	if ds.circuitBreakers != nil {
-		delete(ds.circuitBreakers, url)
-	}
 
 	// Clear from cache
 	_ = ds.feedCacheManager.Delete(ctx, url) // Cache deletion errors are not critical
@@ -296,15 +294,13 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 
 // RemoveFeedByURL implements DynamicFeedManager.RemoveFeedByURL
 func (ds *DynamicStore) RemoveFeedByURL(ctx context.Context, url string) (*mcpserver.RemovedFeedInfo, error) {
-	ds.dynamicMutex.RLock()
 	var feedID string
-	for id, feedURL := range ds.feeds {
-		if feedURL == url {
-			feedID = id
+	for _, entry := range ds.feedEntries() {
+		if entry.url == url {
+			feedID = entry.id
 			break
 		}
 	}
-	ds.dynamicMutex.RUnlock()
 
 	if feedID == "" {
 		return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with URL %s not found", url)).
@@ -317,59 +313,69 @@ func (ds *DynamicStore) RemoveFeedByURL(ctx context.Context, url string) (*mcpse
 
 // ListManagedFeeds implements DynamicFeedManager.ListManagedFeeds
 func (ds *DynamicStore) ListManagedFeeds(ctx context.Context) ([]mcpserver.ManagedFeedInfo, error) {
+	// Snapshot the feeds and their metadata under the locks, then release them
+	// before the per-feed network fetches below — holding dynamicMutex across
+	// checkFeedCache would block AddFeed/RemoveFeed for the duration of every
+	// cache load. Locks are taken dynamicMutex (outer) → feedsMu (inner, via
+	// feedEntries), matching the ordering used elsewhere.
+	type feedSnapshot struct {
+		id   string
+		url  string
+		meta DynamicFeedMetadata
+	}
 	ds.dynamicMutex.RLock()
-	defer ds.dynamicMutex.RUnlock()
-
-	feeds := make([]mcpserver.ManagedFeedInfo, 0, len(ds.feeds))
-
-	for feedID, url := range ds.feeds {
-		metadata := ds.feedMetadata[feedID]
-		if metadata == nil {
-			// Fallback metadata for missing entries
-			metadata = &DynamicFeedMetadata{
-				AddedAt: time.Now(),
-				Source:  mcpserver.FeedSourceStartup,
-				Status:  "active",
-			}
+	entries := ds.feedEntries()
+	snapshots := make([]feedSnapshot, 0, len(entries))
+	for _, entry := range entries {
+		meta := DynamicFeedMetadata{
+			AddedAt: time.Now(),
+			Source:  mcpserver.FeedSourceStartup,
+			Status:  "active",
 		}
+		if m := ds.feedMetadata[entry.id]; m != nil {
+			meta = *m
+		}
+		snapshots = append(snapshots, feedSnapshot{id: entry.id, url: entry.url, meta: meta})
+	}
+	ds.dynamicMutex.RUnlock()
 
-		// Get current item count and update status
-		cacheInfo := ds.checkFeedCache(ctx, url)
+	feeds := make([]mcpserver.ManagedFeedInfo, 0, len(snapshots))
+	for i := range snapshots {
+		snap := &snapshots[i]
+		// Get current item count and status (network fetch; no lock held).
+		cacheInfo := ds.checkFeedCache(ctx, snap.url)
 		itemCount := cacheInfo.ItemCount
-		var status string
+		status := cacheInfo.Status
 		var lastError string
 		var lastFetched time.Time
 
 		if cacheInfo.Found {
-			status = cacheInfo.Status
-			lastError = ""
 			lastFetched = cacheInfo.LastFetched
 		} else {
-			status = cacheInfo.Status
 			lastError = cacheInfo.LastError
-			lastFetched = metadata.LastFetched // Keep original if cache fetch failed
+			lastFetched = snap.meta.LastFetched // Keep original if cache fetch failed
 		}
 
 		// Title falls back to the freshly-fetched cacheInfo.Title when metadata
 		// is blank — startup/OPML feeds seed empty titles (see #114 lazy init)
 		// and rely on the first list_managed_feeds call to surface the real title.
-		title := metadata.Title
+		title := snap.meta.Title
 		if title == "" && cacheInfo.Found {
 			title = cacheInfo.Title
 		}
 
 		feeds = append(feeds, mcpserver.ManagedFeedInfo{
-			FeedID:      feedID,
-			URL:         url,
+			FeedID:      snap.id,
+			URL:         snap.url,
 			Title:       title,
-			Category:    metadata.Category,
-			Description: metadata.Description,
+			Category:    snap.meta.Category,
+			Description: snap.meta.Description,
 			Status:      status,
 			LastFetched: lastFetched,
 			LastError:   lastError,
 			ItemCount:   itemCount,
-			AddedAt:     metadata.AddedAt,
-			Source:      string(metadata.Source),
+			AddedAt:     snap.meta.AddedAt,
+			Source:      string(snap.meta.Source),
 		})
 	}
 
@@ -378,9 +384,7 @@ func (ds *DynamicStore) ListManagedFeeds(ctx context.Context) ([]mcpserver.Manag
 
 // RefreshFeed implements DynamicFeedManager.RefreshFeed
 func (ds *DynamicStore) RefreshFeed(ctx context.Context, feedID string) (*mcpserver.RefreshFeedInfo, error) {
-	ds.dynamicMutex.RLock()
-	url, exists := ds.feeds[feedID]
-	ds.dynamicMutex.RUnlock()
+	url, exists := ds.feedURL(feedID)
 
 	if !exists {
 		return &mcpserver.RefreshFeedInfo{
