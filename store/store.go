@@ -79,6 +79,77 @@ type Store struct {
 	circuitBreakers  map[string]*gobreaker.CircuitBreaker
 	retryMetrics     *RetryMetrics
 	metricsMutex     sync.RWMutex
+	// feedsMu guards the feeds and circuitBreakers maps. The base Store only
+	// reads them after construction, but DynamicStore mutates them at runtime
+	// (add_feed / remove_feed) concurrently with reads here, so every access to
+	// either map — base or dynamic — must hold this lock. It is held only around
+	// the map operations themselves, never across a network fetch.
+	feedsMu sync.RWMutex
+}
+
+// feedEntry pairs a feed's ID with its URL for snapshotting the feeds map.
+type feedEntry struct {
+	id  string
+	url string
+}
+
+// feedEntries returns a snapshot of the configured feeds, taken under the read
+// lock so iteration can proceed without holding the lock across network fetches.
+func (s *Store) feedEntries() []feedEntry {
+	s.feedsMu.RLock()
+	defer s.feedsMu.RUnlock()
+	entries := make([]feedEntry, 0, len(s.feeds))
+	for id, url := range s.feeds {
+		entries = append(entries, feedEntry{id: id, url: url})
+	}
+	return entries
+}
+
+// feedURL returns the URL for a feed ID under the read lock.
+func (s *Store) feedURL(id string) (string, bool) {
+	s.feedsMu.RLock()
+	defer s.feedsMu.RUnlock()
+	url, ok := s.feeds[id]
+	return url, ok
+}
+
+// hasCircuitBreakers reports whether circuit breakers are configured.
+func (s *Store) hasCircuitBreakers() bool {
+	s.feedsMu.RLock()
+	defer s.feedsMu.RUnlock()
+	return s.circuitBreakers != nil
+}
+
+// circuitBreaker returns the circuit breaker for a URL under the read lock.
+func (s *Store) circuitBreaker(url string) (*gobreaker.CircuitBreaker, bool) {
+	s.feedsMu.RLock()
+	defer s.feedsMu.RUnlock()
+	if s.circuitBreakers == nil {
+		return nil, false
+	}
+	cb, ok := s.circuitBreakers[url]
+	return cb, ok
+}
+
+// putFeed registers a feed (and, when configured, its circuit breaker) under the
+// write lock.
+func (s *Store) putFeed(id, url string, cb *gobreaker.CircuitBreaker) {
+	s.feedsMu.Lock()
+	defer s.feedsMu.Unlock()
+	s.feeds[id] = url
+	if cb != nil && s.circuitBreakers != nil {
+		s.circuitBreakers[url] = cb
+	}
+}
+
+// deleteFeed removes a feed and its circuit breaker under the write lock.
+func (s *Store) deleteFeed(id, url string) {
+	s.feedsMu.Lock()
+	defer s.feedsMu.Unlock()
+	delete(s.feeds, id)
+	if s.circuitBreakers != nil {
+		delete(s.circuitBreakers, url)
+	}
 }
 
 // newPooledTransport builds an *http.Transport with the given connection pool
@@ -381,7 +452,7 @@ func newStoreInternal(config Config) (*Store, error) {
 	}
 
 	s.feedCacheManager = cache.NewLoadable[*gofeed.Feed](
-		s.makeFeedLoader(&config, circuitBreakers, circuitBreakerEnabled),
+		s.makeFeedLoader(&config, circuitBreakerEnabled),
 		cache.New[*gofeed.Feed](ristrettoStore),
 	)
 
@@ -494,7 +565,6 @@ func buildCircuitBreakers(config *Config, enabled bool) map[string]*gobreaker.Ci
 // on demand, optionally guarded by a per-feed circuit breaker.
 func (s *Store) makeFeedLoader(
 	config *Config,
-	circuitBreakers map[string]*gobreaker.CircuitBreaker,
 	circuitBreakerEnabled bool,
 ) func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
 	return func(ctx context.Context, key any) (*gofeed.Feed, []store.Option, error) {
@@ -515,7 +585,7 @@ func (s *Store) makeFeedLoader(
 
 		// Use circuit breaker if enabled and configured for this URL.
 		if circuitBreakerEnabled {
-			if cb, exists := circuitBreakers[url]; exists {
+			if cb, exists := s.circuitBreaker(url); exists {
 				feed, err := s.fetchWithCircuitBreaker(ctx, url, fp, config, cb)
 				if err != nil {
 					return nil, nil, err
@@ -567,10 +637,11 @@ func (s *Store) fetchWithCircuitBreaker(
 
 // GetAllFeeds returns all configured feeds with their current status
 func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
-	results := make([]*model.FeedResult, len(s.feeds))
+	// Snapshot the feeds under the read lock so the fetches below don't hold it.
+	entries := s.feedEntries()
+	results := make([]*model.FeedResult, len(entries))
 	wg := &sync.WaitGroup{}
-	idx := 0
-	for id, url := range s.feeds {
+	for idx, entry := range entries {
 		wg.Add(1)
 		go func(idx int, id string, url string) {
 			defer wg.Done()
@@ -582,10 +653,8 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 			}
 
 			// Check circuit breaker state
-			if s.circuitBreakers != nil {
-				if cb, exists := s.circuitBreakers[url]; exists {
-					result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
-				}
+			if cb, exists := s.circuitBreaker(url); exists {
+				result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
 			}
 
 			if err != nil {
@@ -596,8 +665,7 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 			}
 
 			results[idx] = result
-		}(idx, id, url)
-		idx++
+		}(idx, entry.id, entry.url)
 	}
 	wg.Wait()
 	return results, nil
@@ -605,7 +673,7 @@ func (s *Store) GetAllFeeds(ctx context.Context) ([]*model.FeedResult, error) {
 
 // GetFeedAndItems returns a specific feed with all its items
 func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndItemsResult, error) {
-	if url, exists := s.feeds[id]; exists {
+	if url, exists := s.feedURL(id); exists {
 		feed, err := s.feedCacheManager.Get(ctx, url)
 
 		result := &model.FeedAndItemsResult{
@@ -614,10 +682,8 @@ func (s *Store) GetFeedAndItems(ctx context.Context, id string) (*model.FeedAndI
 		}
 
 		// Check circuit breaker state
-		if s.circuitBreakers != nil {
-			if cb, exists := s.circuitBreakers[url]; exists {
-				result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
-			}
+		if cb, exists := s.circuitBreaker(url); exists {
+			result.CircuitBreakerOpen = cb.State() == gobreaker.StateOpen
 		}
 
 		if err != nil {
