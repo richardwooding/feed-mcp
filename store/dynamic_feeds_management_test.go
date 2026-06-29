@@ -65,9 +65,6 @@ func TestDynamicStore_RemoveFeed_Success(t *testing.T) {
 	if _, ok := ds.feeds[feedID]; ok {
 		t.Error("feed still present in ds.feeds after removal")
 	}
-	if _, ok := ds.dynamicFeeds[feedID]; ok {
-		t.Error("feed still present in ds.dynamicFeeds after removal")
-	}
 	if _, ok := ds.feedMetadata[feedID]; ok {
 		t.Error("metadata still present after removal")
 	}
