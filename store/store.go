@@ -113,6 +113,19 @@ func (s *Store) feedURL(id string) (string, bool) {
 	return url, ok
 }
 
+// urlRegistered reports whether any feed already uses the given URL, under the
+// read lock.
+func (s *Store) urlRegistered(url string) bool {
+	s.feedsMu.RLock()
+	defer s.feedsMu.RUnlock()
+	for _, u := range s.feeds {
+		if u == url {
+			return true
+		}
+	}
+	return false
+}
+
 // hasCircuitBreakers reports whether circuit breakers are configured.
 func (s *Store) hasCircuitBreakers() bool {
 	s.feedsMu.RLock()
