@@ -125,17 +125,16 @@ func (s *Store) cachedItemCount(ctx context.Context, url string) int {
 	return 0
 }
 
-// urlRegistered reports whether any feed already uses the given URL, under the
-// read lock.
+// urlRegistered reports whether a feed already uses the given URL, under the
+// read lock. Feed IDs are GenerateFeedID(url), so this is an O(1) lookup; the
+// value comparison guards against a hash collision mapping a different URL to
+// the same ID.
 func (s *Store) urlRegistered(url string) bool {
+	id := model.GenerateFeedID(url)
 	s.feedsMu.RLock()
 	defer s.feedsMu.RUnlock()
-	for _, u := range s.feeds {
-		if u == url {
-			return true
-		}
-	}
-	return false
+	existing, ok := s.feeds[id]
+	return ok && existing == url
 }
 
 // hasCircuitBreakers reports whether circuit breakers are configured.

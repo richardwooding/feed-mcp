@@ -269,46 +269,12 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 		ctx = context.Background()
 	}
 
-	// Phase 1: validate the removal and capture what we need, under the lock.
-	url, title, err := ds.prepareRemoval(feedID)
-	if err != nil {
-		return nil, err
-	}
+	ds.dynamicMutex.Lock()
+	defer ds.dynamicMutex.Unlock()
 
-	// Phase 2: read the item count for the response from the cache only — the
-	// feed is being deleted, so a fresh network fetch (which a loadable-cache
-	// miss would trigger, blocking on retries for an offline feed) would be
-	// wasteful. Reports 0 if the feed was never cached.
-	itemCount := ds.cachedItemCount(ctx, url)
-
-	// Phase 3: commit the removal under the lock, re-checking that the feed
-	// wasn't already removed by a concurrent call while we read the count.
-	if !ds.commitRemoval(feedID, url) {
-		return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with ID %s not found", feedID)).
-			WithOperation("remove_feed").
-			WithComponent("dynamic_store")
-	}
-
-	// Clear from cache (no store lock needed; deletion errors are not critical).
-	_ = ds.feedCacheManager.Delete(ctx, url)
-
-	return &mcpserver.RemovedFeedInfo{
-		FeedID:       feedID,
-		URL:          url,
-		Title:        title,
-		ItemsRemoved: itemCount,
-	}, nil
-}
-
-// prepareRemoval verifies that feedID exists and is a runtime feed (removable),
-// returning its URL and title. It holds dynamicMutex only for the map reads.
-func (ds *DynamicStore) prepareRemoval(feedID string) (url, title string, err error) {
-	ds.dynamicMutex.RLock()
-	defer ds.dynamicMutex.RUnlock()
-
-	feedURL, exists := ds.feedURL(feedID)
+	url, exists := ds.feedURL(feedID)
 	if !exists {
-		return "", "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with ID %s not found", feedID)).
+		return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("feed with ID %s not found", feedID)).
 			WithOperation("remove_feed").
 			WithComponent("dynamic_store")
 	}
@@ -321,28 +287,27 @@ func (ds *DynamicStore) prepareRemoval(feedID string) (url, title string, err er
 		if metadata != nil {
 			source = string(metadata.Source)
 		}
-		return "", "", model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("cannot remove %s feed %s", source, feedID)).
+		return nil, model.NewFeedError(model.ErrorTypeValidation, fmt.Sprintf("cannot remove %s feed %s", source, feedID)).
 			WithOperation("remove_feed").
 			WithComponent("dynamic_store")
 	}
 
-	return feedURL, metadata.Title, nil
-}
+	// Item count for the response comes from the cache only — no network fetch
+	// (the feed is being deleted), so all operations below are in-memory and the
+	// lock is never held across I/O.
+	itemCount := ds.cachedItemCount(ctx, url)
 
-// commitRemoval deletes the feed from the base store and the dynamic maps under
-// the write lock. It returns false if the feed no longer exists (already removed
-// by a concurrent call).
-func (ds *DynamicStore) commitRemoval(feedID, url string) bool {
-	ds.dynamicMutex.Lock()
-	defer ds.dynamicMutex.Unlock()
-
-	if _, exists := ds.feedURL(feedID); !exists {
-		return false
-	}
 	ds.deleteFeed(feedID, url)
 	delete(ds.dynamicFeeds, feedID)
 	delete(ds.feedMetadata, feedID)
-	return true
+	_ = ds.feedCacheManager.Delete(ctx, url) // in-memory; deletion errors are not critical
+
+	return &mcpserver.RemovedFeedInfo{
+		FeedID:       feedID,
+		URL:          url,
+		Title:        metadata.Title,
+		ItemsRemoved: itemCount,
+	}, nil
 }
 
 // RemoveFeedByURL implements DynamicFeedManager.RemoveFeedByURL
