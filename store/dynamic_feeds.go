@@ -184,6 +184,12 @@ func (ds *DynamicStore) AddFeed(ctx context.Context, config mcpserver.FeedConfig
 	cacheInfo := ds.checkFeedCache(ctx, config.URL)
 	itemCount := cacheInfo.ItemCount
 
+	// If the caller aborted or timed out during the fetch, don't register the
+	// feed in an error state — surface the context error instead.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	feedID := model.GenerateFeedID(config.URL)
 
 	ds.dynamicMutex.Lock()
@@ -257,6 +263,10 @@ func (ds *DynamicStore) RemoveFeed(ctx context.Context, feedID string) (*mcpserv
 		return nil, model.NewFeedError(model.ErrorTypeConfiguration, "runtime feed management is not enabled").
 			WithOperation("remove_feed").
 			WithComponent("dynamic_store")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	// Phase 1: validate the removal and capture what we need, under the lock.

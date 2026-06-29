@@ -13,6 +13,71 @@ import (
 	"github.com/richardwooding/feed-mcp/mcpserver"
 )
 
+// waitOrFail fails the test if ch doesn't fire within d.
+func waitOrFail(t *testing.T, ch <-chan struct{}, d time.Duration, msg string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(d):
+		t.Fatal(msg)
+	}
+}
+
+// TestDynamicStore_AddFeedDoesNotHoldLockAcrossFetch guards the #141 fix: while
+// AddFeed is blocked on its initial (slow) feed fetch, other dynamic-store
+// operations must still complete — the store-wide lock must not be held across
+// the fetch.
+func TestDynamicStore_AddFeedDoesNotHoldLockAcrossFetch(t *testing.T) {
+	reached := make(chan struct{}) // closed when the slow fetch handler is entered
+	release := make(chan struct{}) // closed to let the slow fetch return
+	var reachedOnce, releaseOnce sync.Once
+	releaseFetch := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseFetch()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/slow" {
+			reachedOnce.Do(func() { close(reached) })
+			<-release
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>t</title></channel></rss>`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{
+		Feeds:             []string{srv.URL + "/seed"},
+		AllowPrivateIPs:   true,
+		RequestsPerSecond: 1000,
+		BurstCapacity:     1000,
+		ExpireAfter:       time.Hour,
+	}
+	ds, err := NewDynamicStore(&cfg, true)
+	if err != nil {
+		t.Fatalf("NewDynamicStore failed: %v", err)
+	}
+	ctx := context.Background()
+
+	addDone := make(chan struct{})
+	go func() {
+		defer close(addDone)
+		_, _ = ds.AddFeed(ctx, mcpserver.FeedConfig{URL: srv.URL + "/slow"})
+	}()
+
+	waitOrFail(t, reached, 5*time.Second, "AddFeed never reached the slow fetch")
+
+	// AddFeed is now blocked inside the fetch. A concurrent operation must not be
+	// blocked behind it — if the lock were held across the fetch, this would hang.
+	opDone := make(chan struct{})
+	go func() {
+		defer close(opDone)
+		_, _ = ds.ListManagedFeeds(ctx)
+	}()
+	waitOrFail(t, opDone, 3*time.Second, "ListManagedFeeds blocked while AddFeed was fetching (lock held across fetch?)")
+
+	releaseFetch()
+	waitOrFail(t, addDone, 5*time.Second, "AddFeed did not finish after the fetch was released")
+}
+
 // raceReader hammers the inherited base-Store read paths until stop is closed.
 func raceReader(ctx context.Context, ds *DynamicStore, stop <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
