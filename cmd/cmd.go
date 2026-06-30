@@ -117,6 +117,16 @@ func validateStartupFeedURLs(ctx context.Context, feedURLs []string, allowPrivat
 	return nil
 }
 
+// storeRateLimiterIdleTimeout maps the CLI flag value to the store's semantics.
+// The store treats 0 as "use the default" (1h), but the CLI documents 0 as
+// "disable eviction", so an explicit 0 becomes a negative (disabled) duration.
+func storeRateLimiterIdleTimeout(flag time.Duration) time.Duration {
+	if flag == 0 {
+		return -1
+	}
+	return flag
+}
+
 // Run executes the feed MCP server with the given configuration
 func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 	transport, err := model.ParseTransport(c.Transport)
@@ -158,15 +168,6 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		return err
 	}
 
-	// The store treats a zero RateLimiterIdleTimeout as "unset" and applies the
-	// default (1h). The CLI, however, documents 0 as "disable eviction", so map
-	// an explicit 0 to a negative duration, which the store passes through as
-	// "disabled".
-	rateLimiterIdleTimeout := c.RateLimiterIdleTimeout
-	if rateLimiterIdleTimeout == 0 {
-		rateLimiterIdleTimeout = -1
-	}
-
 	storeConfig := store.Config{
 		Feeds:                  feedURLs,
 		OPML:                   c.OPML, // Pass OPML path for metadata source detection
@@ -174,7 +175,7 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		ExpireAfter:            c.ExpireAfter,
 		RequestsPerSecond:      c.RequestsPerSecond,
 		BurstCapacity:          c.BurstCapacity,
-		RateLimiterIdleTimeout: rateLimiterIdleTimeout,
+		RateLimiterIdleTimeout: storeRateLimiterIdleTimeout(c.RateLimiterIdleTimeout),
 		MaxIdleConns:           c.MaxIdleConns,
 		MaxConnsPerHost:        c.MaxConnsPerHost,
 		MaxIdleConnsPerHost:    c.MaxIdleConnsPerHost,
