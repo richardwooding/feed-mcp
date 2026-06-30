@@ -210,7 +210,7 @@ func BenchmarkHTTPClient_ConnectionReuse(b *testing.B) {
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
 		}
-		client := NewRateLimitedHTTPClient(1000.0, 1000, poolConfig, true) // High limits to avoid rate limiting; allow loopback for the httptest server
+		client := NewRateLimitedHTTPClient(1000.0, 1000, poolConfig, true, 0) // High limits to avoid rate limiting; allow loopback for the httptest server
 
 		b.ResetTimer()
 
@@ -231,7 +231,7 @@ func BenchmarkHTTPClient_ConnectionReuse(b *testing.B) {
 			MaxIdleConnsPerHost: 1,
 			IdleConnTimeout:     1 * time.Second,
 		}
-		client := NewRateLimitedHTTPClient(1000.0, 1000, poolConfig, true) // High limits to avoid rate limiting; allow loopback for the httptest server
+		client := NewRateLimitedHTTPClient(1000.0, 1000, poolConfig, true, 0) // High limits to avoid rate limiting; allow loopback for the httptest server
 
 		b.ResetTimer()
 

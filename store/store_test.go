@@ -173,7 +173,7 @@ func TestNewRateLimitedHTTPClient(t *testing.T) {
 		MaxIdleConnsPerHost: 5,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	client := NewRateLimitedHTTPClient(1.0, 2, poolConfig, false)
+	client := NewRateLimitedHTTPClient(1.0, 2, poolConfig, false, 0)
 
 	if client == nil {
 		t.Fatal("expected client to be non-nil")
@@ -200,7 +200,7 @@ func TestRateLimitedHTTPClient_BlocksLoopbackAtDial(t *testing.T) {
 
 	poolConfig := HTTPPoolConfig{MaxIdleConns: 10, MaxConnsPerHost: 5, MaxIdleConnsPerHost: 5, IdleConnTimeout: 90 * time.Second}
 
-	blocked := NewRateLimitedHTTPClient(10.0, 10, poolConfig, false)
+	blocked := NewRateLimitedHTTPClient(10.0, 10, poolConfig, false, 0)
 	resp, err := blocked.Get(srv.URL)
 	if err == nil {
 		_ = resp.Body.Close()
@@ -211,7 +211,7 @@ func TestRateLimitedHTTPClient_BlocksLoopbackAtDial(t *testing.T) {
 	}
 
 	// With allowPrivateIPs=true the same request connects.
-	allowed := NewRateLimitedHTTPClient(10.0, 10, poolConfig, true)
+	allowed := NewRateLimitedHTTPClient(10.0, 10, poolConfig, true, 0)
 	resp, err = allowed.Get(srv.URL)
 	if err != nil {
 		t.Fatalf("allowPrivateIPs client.Get(%s) = %v, want success", srv.URL, err)
@@ -242,7 +242,7 @@ func TestRateLimitedTransport_RateLimit(t *testing.T) {
 	}
 	// allowPrivateIPs is true so the guarded transport can dial the loopback
 	// httptest server; the test is exercising rate limiting, not SSRF blocking.
-	client := NewRateLimitedHTTPClient(1.0, 1, poolConfig, true)
+	client := NewRateLimitedHTTPClient(1.0, 1, poolConfig, true, 0)
 
 	start := time.Now()
 
