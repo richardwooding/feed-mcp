@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateStartupFeedURLs_NoURLs(t *testing.T) {
@@ -31,5 +32,17 @@ func TestValidateStartupFeedURLs_PropagatesCancellation(t *testing.T) {
 	err := validateStartupFeedURLs(ctx, []string{"http://example.com/feed"}, false)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("validateStartupFeedURLs(canceled) = %v, want context.Canceled", err)
+	}
+}
+
+func TestStoreRateLimiterIdleTimeout(t *testing.T) {
+	// 0 from the CLI means "disable eviction" → mapped to a negative duration
+	// (the store treats 0 as "use default", so it must not stay 0).
+	if got := storeRateLimiterIdleTimeout(0); got >= 0 {
+		t.Errorf("storeRateLimiterIdleTimeout(0) = %v, want a negative (disabled) value", got)
+	}
+	// A positive value passes through unchanged.
+	if got := storeRateLimiterIdleTimeout(time.Hour); got != time.Hour {
+		t.Errorf("storeRateLimiterIdleTimeout(1h) = %v, want 1h", got)
 	}
 }

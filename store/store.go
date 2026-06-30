@@ -47,6 +47,7 @@ type Config struct {
 	BurstCapacity                  int
 	ExpireAfter                    time.Duration
 	RequestsPerSecond              float64
+	RateLimiterIdleTimeout         time.Duration // Evict a host's rate limiter after this idle period. Zero means "use the default" (1h); a negative value disables eviction.
 	Timeout                        time.Duration
 	CircuitBreakerTimeout          time.Duration
 	RetryMaxDelay                  time.Duration
@@ -214,8 +215,26 @@ func newPooledTransport(poolConfig HTTPPoolConfig, allowPrivateIPs bool) *http.T
 // The requestsPerSecond and burstCapacity arguments configure each host's token bucket independently.
 // Per-host rate limiting is provided by github.com/richardwooding/hostrate. When allowPrivateIPs is
 // false, the transport blocks connections to internal addresses at dial time (see newPooledTransport).
-func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig, allowPrivateIPs bool) *http.Client {
-	transport := hostrate.New(newPooledTransport(poolConfig, allowPrivateIPs), rate.Limit(requestsPerSecond), burstCapacity)
+//
+// The optional idleTimeout bounds the per-host limiter map: a host's limiter is
+// evicted after it has been idle for that long, so runtime feed churn can't grow
+// the map without bound (#117). Only the first value is used; a non-positive
+// value (or omitting it) disables eviction, retaining one limiter per host for
+// the client's lifetime — fine when the host set is small and fixed. It is
+// variadic so existing callers that don't configure eviction keep compiling.
+func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig, allowPrivateIPs bool, idleTimeout ...time.Duration) *http.Client {
+	var opts []hostrate.Option
+	if len(idleTimeout) > 0 && idleTimeout[0] > 0 {
+		// Only enable eviction for a positive timeout; a non-positive value means
+		// "no eviction", which is hostrate's default when the option is absent.
+		opts = append(opts, hostrate.WithIdleTimeout(idleTimeout[0]))
+	}
+	transport := hostrate.New(
+		newPooledTransport(poolConfig, allowPrivateIPs),
+		rate.Limit(requestsPerSecond),
+		burstCapacity,
+		opts...,
+	)
 
 	return &http.Client{
 		Transport: transport,
@@ -456,7 +475,7 @@ func newStoreInternal(config Config) (*Store, error) {
 			MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
 			IdleConnTimeout:     config.IdleConnTimeout,
 		}
-		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig, config.AllowPrivateIPs)
+		config.HTTPClient = NewRateLimitedHTTPClient(config.RequestsPerSecond, config.BurstCapacity, poolConfig, config.AllowPrivateIPs, config.RateLimiterIdleTimeout)
 	}
 
 	ristrettoCache, err := ristretto.NewCache[string, *gofeed.Feed](&ristretto.Config[string, *gofeed.Feed]{
@@ -518,6 +537,13 @@ func applyConfigDefaults(config *Config) {
 	}
 	if config.BurstCapacity <= 0 {
 		config.BurstCapacity = 5 // Allow burst of 5 requests by default
+	}
+	if config.RateLimiterIdleTimeout == 0 {
+		// Evict a host's limiter after an hour idle so a long-running store with
+		// runtime feed churn (add_feed/remove_feed across many hosts) can't grow
+		// the per-host limiter map without bound (#117). A negative value
+		// disables eviction; the zero value means "unset", hence the default.
+		config.RateLimiterIdleTimeout = 1 * time.Hour
 	}
 
 	applyCircuitBreakerDefaults(config)
