@@ -47,7 +47,7 @@ type Config struct {
 	BurstCapacity                  int
 	ExpireAfter                    time.Duration
 	RequestsPerSecond              float64
-	RateLimiterIdleTimeout         time.Duration // Evict a host's rate limiter after this idle period (<=0 disables eviction)
+	RateLimiterIdleTimeout         time.Duration // Evict a host's rate limiter after this idle period. Zero means "use the default" (1h); a negative value disables eviction.
 	Timeout                        time.Duration
 	CircuitBreakerTimeout          time.Duration
 	RetryMaxDelay                  time.Duration
@@ -216,17 +216,22 @@ func newPooledTransport(poolConfig HTTPPoolConfig, allowPrivateIPs bool) *http.T
 // Per-host rate limiting is provided by github.com/richardwooding/hostrate. When allowPrivateIPs is
 // false, the transport blocks connections to internal addresses at dial time (see newPooledTransport).
 //
-// idleTimeout bounds the per-host limiter map: a host's limiter is evicted after
-// it has been idle for that long, so runtime feed churn can't grow the map
-// without bound (#117). A non-positive idleTimeout disables eviction (retaining
-// one limiter per host for the client's lifetime) — fine when the host set is
-// small and fixed.
-func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig, allowPrivateIPs bool, idleTimeout time.Duration) *http.Client {
+// The optional idleTimeout bounds the per-host limiter map: a host's limiter is
+// evicted after it has been idle for that long, so runtime feed churn can't grow
+// the map without bound (#117). Only the first value is used; a non-positive
+// value (or omitting it) disables eviction, retaining one limiter per host for
+// the client's lifetime — fine when the host set is small and fixed. It is
+// variadic so existing callers that don't configure eviction keep compiling.
+func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig, allowPrivateIPs bool, idleTimeout ...time.Duration) *http.Client {
+	var idle time.Duration
+	if len(idleTimeout) > 0 {
+		idle = idleTimeout[0]
+	}
 	transport := hostrate.New(
 		newPooledTransport(poolConfig, allowPrivateIPs),
 		rate.Limit(requestsPerSecond),
 		burstCapacity,
-		hostrate.WithIdleTimeout(idleTimeout),
+		hostrate.WithIdleTimeout(idle),
 	)
 
 	return &http.Client{

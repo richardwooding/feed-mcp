@@ -158,6 +158,15 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		return err
 	}
 
+	// The store treats a zero RateLimiterIdleTimeout as "unset" and applies the
+	// default (1h). The CLI, however, documents 0 as "disable eviction", so map
+	// an explicit 0 to a negative duration, which the store passes through as
+	// "disabled".
+	rateLimiterIdleTimeout := c.RateLimiterIdleTimeout
+	if rateLimiterIdleTimeout == 0 {
+		rateLimiterIdleTimeout = -1
+	}
+
 	storeConfig := store.Config{
 		Feeds:                  feedURLs,
 		OPML:                   c.OPML, // Pass OPML path for metadata source detection
@@ -165,7 +174,7 @@ func (c *RunCmd) Run(globals *model.Globals, ctx context.Context) error {
 		ExpireAfter:            c.ExpireAfter,
 		RequestsPerSecond:      c.RequestsPerSecond,
 		BurstCapacity:          c.BurstCapacity,
-		RateLimiterIdleTimeout: c.RateLimiterIdleTimeout,
+		RateLimiterIdleTimeout: rateLimiterIdleTimeout,
 		MaxIdleConns:           c.MaxIdleConns,
 		MaxConnsPerHost:        c.MaxConnsPerHost,
 		MaxIdleConnsPerHost:    c.MaxIdleConnsPerHost,
