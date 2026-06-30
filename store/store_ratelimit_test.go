@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -36,8 +38,24 @@ func TestNewRateLimitedHTTPClient_EvictsIdleLimiters(t *testing.T) {
 		t.Fatalf("transport type = %T, want *hostrate.Transport", client.Transport)
 	}
 
-	// Touch host A. The request fails (closed port) but registers a limiter.
-	_, _ = client.Get("http://127.0.0.1:1/a")
+	// touch issues a request whose only purpose is to register a per-host limiter
+	// (created before the dial in RoundTrip). The dial itself fails — nothing is
+	// listening — and a short context bounds it so a slow/unroutable dial can't
+	// hang the test regardless of the platform's loopback/IPv6 setup.
+	touch := func(url string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		if resp, err := client.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}
+
+	// Host A: key "127.0.0.1".
+	touch("http://127.0.0.1:1/a")
 	if tr.Len() == 0 {
 		t.Fatal("expected a per-host limiter after the first request")
 	}
@@ -45,8 +63,9 @@ func TestNewRateLimitedHTTPClient_EvictsIdleLimiters(t *testing.T) {
 	// Let A go idle past the eviction window.
 	time.Sleep(80 * time.Millisecond)
 
-	// Touch a different host B; this triggers a sweep that evicts the idle A.
-	_, _ = client.Get("http://[::1]:1/b")
+	// Host B: key "localhost" (distinct key, resolves via the hosts file — no
+	// network DNS). This request triggers a sweep that evicts the idle A.
+	touch("http://localhost:1/b")
 	if got := tr.Len(); got != 1 {
 		t.Fatalf("idle limiter not evicted: Len = %d, want 1 (only the just-used host)", got)
 	}
