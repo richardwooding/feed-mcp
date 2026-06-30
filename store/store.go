@@ -223,15 +223,17 @@ func newPooledTransport(poolConfig HTTPPoolConfig, allowPrivateIPs bool) *http.T
 // the client's lifetime — fine when the host set is small and fixed. It is
 // variadic so existing callers that don't configure eviction keep compiling.
 func NewRateLimitedHTTPClient(requestsPerSecond float64, burstCapacity int, poolConfig HTTPPoolConfig, allowPrivateIPs bool, idleTimeout ...time.Duration) *http.Client {
-	var idle time.Duration
-	if len(idleTimeout) > 0 {
-		idle = idleTimeout[0]
+	var opts []hostrate.Option
+	if len(idleTimeout) > 0 && idleTimeout[0] > 0 {
+		// Only enable eviction for a positive timeout; a non-positive value means
+		// "no eviction", which is hostrate's default when the option is absent.
+		opts = append(opts, hostrate.WithIdleTimeout(idleTimeout[0]))
 	}
 	transport := hostrate.New(
 		newPooledTransport(poolConfig, allowPrivateIPs),
 		rate.Limit(requestsPerSecond),
 		burstCapacity,
-		hostrate.WithIdleTimeout(idle),
+		opts...,
 	)
 
 	return &http.Client{
