@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>feed-mcp — Bring RSS feeds to Claude</title>
+  <meta name="description" content="feed-mcp is a Model Context Protocol server that lets Claude read RSS, Atom, and JSON feeds — with smart caching, rate limiting, circuit breakers, and SSRF protection.">
+  <meta property="og:title" content="feed-mcp — Bring RSS feeds to Claude">
+  <meta property="og:description" content="An MCP server that fetches RSS/Atom/JSON feeds and serves them to AI assistants.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="gloam.css">
+  <style>
+    /* page-local extras, all derived from gloam tokens */
+    .gl-theme-toggle { background: var(--gl-panel); color: var(--gl-fg); border: 1px solid var(--gl-border);
+      border-radius: 8px; padding: 8px 10px; cursor: pointer; font: 600 .82rem/1 var(--gl-sans); }
+    .gl-theme-toggle:hover { border-color: var(--gl-accent); }
+    .gl-config { background: var(--gl-panel); border: 1px solid var(--gl-border); border-radius: var(--gl-radius);
+      padding: 16px 18px; overflow-x: auto; font-size: .85rem; line-height: 1.6; margin: 0; font-family: var(--gl-mono); }
+    .gl-config .c { color: var(--gl-faint); }
+    .gl-config .k { color: var(--gl-accent-2); }
+    .gl-config .s { color: var(--gl-green); }
+    .gl-config .p { color: var(--gl-muted); }
+    .gl-panel-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+    .gl-panel-list li { background: var(--gl-panel); border: 1px solid var(--gl-border); border-radius: 12px;
+      padding: 12px 16px; color: var(--gl-muted); font-size: .95rem; }
+    .gl-panel-list code { color: var(--gl-accent-2); font-size: .88rem; }
+    .gl-tab-wrap { margin-top: 18px; }
+    .gl-tab-wrap [data-gl-panel] { margin-top: 16px; }
+    .gl-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+    @media (max-width: 760px) { .gl-two-col { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body class="gl">
+  <a class="gl-skip" href="#main">Skip to content</a>
+
+  <header class="gl-nav">
+    <div class="gl-wrap">
+      <span class="gl-brand">
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+          <rect width="24" height="24" rx="6" fill="var(--gl-panel-2)"/>
+          <rect x="5" y="12" width="3.5" height="7" rx="1" fill="var(--gl-accent)"/>
+          <rect x="10.25" y="8" width="3.5" height="11" rx="1" fill="var(--gl-accent-2)"/>
+          <rect x="15.5" y="4" width="3.5" height="15" rx="1" fill="#d2b3ff"/>
+        </svg>
+        feed-mcp
+      </span>
+      <button class="gl-nav-toggle" aria-label="Toggle navigation" data-gl-nav-toggle="nav">☰</button>
+      <nav id="nav">
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="#surface">MCP Surface</a>
+        <a href="#resilience">Resilience</a>
+        <button class="gl-theme-toggle" id="theme" aria-label="Toggle color theme">◑ Theme</button>
+        <a class="gl-btn ghost" href="https://github.com/richardwooding/feed-mcp">GitHub ★</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="gl-hero">
+      <div class="gl-wrap gl-hero-grid">
+        <div>
+          <p class="gl-eyebrow">rss · atom · json · model context protocol</p>
+          <h1>Bring RSS feeds to <span class="gl-grad">Claude.</span></h1>
+          <p class="sub">feed-mcp is a Model Context Protocol server that lets AI assistants read RSS, Atom, and JSON feeds — so you can ask about the latest articles, get summaries, and stay updated without leaving your chat.</p>
+          <div class="gl-cta">
+            <a class="gl-btn primary" href="#install">Get started</a>
+            <a class="gl-btn ghost" href="https://github.com/richardwooding/feed-mcp">View on GitHub</a>
+          </div>
+          <p class="gl-hint">Docker · Homebrew · Go install · one-click MCP Bundle for Claude Desktop</p>
+        </div>
+        <div class="gl-term">
+          <div class="bar">
+            <span class="dot" style="background:#ff5f56"></span>
+            <span class="dot" style="background:#ffbd2e"></span>
+            <span class="dot" style="background:#27c93f"></span>
+            <span class="t">feed-mcp</span>
+          </div>
+<pre><span class="pr">$</span> feed-mcp run https://techcrunch.com/feed/
+<span class="hd">STATUS   FEED             ITEMS</span>
+<span class="n">ok</span>       techcrunch       <span class="loc">20 items · cached 1h</span>
+<span class="n">ok</span>       the verge        <span class="loc">20 items · cached 1h</span>
+<span class="ok">ready</span>    stdio transport  <span class="loc">3 tools · 4 resources</span>
+<span class="warn">warn</span>     example.com      <span class="loc">circuit open · retrying</span></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section id="features" class="gl-section">
+      <div class="gl-wrap">
+        <p class="gl-eyebrow">what you get</p>
+        <h2>A feed bridge built for AI conversations.</h2>
+        <p class="gl-lede" style="margin-top:12px">Two-pass reading keeps responses fast: Claude browses titles first, then fetches full content only for the articles you ask about.</p>
+        <div class="gl-grid feat" style="margin-top:28px">
+          <div class="gl-card">
+            <h3>
+              <span class="gl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg></span>
+              Multiple formats
+            </h3>
+            <p>RSS, Atom, and JSON feeds — parsed through one consistent model your assistant can reason over.</p>
+          </div>
+          <div class="gl-card">
+            <h3>
+              <span class="gl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></span>
+              Import from readers
+            </h3>
+            <p>Point it at an OPML file exported from Feedly, Inoreader, or NewsBlur and every feed comes along.</p>
+          </div>
+          <div class="gl-card">
+            <h3>
+              <span class="gl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg></span>
+              Smart caching
+            </h3>
+            <p>In-memory cache keyed by feed URL, 1-hour default expiry — fresh enough, without hammering sources.</p>
+          </div>
+          <div class="gl-card">
+            <h3>
+              <span class="gl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></span>
+              Fast &amp; resilient
+            </h3>
+            <p>Per-host rate limiting, exponential-backoff retries, circuit breakers, and connection pooling built in.</p>
+          </div>
+          <div class="gl-card">
+            <h3>
+              <span class="gl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7z"/></svg></span>
+              Secure by default
+            </h3>
+            <p>SSRF protection via ssrfguard — HTTP(S) only, private IPs blocked, DNS-rebinding defeated at dial time.</p>
+          </div>
+          <div class="gl-card">
+            <h3>
+              <span class="gl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+              Easy deployment
+            </h3>
+            <p>Run over stdio for Claude Desktop, or Streamable HTTP for web and remote deployments.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSTALL -->
+    <section id="install" class="gl-section">
+      <div class="gl-wrap">
+        <p class="gl-eyebrow">get it running</p>
+        <h2>Install in a minute.</h2>
+        <p class="gl-lede" style="margin-top:12px">Pick your platform, then drop the config into Claude Desktop. Feeds are just arguments.</p>
+
+        <div class="gl-install" style="margin-top:26px">
+          <div class="gl-snip">
+            <span class="lbl">brew</span>
+            <code id="i-brew">brew install richardwooding/tap/feed-mcp</code>
+            <button class="gl-copy" data-gl-copy="i-brew">Copy</button>
+          </div>
+          <div class="gl-snip">
+            <span class="lbl">go</span>
+            <code id="i-go">go install github.com/richardwooding/feed-mcp@latest</code>
+            <button class="gl-copy" data-gl-copy="i-go">Copy</button>
+          </div>
+          <div class="gl-snip">
+            <span class="lbl">docker</span>
+            <code id="i-docker">docker run -i --rm ghcr.io/richardwooding/feed-mcp:latest run https://techcrunch.com/feed/</code>
+            <button class="gl-copy" data-gl-copy="i-docker">Copy</button>
+          </div>
+        </div>
+        <p class="gl-hint">Prefer Podman? Swap <code>docker</code> for <code>podman</code> — the arguments are identical. Or grab a one-click <code>.mcpb</code> MCP Bundle from the <a href="https://github.com/richardwooding/feed-mcp/releases">releases page</a>.</p>
+
+        <h3 style="margin-top:44px;font-size:1.15rem">Add it to Claude Desktop</h3>
+        <div class="gl-badges" role="tablist" aria-label="Choose install method" data-gl-tabs>
+          <button class="gl-lang" role="tab" data-gl-tab="docker" aria-selected="true">Docker</button>
+          <button class="gl-lang" role="tab" data-gl-tab="brew">Homebrew / Go</button>
+          <button class="gl-lang" role="tab" data-gl-tab="opml">OPML</button>
+        </div>
+
+        <div class="gl-tab-wrap">
+          <div data-gl-panel="docker">
+<pre class="gl-config"><span class="p">{</span>
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"feed-mcp"</span>: {
+      <span class="k">"command"</span>: <span class="s">"docker"</span>,
+      <span class="k">"args"</span>: [
+        <span class="s">"run"</span>, <span class="s">"-i"</span>, <span class="s">"--rm"</span>,
+        <span class="s">"ghcr.io/richardwooding/feed-mcp:latest"</span>,
+        <span class="s">"run"</span>,
+        <span class="s">"https://techcrunch.com/feed/"</span>,
+        <span class="s">"https://www.theverge.com/rss/index.xml"</span>
+      ]
+    }
+  }
+<span class="p">}</span></pre>
+          </div>
+          <div data-gl-panel="brew" hidden>
+<pre class="gl-config"><span class="c">// after `brew install` or `go install`</span>
+<span class="p">{</span>
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"feed-mcp"</span>: {
+      <span class="k">"command"</span>: <span class="s">"feed-mcp"</span>,
+      <span class="k">"args"</span>: [<span class="s">"run"</span>, <span class="s">"https://techcrunch.com/feed/"</span>]
+    }
+  }
+<span class="p">}</span></pre>
+          </div>
+          <div data-gl-panel="opml" hidden>
+<pre class="gl-config"><span class="c">// bring your whole reader — export OPML from Feedly / Inoreader</span>
+<span class="p">{</span>
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"my-feeds"</span>: {
+      <span class="k">"command"</span>: <span class="s">"docker"</span>,
+      <span class="k">"args"</span>: [
+        <span class="s">"run"</span>, <span class="s">"-i"</span>, <span class="s">"--rm"</span>,
+        <span class="s">"-v"</span>, <span class="s">"/path/to/feeds.opml:/feeds.opml:ro"</span>,
+        <span class="s">"ghcr.io/richardwooding/feed-mcp:latest"</span>,
+        <span class="s">"run"</span>, <span class="s">"--opml"</span>, <span class="s">"/feeds.opml"</span>
+      ]
+    }
+  }
+<span class="p">}</span></pre>
+          </div>
+        </div>
+        <p class="gl-hint">Restart Claude Desktop, then try: <em>"What are the latest tech headlines?"</em> or <em>"Summarize the top 5 articles from my feeds."</em></p>
+      </div>
+    </section>
+
+    <!-- MCP SURFACE -->
+    <section id="surface" class="gl-section">
+      <div class="gl-wrap">
+        <p class="gl-eyebrow">what claude can call</p>
+        <h2>The MCP surface.</h2>
+        <div class="gl-two-col" style="margin-top:24px">
+          <div>
+            <h3 style="font-size:1.05rem;margin-bottom:6px">Tools</h3>
+            <ul class="gl-panel-list">
+              <li><code>all_syndication_feeds</code> — list every configured feed</li>
+              <li><code>get_syndication_feed_items</code> — paginated items with conservative defaults</li>
+              <li><code>fetch_link</code> — pull the full content of a specific article</li>
+              <li><code>add_feed</code> · <code>remove_feed</code> · <code>list_managed_feeds</code> — with <code>--allow-runtime-feeds</code></li>
+            </ul>
+          </div>
+          <div>
+            <h3 style="font-size:1.05rem;margin-bottom:6px">Resources</h3>
+            <ul class="gl-panel-list">
+              <li><code>feeds://all</code> — the full feed catalog</li>
+              <li><code>feeds://feed/{id}</code> — a single feed</li>
+              <li><code>feeds://feed/{id}/items</code> — filter by <code>since</code>, <code>author</code>, <code>category</code>, <code>search</code></li>
+              <li><code>feeds://feed/{id}/meta</code> — feed metadata only</li>
+            </ul>
+          </div>
+        </div>
+        <p class="gl-hint">Item reads default to metadata-only, <code>limit</code> 10 (max 20), to avoid overflowing the conversation context. Opt into <code>includeContent</code> / <code>includeImages</code> when you need more.</p>
+      </div>
+    </section>
+
+    <!-- RESILIENCE -->
+    <section id="resilience" class="gl-section">
+      <div class="gl-wrap">
+        <p class="gl-eyebrow">built to keep serving</p>
+        <h2>Resilience &amp; security, by default.</h2>
+        <div class="gl-grid feat" style="margin-top:28px">
+          <div class="gl-card">
+            <div class="gl-stat">2/s</div>
+            <p style="margin-top:6px">Per-host rate limiting — 2 req/s, burst 5, one limiter per hostname.</p>
+          </div>
+          <div class="gl-card">
+            <div class="gl-stat">3×</div>
+            <p style="margin-top:6px">Retries with exponential backoff + jitter on 5xx, DNS, and timeouts — never on 4xx.</p>
+          </div>
+          <div class="gl-card">
+            <div class="gl-stat">30s</div>
+            <p style="margin-top:6px">Circuit breaker opens after 3 consecutive failures, resets after a 30s timeout.</p>
+          </div>
+          <div class="gl-card">
+            <div class="gl-stat">100</div>
+            <p style="margin-top:6px">Pooled idle connections (10 per host) via a tuned HTTP transport.</p>
+          </div>
+          <div class="gl-card">
+            <div class="gl-stat">SSRF</div>
+            <p style="margin-top:6px">Private IPs blocked up-front and at dial time — DNS-rebinding safe.</p>
+          </div>
+          <div class="gl-card">
+            <div class="gl-stat">SIGTERM</div>
+            <p style="margin-top:6px">Graceful shutdown with context propagation and a configurable timeout.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="gl-section">
+      <div class="gl-wrap" style="text-align:center">
+        <p class="gl-eyebrow" style="justify-content:center">open source · MIT</p>
+        <h2>Give Claude a news habit.</h2>
+        <p class="gl-lede" style="margin:12px auto 24px">Free, self-hostable, and dependency-light. Star it on GitHub or dive into the docs.</p>
+        <div class="gl-cta" style="justify-content:center">
+          <a class="gl-btn primary" href="https://github.com/richardwooding/feed-mcp">Star on GitHub</a>
+          <a class="gl-btn ghost" href="https://github.com/richardwooding/feed-mcp/blob/main/docs/ADVANCED.md">Read the docs</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="gl-footer">
+    <div class="gl-wrap">
+      <span class="gl-brand" style="font-size:.98rem">feed-mcp · MIT · <span data-gl-year></span></span>
+      <nav class="gl-fnav">
+        <a href="https://github.com/richardwooding/feed-mcp">GitHub</a>
+        <a href="https://github.com/richardwooding/feed-mcp/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+        <a href="https://github.com/richardwooding/feed-mcp/blob/main/docs/ADVANCED.md">Advanced</a>
+        <a href="https://modelcontextprotocol.io">MCP</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="gloam.js" defer></script>
+  <script>
+    // Theme toggle — flips data-theme on <html>, remembers the choice.
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme");
+      try {
+        var saved = localStorage.getItem("gl-theme");
+        if (saved) root.setAttribute("data-theme", saved);
+      } catch (e) { /* ignore */ }
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        var dark = getComputedStyle(root).getPropertyValue("--gl-bg").trim().indexOf("#0d") === 0
+          || root.getAttribute("data-theme") === "dark";
+        var next = dark ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        try { localStorage.setItem("gl-theme", next); } catch (e) { /* ignore */ }
+      });
+    })();
+  </script>
+</body>
+</html>
