@@ -77,12 +77,15 @@
             <span class="dot" style="background:#27c93f"></span>
             <span class="t">feed-mcp</span>
           </div>
-<pre><span class="pr">$</span> feed-mcp run https://techcrunch.com/feed/
-<span class="hd">STATUS   FEED             ITEMS</span>
-<span class="n">ok</span>       techcrunch       <span class="loc">20 items · cached 1h</span>
-<span class="n">ok</span>       the verge        <span class="loc">20 items · cached 1h</span>
-<span class="ok">ready</span>    stdio transport  <span class="loc">3 tools · 4 resources</span>
-<span class="warn">warn</span>     example.com      <span class="loc">circuit open · retrying</span></pre>
+<pre><span class="pr">$</span> feed-mcp run https://hnrss.org/frontpage
+<span class="pr">»</span> initialize   <span class="loc">RSS, Atom, and JSON Feed Server</span>
+<span class="pr">»</span> tools/list   <span class="loc">5 tools · 5 prompts</span>
+<span class="pr">»</span> tools/call <span class="n">all_syndication_feeds</span>
+{
+  <span class="hd">"id"</span>:         <span class="n">"hnrss.org-frontpage"</span>,
+  <span class="hd">"title"</span>:      <span class="n">"Hacker News: Front Page"</span>,
+  <span class="hd">"public_url"</span>: <span class="n">"https://hnrss.org/frontpage"</span>
+}</pre>
         </div>
       </div>
     </section>
@@ -232,8 +235,10 @@
             <h3 style="font-size:1.05rem;margin-bottom:6px">Tools</h3>
             <ul class="gl-panel-list">
               <li><code>all_syndication_feeds</code> — list every configured feed</li>
-              <li><code>get_syndication_feed_items</code> — paginated items with conservative defaults</li>
+              <li><code>get_syndication_feed_items</code> — paginated items, metadata-first</li>
               <li><code>fetch_link</code> — pull the full content of a specific article</li>
+              <li><code>merge_feeds</code> — aggregate feeds with dedup and sorting</li>
+              <li><code>export_feed_data</code> — export as JSON, CSV, OPML, RSS, or Atom</li>
               <li><code>add_feed</code> · <code>remove_feed</code> · <code>list_managed_feeds</code> — with <code>--allow-runtime-feeds</code></li>
             </ul>
           </div>
@@ -247,6 +252,7 @@
             </ul>
           </div>
         </div>
+        <p class="gl-hint">Five prompts ship too — <code>summarize_feeds</code>, <code>analyze_feed_trends</code>, <code>compare_sources</code>, <code>monitor_keywords</code>, and <code>generate_feed_report</code>.</p>
         <p class="gl-hint">Item reads default to metadata-only, <code>limit</code> 10 (max 20), to avoid overflowing the conversation context. Opt into <code>includeContent</code> / <code>includeImages</code> when you need more.</p>
       </div>
     </section>
