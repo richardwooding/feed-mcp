@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet; then
+          if [ -z "$(git status --porcelain)" ]; then
             echo "gloam already up to date."
             exit 0
           fi
@@ -42,7 +42,8 @@ jobs:
           git add -A
           git commit -m "chore(site): sync gloam assets to ${COMMIT}"
           git push -f origin "$BRANCH"
-          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+          STATE="$(gh pr view "$BRANCH" --json state --jq .state 2>/dev/null || true)"
+          if [ "$STATE" = "OPEN" ]; then
             echo "PR already open; updated the branch."
           else
             gh pr create --base "${GITHUB_REF_NAME}" --head "$BRANCH" \

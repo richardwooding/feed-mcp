@@ -23,13 +23,21 @@ BASE="https://raw.githubusercontent.com/${REPO}"
 [ -d "$TARGET" ] || { echo "sync-gloam: target dir not found: $TARGET" >&2; exit 1; }
 
 # Resolve the ref to a commit SHA so both files come from one commit (no race
-# if the branch moves mid-sync). A raw SHA passed as $REF resolves to itself.
-SHA="$(git ls-remote "https://github.com/${REPO}.git" "$REF" 2>/dev/null | head -1 | cut -f1)"
+# if the branch moves mid-sync). Query the exact ref paths so we don't match
+# other refs merely ending in $REF, and take the last line so an annotated tag
+# resolves to its dereferenced commit (refs/tags/x^{}) rather than the tag
+# object. A raw SHA (which matches no ref path) falls back to itself.
+SHA="$(git ls-remote "https://github.com/${REPO}.git" "refs/heads/${REF}" "refs/tags/${REF}" 2>/dev/null | tail -1 | cut -f1)"
 [ -n "$SHA" ] || SHA="$REF"
 
+# Download to temp files and swap them in only once both succeed, so an
+# interrupted or failed sync never leaves a half-updated pair.
 for f in gloam.css gloam.js; do
   echo "↓ ${f} @ ${SHA}"
-  curl -fsSL "${BASE}/${SHA}/${f}" -o "${TARGET}/${f}"
+  curl -fsSL "${BASE}/${SHA}/${f}" -o "${TARGET}/${f}.tmp"
+done
+for f in gloam.css gloam.js; do
+  mv "${TARGET}/${f}.tmp" "${TARGET}/${f}"
 done
 
 printf 'repo=%s\nref=%s\ncommit=%s\n' "$REPO" "$REF" "$SHA" > "${TARGET}/.gloam-version"
