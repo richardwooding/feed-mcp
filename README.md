@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/richardwooding/feed-mcp)](https://goreportcard.com/report/github.com/richardwooding/feed-mcp)
 [![MCP Badge](https://lobehub.com/badge/mcp/richardwooding-feed-mcp)](https://lobehub.com/mcp/richardwooding-feed-mcp)
 
-**Website:** https://richardwooding.github.io/feed-mcp/
+**Website:** [richardwooding.github.io/feed-mcp](https://richardwooding.github.io/feed-mcp/)
 
 **Bring RSS feeds to Claude Desktop** — Read news, blogs, and updates directly in your AI conversations.
 
