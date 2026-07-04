@@ -129,10 +129,16 @@
     document.querySelectorAll("[data-gl-nav-toggle]").forEach(function (btn) {
       var nav = document.getElementById(btn.getAttribute("data-gl-nav-toggle"));
       if (!nav) return;
-      btn.addEventListener("click", function () { nav.classList.toggle("open"); });
+      btn.addEventListener("click", function () {
+        var open = nav.classList.toggle("open");
+        btn.setAttribute("aria-expanded", String(open));
+      });
       nav.addEventListener("click", function (e) {
         // closest("a") so clicks on elements nested inside a link still close.
-        if (e.target.closest && e.target.closest("a")) nav.classList.remove("open");
+        if (e.target.closest && e.target.closest("a")) {
+          nav.classList.remove("open");
+          btn.setAttribute("aria-expanded", "false");
+        }
       });
     });
   });

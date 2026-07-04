@@ -15,13 +15,13 @@ permissions:
   pull-requests: write
 
 env:
-  GLOAM_DIR: site   # <-- set to the folder holding gloam.css/gloam.js
+  GLOAM_DIR: docs   # folder holding gloam.css/gloam.js
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Sync gloam assets
         run: sh "$GLOAM_DIR/sync-gloam.sh" "$GLOAM_DIR"
