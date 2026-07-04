@@ -101,6 +101,24 @@
 .gl-btn.ghost { background: var(--gl-panel); }
 .gl-btn.ghost:hover { border-color: var(--gl-accent); text-decoration: none; }
 
+/* ---- theme toggle ---- */
+.gl-theme-toggle { display: inline-grid; place-items: center; width: 38px; height: 38px; flex: none;
+  background: var(--gl-panel); color: var(--gl-fg); border: 1px solid var(--gl-border); border-radius: 10px; cursor: pointer; padding: 0; }
+.gl-theme-toggle:hover { border-color: var(--gl-accent); }
+.gl-theme-toggle:focus-visible { outline: 2px solid var(--gl-accent); outline-offset: 2px; }
+.gl-theme-toggle svg { width: 18px; height: 18px; display: block; }
+/* Icon reflects the active theme — CSS-only swap across system + forced themes. */
+.gl-theme-toggle .gl-sun { display: none; }
+.gl-theme-toggle .gl-moon { display: block; }
+@media (prefers-color-scheme: light) {
+  .gl-theme-toggle .gl-sun { display: block; }
+  .gl-theme-toggle .gl-moon { display: none; }
+}
+:root[data-theme="light"] .gl-theme-toggle .gl-sun { display: block; }
+:root[data-theme="light"] .gl-theme-toggle .gl-moon { display: none; }
+:root[data-theme="dark"] .gl-theme-toggle .gl-sun { display: none; }
+:root[data-theme="dark"] .gl-theme-toggle .gl-moon { display: block; }
+
 /* ---- hero ---- */
 .gl-hero { padding: 84px 0 64px; }
 .gl-hero h1 { font-size: clamp(2.1rem, 5.2vw, 3.4rem); font-weight: 800; }
