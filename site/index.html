@@ -329,9 +329,12 @@
       } catch (e) { /* ignore */ }
       if (!btn) return;
       btn.addEventListener("click", function () {
-        var dark = getComputedStyle(root).getPropertyValue("--gl-bg").trim().indexOf("#0d") === 0
-          || root.getAttribute("data-theme") === "dark";
-        var next = dark ? "light" : "dark";
+        // Resolve the current effective theme: an explicit data-theme wins;
+        // otherwise fall back to the system preference. (Reading the computed
+        // --gl-bg is unreliable — browsers serialize it as rgb(), not hex.)
+        var isDark = root.getAttribute("data-theme") === "dark" ||
+          (!root.getAttribute("data-theme") && !window.matchMedia("(prefers-color-scheme: light)").matches);
+        var next = isDark ? "light" : "dark";
         root.setAttribute("data-theme", next);
         try { localStorage.setItem("gl-theme", next); } catch (e) { /* ignore */ }
       });
