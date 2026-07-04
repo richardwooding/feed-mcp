@@ -83,6 +83,7 @@
 
 /* ---- nav ---- */
 .gl-nav { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(10px);
+  background: var(--gl-bg);
   background: color-mix(in srgb, var(--gl-bg) 82%, transparent); border-bottom: 1px solid var(--gl-border); }
 .gl-nav .gl-wrap { display: flex; align-items: center; gap: 18px; height: 60px; }
 .gl-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--gl-fg); font-size: 1.05rem; }
