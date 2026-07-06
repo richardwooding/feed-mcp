@@ -141,5 +141,74 @@
         }
       });
     });
+
+    // Carousel: a scroll-snap track with prev/next, generated dots, and
+    // motion-safe autoplay. No-ops without a viewport; degrades to a plain
+    // scrollable row when JS is off. Autoplay respects prefers-reduced-motion.
+    document.querySelectorAll("[data-gl-carousel]").forEach(function (root) {
+      var viewport = root.querySelector("[data-gl-carousel-viewport]");
+      if (!viewport) return;
+      var slides = Array.prototype.slice.call(viewport.children);
+      if (!slides.length) return;
+      var prev = root.querySelector("[data-gl-carousel-prev]");
+      var next = root.querySelector("[data-gl-carousel-next]");
+      var dotsBox = root.querySelector("[data-gl-carousel-dots]");
+      var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // Index of the slide whose left edge is nearest the current scroll offset.
+      function current() {
+        var best = 0, bestD = Infinity;
+        for (var i = 0; i < slides.length; i++) {
+          var d = Math.abs(slides[i].offsetLeft - viewport.scrollLeft);
+          if (d < bestD) { bestD = d; best = i; }
+        }
+        return best;
+      }
+      function goTo(i) {
+        i = (i + slides.length) % slides.length;
+        viewport.scrollTo({ left: slides[i].offsetLeft, behavior: reduce ? "auto" : "smooth" });
+      }
+
+      var dots = [];
+      if (dotsBox) {
+        slides.forEach(function (_, i) {
+          var b = document.createElement("button");
+          b.className = "gl-carousel-dot";
+          b.type = "button";
+          b.setAttribute("aria-label", "Go to slide " + (i + 1));
+          b.addEventListener("click", function () { goTo(i); });
+          dotsBox.appendChild(b);
+          dots.push(b);
+        });
+      }
+      function sync() {
+        var c = current();
+        dots.forEach(function (d, i) { d.setAttribute("aria-current", String(i === c)); });
+      }
+      sync();
+
+      if (prev) prev.addEventListener("click", function () { goTo(current() - 1); });
+      if (next) next.addEventListener("click", function () { goTo(current() + 1); });
+
+      var ticking = false;
+      viewport.addEventListener("scroll", function () {
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(function () { sync(); ticking = false; });
+      });
+
+      // Motion-safe autoplay; pause on hover/focus and when the tab is hidden.
+      if (!reduce) {
+        var timer = null;
+        function start() { if (!timer) timer = setInterval(function () { goTo(current() + 1); }, 6000); }
+        function stop() { if (timer) { clearInterval(timer); timer = null; } }
+        root.addEventListener("pointerenter", stop);
+        root.addEventListener("pointerleave", start);
+        root.addEventListener("focusin", stop);
+        root.addEventListener("focusout", start);
+        document.addEventListener("visibilitychange", function () { if (document.hidden) { stop(); } else { start(); } });
+        start();
+      }
+    });
   });
 })();
