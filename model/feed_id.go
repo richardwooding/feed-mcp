@@ -28,6 +28,14 @@ func GenerateFeedID(feedURL string) string {
 			path = regexp.MustCompile(`-+`).ReplaceAllString(path, "-")
 			slug = slug + "-" + path
 		}
+		// Feeds that differ only in their query string (e.g. YouTube channel
+		// feeds, all served from /feeds/videos.xml?channel_id=...) would
+		// otherwise share an ID and overwrite each other in the feed store.
+		if parsedURL.RawQuery != "" {
+			h := fnv.New32a()
+			_, _ = h.Write([]byte(parsedURL.RawQuery)) // FNV hash Write never returns an error
+			slug = slug + "-" + fmt.Sprintf("%08x", h.Sum32())
+		}
 		// Truncate if too long and add hash suffix for uniqueness
 		if len(slug) > 40 {
 			h := fnv.New32a()

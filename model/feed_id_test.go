@@ -55,6 +55,37 @@ func TestGenerateFeedID(t *testing.T) {
 	}
 }
 
+func TestGenerateFeedID_QueryStringUniqueness(t *testing.T) {
+	// Feeds that share a host and path but differ only in their query string
+	// must not collide. YouTube channel feeds are the canonical example: every
+	// channel is served from /feeds/videos.xml and identified by channel_id.
+	// A collision here makes store.LoadFeeds silently drop every channel but
+	// the last one, because feeds are keyed by GenerateFeedID.
+	urls := []string{
+		"https://www.youtube.com/feeds/videos.xml?channel_id=UCEXbEm8RUvRkKUEo2RjKd9w",
+		"https://www.youtube.com/feeds/videos.xml?channel_id=UCOiNhz5lCJiFIAZPsGZ5_9Q",
+		"https://example.com/feed.xml?format=rss&limit=10",
+		"https://example.com/feed.xml?format=rss&limit=20",
+	}
+
+	seen := make(map[string]string, len(urls))
+	for _, u := range urls {
+		id := GenerateFeedID(u)
+		if prev, dup := seen[id]; dup {
+			t.Errorf("GenerateFeedID collision: %q and %q both produce %q", prev, u, id)
+		}
+		seen[id] = u
+	}
+}
+
+func TestGenerateFeedID_QueryStringDoesNotAffectQuerylessURLs(t *testing.T) {
+	// Adding query-string disambiguation must not change the ID of any URL
+	// that has no query string, otherwise existing feed IDs would churn.
+	if got, want := GenerateFeedID("https://example.com/feed.xml"), "example.com-feed-xml"; got != want {
+		t.Errorf("GenerateFeedID(%q) = %q, want %q", "https://example.com/feed.xml", got, want)
+	}
+}
+
 func TestGenerateFeedID_Consistency(t *testing.T) {
 	// Test that the same URL always generates the same ID
 	url := "https://feeds.bbci.co.uk/news/world/africa/rss.xml"
