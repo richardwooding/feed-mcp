@@ -32,16 +32,18 @@ func GenerateFeedID(feedURL string) string {
 		// feeds, all served from /feeds/videos.xml?channel_id=...) would
 		// otherwise share an ID and overwrite each other in the feed store.
 		if parsedURL.RawQuery != "" {
-			h := fnv.New32a()
-			_, _ = h.Write([]byte(parsedURL.RawQuery)) // FNV hash Write never returns an error
-			slug = slug + "-" + fmt.Sprintf("%08x", h.Sum32())
+			// A query hash appended to a slug longer than 31 chars would push
+			// it past the 40-char limit and be discarded by the truncation
+			// below, so skip straight to the truncated form — the full-URL
+			// hash already covers the query string.
+			if len(slug) > 31 {
+				return slug[:32] + "-" + fnvHash(feedURL)
+			}
+			slug = slug + "-" + fnvHash(parsedURL.RawQuery)
 		}
 		// Truncate if too long and add hash suffix for uniqueness
 		if len(slug) > 40 {
-			h := fnv.New32a()
-			_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
-			hashStr := fmt.Sprintf("%08x", h.Sum32())
-			slug = slug[:32] + "-" + hashStr
+			return slug[:32] + "-" + fnvHash(feedURL)
 		}
 		return slug
 	}
@@ -50,4 +52,11 @@ func GenerateFeedID(feedURL string) string {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(feedURL)) // FNV hash Write never returns an error
 	return fmt.Sprintf("feed-%x", h.Sum32())
+}
+
+// fnvHash returns the 32-bit FNV-1a hash of s as a zero-padded 8-char hex string.
+func fnvHash(s string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s)) // FNV hash Write never returns an error
+	return fmt.Sprintf("%08x", h.Sum32())
 }
