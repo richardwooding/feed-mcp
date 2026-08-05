@@ -1,5 +1,7 @@
 # feed-mcp
 
+[![MCP Toplist](https://mcptoplist.com/badge/mcp.so%2Ffeed-mcp%2Frichardwooding.svg)](https://mcptoplist.com/server/mcp.so%2Ffeed-mcp%2Frichardwooding)
+
 [![Go Coverage](https://github.com/richardwooding/feed-mcp/wiki/coverage.svg)](https://raw.githack.com/wiki/richardwooding/feed-mcp/coverage.html)
 [![Go Report Card](https://goreportcard.com/badge/github.com/richardwooding/feed-mcp)](https://goreportcard.com/report/github.com/richardwooding/feed-mcp)
 [![MCP Badge](https://lobehub.com/badge/mcp/richardwooding-feed-mcp)](https://lobehub.com/mcp/richardwooding-feed-mcp)
