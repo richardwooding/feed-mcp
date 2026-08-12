@@ -6,7 +6,7 @@ toolchain go1.26.4
 
 require (
 	github.com/alecthomas/kong v1.16.0
-	github.com/cucumber/godog v0.15.1
+	github.com/cucumber/godog v0.16.0
 	github.com/dgraph-io/ristretto/v2 v2.4.2
 	github.com/eko/gocache/lib/v4 v4.2.4
 	github.com/eko/gocache/store/ristretto/v4 v4.3.2
@@ -14,7 +14,7 @@ require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/mmcdole/gofeed v1.4.0
-	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/richardwooding/hostrate v0.1.0
 	github.com/richardwooding/ssrfguard v0.2.2
 	github.com/sony/gobreaker v1.0.0
@@ -30,16 +30,16 @@ require (
 	github.com/antchfx/xpath v1.3.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
-	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
+	github.com/cucumber/gherkin/go/v42 v42.0.0 // indirect
+	github.com/cucumber/messages/go/v34 v34.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/gofrs/uuid v4.3.1+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
-	github.com/hashicorp/go-memdb v1.3.4 // indirect
+	github.com/hashicorp/go-memdb v1.3.5 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/kennygrant/sanitize v1.2.4 // indirect
 	github.com/mmcdole/goxpp/v2 v2.0.0 // indirect
@@ -52,7 +52,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
