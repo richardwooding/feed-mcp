@@ -11,6 +11,34 @@ import (
 	"time"
 )
 
+// maxOPMLBytes caps how much OPML is read from a file or HTTP response,
+// defending against pathological sources (e.g. /dev/zero, a hostile or
+// misconfigured server) that would otherwise exhaust memory.
+const maxOPMLBytes = 10 << 20 // 10 MiB
+
+// opmlHTTPClient fetches OPML from URLs. Package-level so tests (the
+// fuzz harness in particular) can stub the transport and keep fuzzing
+// free of real network I/O.
+var opmlHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// opmlOpenFile opens an OPML file for reading. Package-level so tests
+// can substitute an in-memory filesystem.
+var opmlOpenFile = func(path string) (io.ReadCloser, error) {
+	return os.Open(path) // #nosec G304 -- path is user-provided CLI argument, this is expected behavior
+}
+
+// readOPMLCapped reads r fully, rejecting content larger than maxOPMLBytes.
+func readOPMLCapped(r io.Reader) ([]byte, error) {
+	content, err := io.ReadAll(io.LimitReader(r, maxOPMLBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxOPMLBytes {
+		return nil, fmt.Errorf("OPML content exceeds %d byte limit", maxOPMLBytes)
+	}
+	return content, nil
+}
+
 // OPMLOutline represents an outline element in OPML
 type OPMLOutline struct {
 	Text     string        `xml:"text,attr"`
@@ -79,7 +107,7 @@ func extractURLsFromOutlines(outlines []OPMLOutline, urls *[]string) {
 
 // LoadOPMLFromFile loads and parses an OPML file from the local filesystem
 func LoadOPMLFromFile(path string) ([]string, error) {
-	file, err := os.Open(path) // #nosec G304 -- path is user-provided CLI argument, this is expected behavior
+	file, err := opmlOpenFile(path)
 	if err != nil {
 		return nil, NewFeedErrorWithCause(ErrorTypeSystem, fmt.Sprintf("failed to open OPML file: %s", path), err).
 			WithOperation("load_opml_file").
@@ -93,7 +121,7 @@ func LoadOPMLFromFile(path string) ([]string, error) {
 		}
 	}()
 
-	content, err := io.ReadAll(file)
+	content, err := readOPMLCapped(file)
 	if err != nil {
 		return nil, NewFeedErrorWithCause(ErrorTypeSystem, fmt.Sprintf("failed to read OPML file: %s", path), err).
 			WithOperation("load_opml_file").
@@ -105,12 +133,7 @@ func LoadOPMLFromFile(path string) ([]string, error) {
 
 // LoadOPMLFromURL loads and parses an OPML file from a remote URL
 func LoadOPMLFromURL(url string) ([]string, error) {
-	// Use a reasonable timeout for OPML fetching
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	resp, err := client.Get(url)
+	resp, err := opmlHTTPClient.Get(url)
 	if err != nil {
 		return nil, NewFeedErrorWithCause(ErrorTypeNetwork, fmt.Sprintf("failed to fetch OPML from URL: %s", url), err).
 			WithOperation("load_opml_url").
@@ -131,7 +154,7 @@ func LoadOPMLFromURL(url string) ([]string, error) {
 			WithHTTP(resp.StatusCode, resp.Header)
 	}
 
-	content, err := io.ReadAll(resp.Body)
+	content, err := readOPMLCapped(resp.Body)
 	if err != nil {
 		return nil, NewFeedErrorWithCause(ErrorTypeNetwork, fmt.Sprintf("failed to read OPML response from: %s", url), err).
 			WithOperation("load_opml_url").
