@@ -1,6 +1,10 @@
 package model
 
 import (
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -109,22 +113,52 @@ func FuzzExtractFeedURLsFromOPML(f *testing.F) {
 	})
 }
 
+// fuzzRoundTripper serves a canned OPML response for any request, so
+// fuzzing the URL branch never leaves the process.
+type fuzzRoundTripper struct{}
+
+func (fuzzRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	body := `<?xml version="1.0"?><opml version="2.0"><body><outline type="rss" xmlUrl="https://example.com/feed.xml"/></body></opml>`
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}, nil
+}
+
 // FuzzLoadFeedURLsFromOPML tests the OPML loader logic that determines
-// whether to load from file or URL based on the input string
+// whether to load from file or URL based on the input string.
+//
+// Real I/O is stubbed out: fuzzer-generated strings routinely look like
+// URLs ("http://8.AC" — the input behind the 2026-08-09 CI failure) or
+// like files the runner can actually open (/dev/zero), so hitting the
+// real network/filesystem makes runs hang, OOM, or fail on DNS luck.
+// The seams keep the routing + error-wrapping logic under test while
+// every probe stays in-memory and deterministic.
 func FuzzLoadFeedURLsFromOPML(f *testing.F) {
+	prevClient, prevOpen := opmlHTTPClient, opmlOpenFile
+	opmlHTTPClient = &http.Client{Transport: fuzzRoundTripper{}}
+	opmlOpenFile = func(path string) (io.ReadCloser, error) {
+		if strings.HasSuffix(path, ".opml") {
+			return io.NopCloser(strings.NewReader(`<opml version="2.0"><body><outline xmlUrl="https://example.com/a.xml"/></body></opml>`)), nil
+		}
+		return nil, os.ErrNotExist
+	}
+	f.Cleanup(func() {
+		opmlHTTPClient, opmlOpenFile = prevClient, prevOpen
+	})
+
 	// Seed corpus with various input patterns
-	// Note: HTTP/HTTPS URLs removed to prevent network calls during seed corpus validation in CI
-	// Fuzzing will still generate random HTTP URLs during actual fuzzing runs
 	f.Add("/path/to/feeds.opml")
 	f.Add("feeds.opml")
 	f.Add("")
 	f.Add("file:///etc/passwd")
 	f.Add("ftp://example.com/feeds.opml")
+	f.Add("http://8.AC") // regression: URL-shaped input must not touch the network
 
 	f.Fuzz(func(t *testing.T, opmlSource string) {
-		// The function should never panic
-		// Note: This will attempt to read files/URLs, which may fail (expected)
-		// We're only testing that it doesn't panic on unexpected input
+		// The function should never panic on unexpected input.
 		_, _ = LoadFeedURLsFromOPML(opmlSource)
 	})
 }
