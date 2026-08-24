@@ -1,8 +1,7 @@
 module github.com/richardwooding/feed-mcp
 
-go 1.26
+go 1.27.0
 
-toolchain go1.26.4
 
 require (
 	github.com/alecthomas/kong v1.16.1
