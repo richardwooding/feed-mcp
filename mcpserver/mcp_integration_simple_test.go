@@ -201,7 +201,9 @@ func TestMCPServerResourceHandlersRegistration(t *testing.T) {
 			Version: "1.0.0",
 		},
 		&mcp.ServerOptions{
-			HasResources: true,
+			Capabilities: &mcp.ServerCapabilities{
+				Resources: &mcp.ResourceCapabilities{ListChanged: true},
+			},
 		},
 	)
 

@@ -246,7 +246,9 @@ func (s *Server) createMCPServer() *mcp.Server {
 		&mcp.ServerOptions{
 			SubscribeHandler:   s.handleSubscribeResource,
 			UnsubscribeHandler: s.handleUnsubscribeResource,
-			HasResources:       true,
+			Capabilities: &mcp.ServerCapabilities{
+				Resources: &mcp.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			},
 		},
 	)
 }
