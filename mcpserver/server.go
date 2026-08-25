@@ -63,7 +63,7 @@ const (
 	mimeTypeICO  = "image/x-icon"
 )
 
-var sessionCounter int64
+var sessionCounter atomic.Int64
 
 // Config holds the configuration for creating a new MCP server
 type Config struct {
@@ -97,7 +97,7 @@ type Server struct {
 
 // generateSessionID creates a unique session ID for this server instance
 func generateSessionID() string {
-	counter := atomic.AddInt64(&sessionCounter, 1)
+	counter := sessionCounter.Add(1)
 	return fmt.Sprintf("feed-mcp-session-%d-%d", time.Now().UnixNano(), counter)
 }
 

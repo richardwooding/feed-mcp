@@ -224,11 +224,11 @@ func TestRateLimitedHTTPClient_BlocksLoopbackAtDial(t *testing.T) {
 
 func TestRateLimitedTransport_RateLimit(t *testing.T) {
 	// Track number of requests
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Create a test server that tracks requests
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
+		requestCount.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -263,8 +263,8 @@ func TestRateLimitedTransport_RateLimit(t *testing.T) {
 	}
 
 	// Verify all 3 requests were made
-	if atomic.LoadInt64(&requestCount) != 3 {
-		t.Errorf("expected 3 requests, got %d", atomic.LoadInt64(&requestCount))
+	if requestCount.Load() != 3 {
+		t.Errorf("expected 3 requests, got %d", requestCount.Load())
 	}
 }
 
@@ -544,9 +544,9 @@ func TestStore_CircuitBreakerFailures(t *testing.T) {
 
 func TestStore_CircuitBreakerRecovery(t *testing.T) {
 	// Create a server that initially fails then recovers
-	var requestCount int64
+	var requestCount atomic.Int64
 	recoveringServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt64(&requestCount, 1)
+		count := requestCount.Add(1)
 		if count <= 3 {
 			// Fail first 3 requests
 			w.WriteHeader(http.StatusInternalServerError)
@@ -911,11 +911,11 @@ func TestRetryMechanism_SuccessfulFetch(t *testing.T) {
 }
 
 func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Server that fails first 2 requests, succeeds on 3rd
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt64(&requestCount, 1)
+		count := requestCount.Add(1)
 		if count <= 2 {
 			w.WriteHeader(http.StatusInternalServerError) // 5xx error - retryable
 			return
@@ -958,7 +958,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 
 	// NewStore automatically fetches feeds during initialization.
 	// Reset counter to isolate GetAllFeeds behavior
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 
 	feeds, err := store.GetAllFeeds(context.Background())
 	if err != nil {
@@ -979,7 +979,7 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Reset counter before testing cache hit behavior
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 
 	// Second call to GetAllFeeds should hit cache and make 0 additional requests
 	_, err = store.GetAllFeeds(context.Background())
@@ -990,18 +990,18 @@ func TestRetryMechanism_RetriesOnFailure(t *testing.T) {
 	// Additional delay to ensure cache operations complete
 	time.Sleep(50 * time.Millisecond)
 
-	finalCount := atomic.LoadInt64(&requestCount)
+	finalCount := requestCount.Load()
 	if finalCount != 0 {
 		t.Errorf("expected 0 additional requests from second GetAllFeeds (cache hit), got %d", finalCount)
 	}
 }
 
 func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Server that always fails with 5xx error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
+		requestCount.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -1027,7 +1027,7 @@ func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
 
 	// NewStore no longer triggers fetches eagerly (see #114). Counter is reset
 	// here so the assertion below measures only the GetAllFeeds-triggered fetch.
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 
 	feeds, err := store.GetAllFeeds(context.Background())
 	if err != nil {
@@ -1044,18 +1044,18 @@ func TestRetryMechanism_ExhaustsRetries(t *testing.T) {
 	}
 
 	// Should have made exactly 3 attempts (1 initial + 2 retries)
-	finalCount := atomic.LoadInt64(&requestCount)
+	finalCount := requestCount.Load()
 	if finalCount != 3 {
 		t.Errorf("expected 3 requests during GetAllFeeds, got %d", finalCount)
 	}
 }
 
 func TestRetryMechanism_NonRetryableError(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Server that returns 404 (non-retryable)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
+		requestCount.Add(1)
 		w.WriteHeader(http.StatusNotFound) // 4xx error - not retryable
 	}))
 	defer server.Close()
@@ -1080,7 +1080,7 @@ func TestRetryMechanism_NonRetryableError(t *testing.T) {
 	}
 
 	// NewStore no longer triggers fetches eagerly (see #114).
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 
 	feeds, err := store.GetAllFeeds(context.Background())
 	if err != nil {
@@ -1097,19 +1097,19 @@ func TestRetryMechanism_NonRetryableError(t *testing.T) {
 	}
 
 	// Should have made only 1 more request (no retries for 4xx errors)
-	finalCount := atomic.LoadInt64(&requestCount)
+	finalCount := requestCount.Load()
 	if finalCount != 1 {
 		t.Errorf("expected 1 request during GetAllFeeds, got %d", finalCount)
 	}
 }
 
 func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 	var timestamps []time.Time
 
 	// Server that always fails to test timing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
+		requestCount.Add(1)
 		timestamps = append(timestamps, time.Now())
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -1135,7 +1135,7 @@ func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
 	}
 
 	// NewStore no longer triggers fetches eagerly (see #114).
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 	timestamps = nil
 
 	startTime := time.Now()
@@ -1174,11 +1174,11 @@ func TestRetryMechanism_ExponentialBackoff(t *testing.T) {
 }
 
 func TestRetryMechanism_MaxDelayRespected(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 	var timestamps []time.Time
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
+		requestCount.Add(1)
 		timestamps = append(timestamps, time.Now())
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -1304,11 +1304,11 @@ func TestCalculateRetryDelay(t *testing.T) {
 }
 
 func TestRetryMechanism_DefaultConfiguration(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Server that fails first 2 requests in each batch, succeeds on 3rd to test default retry count
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt64(&requestCount, 1)
+		count := requestCount.Add(1)
 		// Fail first 2 requests in each "batch" of 3, succeed on 3rd
 		if (count-1)%3 < 2 {
 			w.WriteHeader(http.StatusInternalServerError) // 5xx error - retryable
@@ -1349,7 +1349,7 @@ func TestRetryMechanism_DefaultConfiguration(t *testing.T) {
 
 	// NewStore no longer triggers fetches eagerly (see #114). Reset and let
 	// GetAllFeeds drive the retry path with default RetryMaxAttempts=3.
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 
 	// Verify the store was created successfully and defaults worked
 	feeds, err := store.GetAllFeeds(context.Background())
@@ -1423,11 +1423,11 @@ func TestRetryMetrics_SuccessfulFeeds(t *testing.T) {
 }
 
 func TestRetryMetrics_WithRetries(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Server that fails first 2 requests, succeeds on 3rd
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt64(&requestCount, 1)
+		count := requestCount.Add(1)
 		if count <= 2 {
 			w.WriteHeader(http.StatusInternalServerError) // 5xx error - retryable
 			return
@@ -1469,7 +1469,7 @@ func TestRetryMetrics_WithRetries(t *testing.T) {
 	}
 
 	// NewStore is lazy (#114); drive the retry path via GetAllFeeds.
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 	if _, err := store.GetAllFeeds(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -1495,11 +1495,11 @@ func TestRetryMetrics_WithRetries(t *testing.T) {
 }
 
 func TestRetryMetrics_FailedFeeds(t *testing.T) {
-	var requestCount int64
+	var requestCount atomic.Int64
 
 	// Server that always fails with 5xx error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
+		requestCount.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -1524,7 +1524,7 @@ func TestRetryMetrics_FailedFeeds(t *testing.T) {
 	}
 
 	// NewStore is lazy (#114); drive the retry path via GetAllFeeds.
-	atomic.StoreInt64(&requestCount, 0)
+	requestCount.Store(0)
 	if _, err := store.GetAllFeeds(context.Background()); err != nil {
 		t.Fatal(err)
 	}

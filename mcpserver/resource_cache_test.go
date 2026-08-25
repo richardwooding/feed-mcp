@@ -114,7 +114,7 @@ func TestCacheKeyGeneration(t *testing.T) {
 
 			if strings.Contains(tt.expected, "?hash=") {
 				// For URIs with parameters, just check the prefix
-				prefix := strings.Split(tt.expected, "?hash=")[0]
+				prefix, _, _ := strings.Cut(tt.expected, "?hash=")
 				if !strings.HasPrefix(result, prefix) {
 					t.Errorf("Expected cache key to start with %s, got %s", prefix, result)
 				}

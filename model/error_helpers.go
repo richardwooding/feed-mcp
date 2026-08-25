@@ -169,8 +169,7 @@ func isDNSError(err error) bool {
 	}
 
 	// Check for DNS error types
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return true
 	}
 

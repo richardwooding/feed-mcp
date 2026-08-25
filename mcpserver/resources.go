@@ -522,8 +522,7 @@ func (rm *ResourceManager) readFeed(ctx context.Context, uri string) (*mcp.ReadR
 	feedResult, err := rm.feedAndItemsGetter.GetFeedAndItems(ctx, feedID)
 	if err != nil {
 		// Check if this is a specific resource error
-		var feedErr *model.FeedError
-		if errors.As(err, &feedErr) {
+		if feedErr, ok := errors.AsType[*model.FeedError](err); ok {
 			// Enhance the existing FeedError with resource context
 			return nil, feedErr.WithOperation("read_feed").WithURL(uri)
 		}
@@ -627,8 +626,7 @@ func (rm *ResourceManager) readFeedItems(ctx context.Context, uri string) (*mcp.
 	feedResult, err := rm.feedAndItemsGetter.GetFeedAndItems(ctx, feedID)
 	if err != nil {
 		// Check if this is a specific resource error
-		var feedErr *model.FeedError
-		if errors.As(err, &feedErr) {
+		if feedErr, ok := errors.AsType[*model.FeedError](err); ok {
 			// Enhance the existing FeedError with resource context
 			return nil, feedErr.WithOperation("read_feed_items").WithURL(uri)
 		}
@@ -705,8 +703,7 @@ func (rm *ResourceManager) readFeedMeta(ctx context.Context, uri string) (*mcp.R
 	feedResult, err := rm.feedAndItemsGetter.GetFeedAndItems(ctx, feedID)
 	if err != nil {
 		// Check if this is a specific resource error
-		var feedErr *model.FeedError
-		if errors.As(err, &feedErr) {
+		if feedErr, ok := errors.AsType[*model.FeedError](err); ok {
 			// Enhance the existing FeedError with resource context
 			return nil, feedErr.WithOperation("read_feed_meta").WithURL(uri)
 		}

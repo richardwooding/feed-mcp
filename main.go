@@ -21,9 +21,7 @@ type CLI struct {
 func main() {
 	versionStr := version.GetVersion()
 	cli := CLI{
-		Globals: model.Globals{
-			Version: model.VersionFlag(versionStr),
-		},
+		Version: model.VersionFlag(versionStr),
 	}
 
 	// Set up signal handling for graceful shutdown
