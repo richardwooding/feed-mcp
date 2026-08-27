@@ -2,7 +2,6 @@ module github.com/richardwooding/feed-mcp
 
 go 1.27.0
 
-
 require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/cucumber/godog v0.16.0
@@ -12,12 +11,12 @@ require (
 	github.com/gocolly/colly v1.2.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/mmcdole/gofeed v1.4.1
+	github.com/mmcdole/gofeed v1.4.2
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/richardwooding/hostrate v0.1.0
 	github.com/richardwooding/ssrfguard v0.2.2
 	github.com/sony/gobreaker v1.0.0
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	golang.org/x/time v0.15.0
 )
 
@@ -53,6 +52,7 @@ require (
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
@@ -61,5 +61,4 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
