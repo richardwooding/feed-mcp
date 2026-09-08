@@ -208,14 +208,22 @@
 .gl-code .c { color: var(--gl-faint); }
 .gl-code .k { color: var(--gl-accent-2); }
 .gl-code .s { color: var(--gl-green); }
+/* ---- shrinking inside grid/flex ----
+   A grid or flex item's automatic minimum size is its min-content, so an item
+   holding a wide code block or a nowrap <code> refuses to shrink and pushes the
+   whole page sideways on a phone — an inner overflow-x:auto cannot save it,
+   because the item never gets narrow enough to scroll. Every such item needs an
+   explicit min-width:0, and where the scroller is a child of the item BOTH need
+   it: setting it on only one has no effect. */
 .gl-split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.gl-split > * { min-width: 0; }
 @media (max-width: 760px) { .gl-split { grid-template-columns: 1fr; } }
 
 /* ---- install snippets ---- */
 .gl-install { display: grid; gap: 14px; max-width: 760px; }
-.gl-snip { display: flex; align-items: center; gap: 12px; background: var(--gl-panel); border: 1px solid var(--gl-border); border-radius: 12px; padding: 6px 6px 6px 16px; }
+.gl-snip { display: flex; align-items: center; gap: 12px; min-width: 0; background: var(--gl-panel); border: 1px solid var(--gl-border); border-radius: 12px; padding: 6px 6px 6px 16px; }
 .gl-snip .lbl { font: 700 .72rem/1 var(--gl-mono); color: var(--gl-accent-2); text-transform: uppercase; letter-spacing: .05em; flex: none; width: 74px; }
-.gl-snip code { flex: 1; overflow-x: auto; white-space: nowrap; color: var(--gl-fg); font-size: .88rem; padding: 8px 0; }
+.gl-snip code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; color: var(--gl-fg); font-size: .88rem; padding: 8px 0; }
 .gl-copy { flex: none; background: var(--gl-panel-2); color: var(--gl-muted); border: 1px solid var(--gl-border); border-radius: 8px; padding: 8px 12px; font: 700 .78rem/1 var(--gl-sans); cursor: pointer; }
 .gl-copy:hover { color: var(--gl-fg); border-color: var(--gl-accent); }
 .gl-copy.done { color: var(--gl-green); border-color: var(--gl-green); }
@@ -226,6 +234,19 @@
 .gl-footer a { color: var(--gl-muted); font-weight: 600; font-size: .92rem; }
 .gl-footer a:hover { color: var(--gl-fg); }
 .gl-fnav { display: flex; flex-wrap: wrap; gap: 18px; }
+
+/* ---- sponsor link (opt-in) ---- */
+/* gloam ships the style, never the link: paste the anchor into your own footer
+   (see components.md), so a scheduled asset sync can never change what a page
+   says or who it asks for. One accent, no brand pink — a footer note, not a
+   banner: the text keeps the footer's muted colour and only the heart is
+   accented. Colouring the TEXT would need `.gl-footer a.gl-sponsor`, since
+   `.gl-footer a` outranks a bare class; the icon rule targets the svg element
+   directly, so inheritance never competes. */
+.gl-sponsor { display: inline-flex; align-items: center; gap: 6px; }
+.gl-sponsor svg { width: 14px; height: 14px; flex: none; color: var(--gl-accent); }
+.gl-sponsor:hover svg { color: var(--gl-accent-2); }
+.gl-sponsor:focus-visible { outline: 2px solid var(--gl-accent); outline-offset: 3px; border-radius: 6px; }
 
 /* ---- mobile nav ---- */
 @media (max-width: 680px) {
