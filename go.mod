@@ -6,18 +6,18 @@ require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/cucumber/godog v0.16.0
 	github.com/dgraph-io/ristretto/v2 v2.4.2
-	github.com/eko/gocache/lib/v4 v4.2.4
-	github.com/eko/gocache/store/ristretto/v4 v4.3.2
+	github.com/eko/gocache/lib/v4 v4.4.0
+	github.com/eko/gocache/store/ristretto/v4 v4.3.8
 	github.com/gocolly/colly v1.2.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/mmcdole/gofeed v1.4.2
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/richardwooding/hostrate v0.1.0
 	github.com/richardwooding/ssrfguard v0.2.2
 	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 )
 
 require (
