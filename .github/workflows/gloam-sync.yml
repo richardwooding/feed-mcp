@@ -16,12 +16,13 @@
 # design assets it ships are never verified. A PAT is a distinct actor, so the
 # push and the PR fire the normal checks.
 #
-# Without the secret this falls back to GITHUB_TOKEN and keeps today's
-# behaviour, which also needs, per repo:
-#   Settings -> Actions -> General -> Workflow permissions ->
-#   "Allow GitHub Actions to create and approve pull requests"
-#   gh api -X PUT repos/{owner}/{repo}/actions/permissions/workflow \
-#     -F can_approve_pull_request_reviews=true
+# The PAT is deliberately NOT passed to actions/checkout. Checkout uses the
+# built-in token, which always works, so a missing, expired or malformed PAT
+# can only fail the push at the end — never the checkout, and never the sync
+# itself. (An earlier revision did pass it to checkout; one bad secret value
+# then broke the whole job at step one, before anything useful ran.)
+# Without the secret the job still runs and pushes with the built-in token,
+# exactly as it did before the secret existed.
 name: gloam-sync
 
 on:
@@ -40,11 +41,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # The token persists as the push credential for the step below, so the
-      # sync commit lands as the PAT's actor and CI actually runs on it.
       - uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.GLOAM_SYNC_TOKEN || github.token }}
 
       - name: Sync gloam assets
         run: sh "$GLOAM_DIR/sync-gloam.sh" "$GLOAM_DIR"
@@ -52,6 +49,7 @@ jobs:
       - name: Open a PR if anything changed
         env:
           GH_TOKEN: ${{ secrets.GLOAM_SYNC_TOKEN || github.token }}
+          SYNC_TOKEN: ${{ secrets.GLOAM_SYNC_TOKEN }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "gloam already up to date."
@@ -64,7 +62,16 @@ jobs:
           git switch -C "$BRANCH"
           git add -A
           git commit -m "chore(site): sync gloam assets to ${COMMIT}"
-          git push -f origin "$BRANCH"
+          # Push as the PAT so the branch and PR trigger CI. The token is only
+          # ever used here; GitHub masks it in logs and it is not written to
+          # .git/config. Falls back to the checkout credential when unset.
+          if [ -n "$SYNC_TOKEN" ]; then
+            git push -f "https://x-access-token:${SYNC_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+              "HEAD:refs/heads/${BRANCH}"
+          else
+            echo "::notice::GLOAM_SYNC_TOKEN is not set; pushing with the built-in token, so no CI will run on the PR."
+            git push -f origin "HEAD:refs/heads/${BRANCH}"
+          fi
           STATE="$(gh pr view "$BRANCH" --json state --jq .state 2>/dev/null || true)"
           if [ "$STATE" = "OPEN" ]; then
             echo "PR already open; updated the branch."
