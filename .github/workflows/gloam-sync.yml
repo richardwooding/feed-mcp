@@ -3,6 +3,25 @@
 #
 # Copy this into a consumer's .github/workflows/ and set GLOAM_DIR to the
 # directory that holds gloam.css/gloam.js (e.g. "site" or "docs").
+#
+# Prerequisite (one-time, per consumer repo): add a GLOAM_SYNC_TOKEN secret
+# holding a PAT (fine-grained: Contents read/write + Pull requests read/write)
+# or a GitHub App installation token.
+#   gh secret set GLOAM_SYNC_TOKEN --repo {owner}/{repo} --body "$PAT"
+#
+# Why a PAT rather than the built-in GITHUB_TOKEN: GitHub deliberately does not
+# trigger workflows from pushes or PRs made with GITHUB_TOKEN, to prevent
+# recursive runs. With GITHUB_TOKEN the sync PR opens but *no CI ever runs on
+# it* — it sits at zero checks and a "pending" combined status forever, so the
+# design assets it ships are never verified. A PAT is a distinct actor, so the
+# push and the PR fire the normal checks.
+#
+# Without the secret this falls back to GITHUB_TOKEN and keeps today's
+# behaviour, which also needs, per repo:
+#   Settings -> Actions -> General -> Workflow permissions ->
+#   "Allow GitHub Actions to create and approve pull requests"
+#   gh api -X PUT repos/{owner}/{repo}/actions/permissions/workflow \
+#     -F can_approve_pull_request_reviews=true
 name: gloam-sync
 
 on:
@@ -21,14 +40,18 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # The token persists as the push credential for the step below, so the
+      # sync commit lands as the PAT's actor and CI actually runs on it.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GLOAM_SYNC_TOKEN || github.token }}
 
       - name: Sync gloam assets
         run: sh "$GLOAM_DIR/sync-gloam.sh" "$GLOAM_DIR"
 
       - name: Open a PR if anything changed
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GLOAM_SYNC_TOKEN || github.token }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "gloam already up to date."
